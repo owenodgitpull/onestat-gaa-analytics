@@ -159,3 +159,86 @@ def test_most_of_anyone_on_our_side_is_not_a_pitch_claim():
     s = "He carried the ball 38 times, the most of anyone on our side, and made 34 passes, also the most on our side."
     assert not [i for i in find_issues(s, f) if "on the pitch" in i["problem"]]
     assert [i for i in find_issues("He carried 38 times, the most of anyone on the pitch.", f) if "on the pitch" in i["problem"]]
+
+
+# ---- round 7 ------------------------------------------------------------------------------------------------------------
+
+R7 = dict(FACTS,
+          two_pointers={"ours": {"from_play": ["A (x)", "B (x)"], "from_frees": ["C (x)", "D (x)"]},
+                        "theirs": {"from_play": ["E (x)", "F (x)", "G (x)"], "from_frees": []}},
+          impact_own={"langan": {"turnovers_won": 3, "assists": 1, "goals": 0}, "mogan": {"turnovers_won": 5, "assists": 1, "goals": 1}},
+          impact_opp={"kilkenny": {"turnovers_won": 7}},
+          player_minutes={"gallen": 41, "mogan": 94}, match_minutes=94,
+          kickouts_by_half={"half_1": {"our_kickouts": {"kept": 6, "of": 12},
+                                       "by_channel": {"our right": {"kept": 4, "of": 5}, "our left": {"kept": 1, "of": 5},
+                                                      "the centre": {"kept": 1, "of": 2}}},
+                            "half_2": {"our_kickouts": {"kept": 10, "of": 17},
+                                       "by_channel": {"our left": {"kept": 5, "of": 7}, "the centre": {"kept": 3, "of": 8},
+                                                      "our right": {"kept": 2, "of": 2}}}})
+
+
+def _p7(text):
+    return [i["problem"] for i in find_issues(text, R7)]
+
+
+def test_two_pointer_direction():
+    # Dublin v6: "Dublin out-scored us from range" with their 3 against our 4
+    assert any("wrong way round" in p for p in _p7("Dublin out-scored us from range."))
+    assert any("wrong way round" in p for p in _p7("They gained from range."))
+    assert not any("wrong way round" in p for p in _p7("We gained from range."))
+    assert not any("wrong way round" in p for p in _p7("We out-scored them from range, 4 to 3."))
+
+
+def test_banned_strings():
+    assert any("not used" in p for p in _p7("The season profile was not used."))
+    assert any("never filled in" in p for p in _p7("**Against our last N matches.** Nothing usable."))
+    assert any("lever" in p for p in _p7("Lever 3 applies here."))
+    assert any("no criticism applies" in p for p in _p7("He did his job, so no criticism applies."))
+    assert not _p7("Against our last 10 matches we kept more kickouts.")
+
+
+def test_general_superlatives():
+    assert any("Langan had the most turnovers won" in p for p in _p7("Langan won the most turnovers of ours (3)."))
+    assert not any("most turnovers" in p for p in _p7("Mogan won the most turnovers of ours (5)."))
+    # on the pitch: Kilkenny (7) beats Mogan (5)
+    assert any("on the pitch" in p for p in _p7("Mogan had the most turnovers won on the pitch."))
+    assert any("only one with assists" in p for p in _p7("Langan was the only player with an assist."))
+
+
+def test_player_minutes_and_full_match_length():
+    assert any("Gallen played 41 minutes, not 35" in p for p in _p7("Gallen played 35 minutes after coming on."))
+    assert not _p7("Gallen played 41 minutes.")
+    assert any("the match ran 94" in p for p in _p7("Mogan played the full 90 minutes."))
+
+
+def test_phase_table_pairs():
+    table = ("| Phase | Possessions | Finished | Became a shot | Scored | Points | 1st half | 2nd half | Extra time |\n"
+             "|---|---|---|---|---|---|---|---|---|\n"
+             "| Our kickouts we kept | 21 | 21 | 13 | 7 | 11 | 3/6 shots, 2 scored | 8/10 shots, 5 scored | 2/5 shots, 0 scored |\n")
+    assert any("not in the phase table" in p for p in _p7(table + "\nOur kept kickouts gave 12 shots from 21 possessions."))
+    assert not _p7(table + "\nOur kept kickouts gave 13 shots from 21 possessions.")
+    assert any("does not match the phase table" in p for p in _p7(table + "\nIn the second half 7 of 10 kept kickouts became shots."))
+    assert not _p7(table + "\nIn the second half 8 of 10 kept kickouts became shots.")
+
+
+def test_kickout_half_splits_add_up():
+    # Dublin v6 wording: both left out a channel
+    p = _p7("**Kickouts.** 4 of our 5 first-half kickouts to our right were kept, against 1 of 5 to our left. "
+            "In the second half it flipped: 5 of 7 to our left and 3 of 8 down the centre.")
+    assert any("add to 5 kept, but we kept 6" in x for x in p)
+    assert any("add to 8 kept, but we kept 10" in x for x in p)
+    assert not _p7("**Kickouts.** In the second half we kept 5 of 7 to our left, 3 of 8 down the centre and 2 of 2 to our right.")
+    assert not _p7("**Their kickouts.** We won 4 of 13 of their kickouts in the first half, 1 of 10 to the left and 3 of 3 to the right.")
+
+
+def test_one_position_per_player():
+    p = _p7("**Peadar Mogan (left corner back) – 8/10.** Good.\n\nLater Mogan (left half back) carried well.")
+    assert any("Mogan is listed as left corner back and elsewhere as left half back" in x for x in p)
+    assert not _p7("**Peadar Mogan (left corner back) – 8/10.** Good.\n\nMogan (left corner back) again.")
+    assert not [x for x in _p7("Mogan (left corner back, then left half back) and Mogan (left half back).") if "listed as" in x]
+
+
+def test_per_carry_superlative_is_not_a_carry_count():
+    f = dict(R7, impact_own={"mcgonagle": {"carries": 15}, "langan": {"carries": 42}})
+    assert not [i for i in find_issues("He carried 15 times for 15.9 m per carry, the highest on our side, McGonagle.", f)
+                if "most carries" in i["problem"]]

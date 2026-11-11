@@ -355,6 +355,8 @@ def find_issues(text: str, facts: dict) -> List[dict]:
         for m in re.finditer(r"\b[a-z0-9]+_[a-z0-9_]+\b", s):
             issues.append({"quote": s, "problem": f"internal field name '{m.group(0)}'", "truth": "say it in plain words"})
 
+    issues += round7_issues(text, facts)
+
     # one issue per quote+problem
     seen, out = set(), []
     for i in issues:
@@ -363,6 +365,301 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             seen.add(k)
             out.append(i)
     return out
+
+
+# ---- round 7 (reviewer, after Dublin v6) ------------------------------------------------------------------------------
+
+BANNED = (
+    (r"\bwas not used\b|\bwere not used\b", "process line ('was not used')", re.I),
+    (r"\blast N matches\b", "'last N matches' with N never filled in", 0),
+    (r"\blevers?\b", "internal label 'lever'", re.I),
+    (r"\bno criticism applies\b", "an instruction to the writer printed in the report ('no criticism applies')", re.I),
+    (r"\bimpact_points\b", "internal field name 'impact_points'", 0),
+    (r"\bby the tool'?s count\b", "talks about the tools ('by the tool's count')", re.I),
+    (r"\bper the ball-carrier data\b", "talks about the tools ('per the ball-carrier data')", re.I),
+)
+
+# metric -> how to read it from a player's impact row
+_METRICS = {
+    "turnovers won": lambda r: r.get("turnovers_won", 0),
+    "turnovers lost": lambda r: r.get("turnovers_lost", 0),
+    "kickouts won": lambda r: r.get("kickouts_won", 0),
+    "unforced errors": lambda r: r.get("unforced_errors", 0),
+    "two-pointers": lambda r: r.get("two_pointers", 0),
+    "assists": lambda r: r.get("assists", 0),
+    "carries": lambda r: r.get("carries", 0),
+    "passes": lambda r: r.get("passes_made", 0),
+    "wides": lambda r: r.get("wides", 0),
+    "fouls": lambda r: r.get("fouls", 0),
+    "goals": lambda r: r.get("goals", 0),
+    "scores": lambda r: r.get("goals", 0) + r.get("points", 0) + r.get("two_pointers", 0),
+    "points": lambda r: 3 * r.get("goals", 0) + r.get("points", 0) + 2 * r.get("two_pointers", 0),
+}
+_METRIC_WORDS = [
+    (r"turnovers? won", "turnovers won"), (r"turnovers? lost", "turnovers lost"), (r"kick-?outs? won", "kickouts won"),
+    (r"turnovers?", "turnovers"), (r"unforced errors?", "unforced errors"), (r"two-pointers?", "two-pointers"), (r"assists?", "assists"),
+    (r"carries|carry", "carries"), (r"passes", "passes"), (r"wides?", "wides"), (r"fouls?", "fouls"),
+    (r"goals?", "goals"), (r"scores", "scores"), (r"points", "points"),
+]
+_METRIC_RE = re.compile(r"\b(" + "|".join(p for p, _ in _METRIC_WORDS) + r")\b")
+
+
+def _metric_key(word: str) -> Optional[str]:
+    return next((k for p, k in _METRIC_WORDS if re.fullmatch(p, word)), None)
+
+
+_BOTH_TEAMS = r"\b(on the pitch|of anyone|either side|in the match|on the night|in the game|both teams|both sides)\b"
+_OUR_SIDE = r"\b(on our side|of ours|our players|on our team|in our team|for us|our (?:top|most|highest|leading))\b"
+
+
+def _named(pool: dict, s: str) -> List[str]:
+    return [k for k in pool if re.search(r"\b" + re.escape(k) + r"\b", s, re.I)]
+
+
+def _superlative_issues(s: str, low: str, facts: dict) -> List[dict]:
+    """'the most / the highest / the only' about one named player, against every player's row in the impact table
+    (ours, or both teams when the sentence says 'on the pitch')."""
+    out = []
+    own, opp = facts.get("impact_own") or {}, facts.get("impact_opp") or {}
+    if not own:
+        return out
+    both = bool(re.search(_BOTH_TEAMS, low)) and not re.search(_OUR_SIDE, low)
+    pool = dict(own)
+    if both:
+        pool.update({k: v for k, v in opp.items() if k not in own})
+    for m in re.finditer(r"\b(the most|most of any|the highest|the only|joint-top|the top)\b", low):
+        lo = max(0, m.start() - 40)
+        win = low[lo: m.end() + 45]
+        # "15.9 m per carry, the highest" is about metres per carry, not the number of carries
+        cands = sorted((abs(lo + mm.start() - m.start()), mm.group(1)) for mm in _METRIC_RE.finditer(win)
+                       if not re.search(r"\bper\s*$", win[:mm.start()]))
+        if not cands:
+            continue
+        key = _metric_key(cands[0][1])
+        if key == "turnovers":            # "won the most turnovers" / "lost the most turnovers"
+            key = ("turnovers won" if re.search(r"\bw[io]n\b", win) else
+                   "turnovers lost" if re.search(r"\b(lost|lose|gave away|conceded)\b", win) else None)
+        if not key or (both and key in ("carries", "passes")):     # 12j already checks carries/passes across both teams
+            continue
+        get = _METRICS[key]
+        named = _named(pool, s)
+        if len(named) != 1:
+            continue
+        who = named[0]
+        if m.group(1) == "the only":
+            holders = [k for k, r in pool.items() if get(r) > 0]
+            if len(holders) > 1 and key in ("goals", "two-pointers", "assists"):
+                out.append({"quote": s, "problem": f"says {who.title()} was the only one with {key}, but {len(holders)} players had them",
+                            "truth": ", ".join(f"{k.title()} {get(pool[k])}" for k in sorted(holders, key=lambda k: -get(pool[k])))})
+            continue
+        best = max(get(r) for r in pool.values())
+        if get(pool[who]) < best:
+            tops = [k for k, r in pool.items() if get(r) == best]
+            scope = "on the pitch" if both else "of ours"
+            out.append({"quote": s, "problem": f"says {who.title()} had the most {key} {scope}, but he had {get(pool[who])}",
+                        "truth": f"the most {key} {scope}: " + ", ".join(f"{t.title()} ({best})" for t in tops)})
+    return out
+
+
+def _two_pointer_direction(s: str, low: str, facts: dict) -> List[dict]:
+    """'X out-scored us from range' / 'X gained from range': X must have scored more two-pointers (Dublin v6 said
+    Dublin out-scored us from range with 3 against our 4)."""
+    tp = facts.get("two_pointers") or {}
+    if not tp.get("ours") and not tp.get("theirs"):
+        return []
+    n = {side: len((tp.get(side) or {}).get("from_play", [])) + len((tp.get(side) or {}).get("from_frees", []))
+         for side in ("ours", "theirs")}
+    opp = (facts.get("opponent") or "").lower()
+    out = []
+    for m in re.finditer(r"([\w'’ ]{0,40}?)\b(?:out-?scored (us|them|[\w'’]+)|gained) from range", low):
+        subj, obj = m.group(1).strip(), m.group(2)
+        if obj:
+            winner = "theirs" if obj == "us" else ("ours" if obj == "them" or (opp and obj in opp) else None)
+        elif re.search(r"\b(we|us|our)\b", subj):
+            winner = "ours"
+        elif re.search(r"\b(they|their|the opposition)\b", subj) or (opp and opp in subj):
+            winner = "theirs"
+        else:
+            winner = None
+        if winner is None:
+            continue
+        loser = "theirs" if winner == "ours" else "ours"
+        if n[winner] <= n[loser]:
+            truth = f"two-pointers: ours {n['ours']}, theirs {n['theirs']}"
+            truth += ("; level, so neither side gained from range" if n["ours"] == n["theirs"] else
+                      f"; {'we' if n['ours'] > n['theirs'] else (facts.get('opponent') or 'they')} gained from range")
+            out.append({"quote": s, "problem": "the from-range claim is the wrong way round", "truth": truth})
+    return out
+
+
+_MIN_PATTERNS = (
+    r"\bplayed (?:only |just )?(\d{1,3}) min(?:utes|s)?\b",
+    r"\b(\d{1,3}) min(?:utes|s)? on the pitch\b",
+    r"\bin (?:his|her|their) (\d{1,3}) min(?:utes|s)?\b",
+    r"\b(\d{1,3}) min(?:utes|s)? played\b",
+    r"\b(\d{1,3})-minute (?:cameo|spell|shift|appearance|outing)\b",
+    r"\b(\d{1,3}) min(?:utes|s)? (?:off the bench|as a substitute|after coming on)\b",
+)
+
+
+def _minutes_issues(s: str, low: str, facts: dict) -> List[dict]:
+    """A player's minutes against his playing_minutes; 'the full N minutes' against the match length."""
+    out = []
+    mins, full = facts.get("player_minutes") or {}, facts.get("match_minutes")
+    for m in re.finditer(r"\bfull (\d{2,3}) minutes\b", low):
+        if full and abs(int(m.group(1)) - full) > 1:
+            out.append({"quote": s, "problem": f"says the full {m.group(1)} minutes; the match ran {full}",
+                        "truth": f"the match ran {full} minutes"})
+    named = [k for k, v in mins.items() if v is not None and re.search(r"\b" + re.escape(k) + r"\b", s, re.I)]
+    if len(named) != 1:
+        return out
+    want = mins[named[0]]
+    for pat in _MIN_PATTERNS:
+        for m in re.finditer(pat, low):
+            got = int(m.group(1))
+            if abs(got - want) > 1:
+                out.append({"quote": s, "problem": f"{named[0].title()} played {want} minutes, not {got}",
+                            "truth": f"{named[0].title()}: {want} minutes"})
+    return out
+
+
+def _phase_table(text: str) -> Optional[dict]:
+    """The pasted scorecard table: the (numerator, denominator) pairs it supports."""
+    lines = [ln for ln in text.split("\n") if ln.startswith("|")]
+    head = next((ln for ln in lines if "Became a shot" in ln), None)
+    if not head:
+        return None
+    cols = [c.strip().lower() for c in head.strip().strip("|").split("|")]
+    try:
+        ip, i_f, i_s, i_sc = cols.index("possessions"), cols.index("finished"), cols.index("became a shot"), cols.index("scored")
+    except ValueError:
+        return None
+    pairs, denoms = set(), set()
+    for ln in lines:
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if len(cells) != len(cols) or not all(cells[i].isdigit() for i in (ip, i_f, i_s, i_sc)):
+            continue
+        p, f, sh, sc = int(cells[ip]), int(cells[i_f]), int(cells[i_s]), int(cells[i_sc])
+        pairs |= {(sh, p), (sh, f), (sc, sh), (sc, p), (sc, f)}
+        denoms |= {p, f, sh}
+        for c in cells[i_sc + 1:]:
+            mm = re.match(r"(\d+)/(\d+) shots?, (\d+) scored", c)
+            if mm:
+                a, b, c3 = int(mm.group(1)), int(mm.group(2)), int(mm.group(3))
+                pairs |= {(a, b), (c3, a), (c3, b)}
+                denoms |= {a, b}
+    return {"pairs": pairs, "denoms": denoms}
+
+
+def _phase_issues(s: str, low: str, table: Optional[dict]) -> List[dict]:
+    """'N shots from M possessions' / 'N of M ... shots' in a sentence about a phase must be a pair from the table."""
+    if not table or not re.search(r"\b(kick-?outs?|turnovers?|possessions?|breaking balls?|contests?)\b", low):
+        return []
+    out = []
+    for m in re.finditer(r"\b(\d+) shots? from (\d+) possessions?\b", low):
+        n, d = int(m.group(1)), int(m.group(2))
+        if d in table["denoms"] and (n, d) not in table["pairs"]:
+            out.append({"quote": s, "problem": f"{n} shots from {d} possessions is not in the phase table",
+                        "truth": "copy the shot count from that row of the phase table (Became a shot, or the half's 'a/b shots')"})
+    for m in re.finditer(r"\b(\d+) of (?:the |our |their )?(\d+)\b[^.;\d]{0,40}?\bshots?\b", low):
+        n, d = int(m.group(1)), int(m.group(2))
+        if d in table["denoms"] and (n, d) not in table["pairs"]:
+            out.append({"quote": s, "problem": f"'{n} of {d}' does not match the phase table",
+                        "truth": "copy the pair from one row of the phase table (became a shot of possessions, or scored of shots)"})
+    return out
+
+
+_HALF_KEY = {"first": "half_1", "1st": "half_1", "second": "half_2", "2nd": "half_2"}
+_PART_RE = re.compile(r"\b(\d+) of (?:our |the )?(\d+)\b([^\d.;()]{0,35}?)\b(left|right|centre|center|middle|short|medium|long)\b")
+
+
+def _half_split_issues(paragraph: str, facts: dict) -> List[dict]:
+    """Our kickouts kept in one half split by channel or length ('5 of 7 to our left and 3 of 8 down the centre'): the
+    parts must add up to that half's kept total."""
+    kbh = facts.get("kickouts_by_half") or {}
+    if not kbh or not re.search(r"\bkick-?outs?\b", paragraph, re.I):
+        return []
+    opp = (facts.get("opponent") or "").lower()
+    out = []
+    for s in re.split(r"(?<=[.!?])\s+", paragraph):
+        low = s.lower()
+        if re.search(r"\b(their|opposition)\b[^.]{0,20}kick-?outs?", low) or (opp and re.search(re.escape(opp) + r"(?:'s)? kick-?outs?", low)):
+            continue
+        hm = re.search(r"\b(first|1st|second|2nd)[- ]half\b|\bextra time ([12])\b", low)
+        if not hm:
+            continue
+        key = _HALF_KEY[hm.group(1)] if hm.group(1) else f"extra_time_{hm.group(2)}"
+        entry = kbh.get(key) or {}
+        ok = entry.get("our_kickouts") or {}
+        tot = ok.get("kept")
+        if tot is None:
+            continue
+        ch, ln = [], []
+        for m in _PART_RE.finditer(low):
+            (ln if m.group(4) in ("short", "medium", "long") else ch).append(int(m.group(1)))
+        for parts, by in ((ch, "by_channel"), (ln, "by_length")):
+            if len(parts) < 2:
+                continue
+            groups = entry.get(by) or {}
+            framed = sum(v.get("kept", 0) for v in groups.values())
+            if sum(parts) not in (tot, framed):
+                detail = "; ".join(f"{k} {v.get('kept')} of {v.get('of')}" for k, v in groups.items())
+                out.append({"quote": s, "problem": f"the {by[3:]} parts add to {sum(parts)} kept, but we kept {tot} in that period",
+                            "truth": f"{key.replace('_', ' ')}: kept {tot} of {ok.get('of')}" + (f" ({detail})" if detail else "")})
+    return out
+
+
+_POSITIONS = (r"goalkeeper|(?:left |right )?corner[- ]back|centre[- ]half[- ]back|full[- ]back|(?:left |right )?half[- ]back|"
+              r"midfielder|midfield|centre[- ]half[- ]forward|(?:left |right )?half[- ]forward|(?:left |right )?corner[- ]forward|full[- ]forward")
+
+
+def _position_issues(text: str, facts: dict) -> List[dict]:
+    """One listed position per player across the report: 'Mogan (left corner back)' here and 'Mogan (left half back)'
+    there. A player who changed position in the match is skipped."""
+    moved = facts.get("moved") or set()
+    seen: dict = {}
+    multi = set()
+    for m in re.finditer(r"\b([A-Z][\w'’\-]+)\**\s*\(([^)]{3,80})\)", text):
+        sur = m.group(1).lower()
+        if sur in moved:
+            continue
+        found = re.findall(_POSITIONS, m.group(2), re.I)
+        if not found:
+            continue
+        if len(found) != 1 or re.search(r"\b(then|moved|later|switched|after)\b", m.group(2), re.I):
+            multi.add(sur)
+            continue
+        pos = found[0].lower().replace("-", " ")
+        seen.setdefault(sur, []).append(("midfield" if pos.startswith("midfield") else pos, m.group(0)))
+    out = []
+    for sur, rows in seen.items():
+        if sur in multi:
+            continue
+        first = rows[0][0]
+        other = next(((p, q) for p, q in rows[1:] if p != first), None)
+        if other:
+            out.append({"quote": other[1], "problem": f"{sur.title()} is listed as {first} and elsewhere as {other[0]}",
+                        "truth": "one position per player throughout: use the lineup's position"})
+    return out
+
+
+def round7_issues(text: str, facts: dict) -> List[dict]:
+    issues: List[dict] = []
+    table = _phase_table(text)
+    for s in _sentences(text):
+        low = s.lower()
+        for pat, problem, flags in BANNED:
+            if re.search(pat, s, flags):
+                issues.append({"quote": s, "problem": problem, "truth": "delete it, or say it plainly"})
+        issues += _two_pointer_direction(s, low, facts)
+        issues += _superlative_issues(s, low, facts)
+        issues += _minutes_issues(s, low, facts)
+        issues += _phase_issues(s, low, table)
+    for para in re.split(r"\n\s*\n", text):
+        if not para.lstrip().startswith("|"):
+            issues += _half_split_issues(para, facts)
+    issues += _position_issues(text, facts)
+    return issues
 
 
 def _link_truth(links: dict, a: str, b: str) -> str:
@@ -396,6 +693,7 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
                 _dup.add(k)          # two players share a surname: cannot check by surname
             _w[k] = r.get("wides", 0)
         facts["player_wides"] = {k: v for k, v in _w.items() if k not in _dup}
+        facts["moved"] = {_surname(r.get("name", "")) for r in summ.get("player_breakdown") or [] if r.get("positions_played")}
         tot_shots = st.get("opponent_total_shots")
         if tot_shots is not None and facts["opp_missed_total"] is not None:
             facts["opp_scores"] = tot_shots - facts["opp_missed_total"]
@@ -404,7 +702,10 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
     try:
         gps = json.loads(await execute_tool("get_match_gps_running_totals", {"match_id": match_id}, db, club_id=club_id))
         facts["match_minutes"] = gps.get("match_minutes")
-        facts["player_minutes"] = {_surname(p["name"]): p.get("playing_minutes") for p in gps.get("players", []) if p.get("name")}
+        _sur = [_surname(p["name"]) for p in gps.get("players", []) if p.get("name")]
+        # two players share a surname (Shane and Conor O'Donnell): the checks cannot tell whose minutes a sentence means
+        facts["player_minutes"] = {_surname(p["name"]): p.get("playing_minutes") for p in gps.get("players", [])
+                                   if p.get("name") and _sur.count(_surname(p["name"])) == 1}
         facts["returned"] = {_surname(p["name"]): p.get("on_the_pitch") for p in gps.get("players", []) if p.get("returned_after_going_off")}
         sp = [(p["name"], p.get("max_speed_ms") or 0) for p in gps.get("players", [])]
         if sp:
@@ -446,6 +747,14 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         facts["player_scores"] = {k: v for k, v in sc.items() if k not in dup}
         facts["player_score_detail"] = {k: v for k, v in detail.items() if k not in dup}
         facts["own_scorers"] = own_scorers
+        for side, key in (("own", "impact_own"), ("opposition", "impact_opp")):
+            rows_, dup_ = {}, set()
+            for r in (imp.get(side) or []):
+                k = _surname(r.get("player", ""))
+                if k in rows_:
+                    dup_.add(k)          # two players share a surname: cannot check by surname
+                rows_[k] = r
+            facts[key] = {k: v for k, v in rows_.items() if k and k not in dup_}
     except Exception:
         pass
     try:
@@ -474,6 +783,11 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         facts["subs"] = {(_surname(on), _surname(off)) for off, on in rows}      # (came on, went off)
         facts["our_fouls"] = (await db.execute(_t3("select count(*) from match_events where match_id = :m and team = 'own' and event_type::text = 'foul_committed'"), {"m": str(match_id)})).scalar()
         facts["opp_free_scores"] = (await db.execute(_t3("select count(*) from match_events where match_id = :m and team = 'opponent' and event_type::text in ('point_free','two_point_free')"), {"m": str(match_id)})).scalar()
+    except Exception:
+        pass
+    try:
+        ph = json.loads(await execute_tool("get_phase_summary", {"match_id": match_id}, db, club_id=club_id))
+        facts["kickouts_by_half"] = ph.get("kickouts_by_half") or (ph.get("extras") or {}).get("kickouts_by_half") or {}
     except Exception:
         pass
     try:
