@@ -152,3 +152,10 @@ def test_top_performers_sorted_by_rating():
     assert [l[2] for l in out.split("\n\n") if l.startswith("**") and "/10" in l] == ["A", "B", "D", "C"]
     assert fixed and out.endswith("**Also on the scoresheet:** E 0-1.")
     assert sort_ratings(out) == (out, [])
+
+
+def test_most_of_anyone_on_our_side_is_not_a_pitch_claim():
+    f = {"top_carries_both": ("Ian Maguire", 44, "Cork"), "top_passes_both": ("Ian Maguire", 42, "Cork")}
+    s = "He carried the ball 38 times, the most of anyone on our side, and made 34 passes, also the most on our side."
+    assert not [i for i in find_issues(s, f) if "on the pitch" in i["problem"]]
+    assert [i for i in find_issues("He carried 38 times, the most of anyone on the pitch.", f) if "on the pitch" in i["problem"]]

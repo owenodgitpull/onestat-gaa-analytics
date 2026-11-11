@@ -296,7 +296,10 @@ def find_issues(text: str, facts: dict) -> List[dict]:
                                "truth": f"{m.group(2)} on for {m.group(1)}"})
 
         # 12j. "the busiest carrier / most passes on the pitch / of anyone" for one of ours, when a Dublin player had more
-        if re.search(r"\b(on the pitch|of anyone|either side|in the match|on the night|in the game)\b", low) and re.search(r"\b(busiest|most|top|highest|leading)\b", low):
+        # "the most of anyone on our side" is a claim about our team only (Cork, 2026-11-11: Langan's 38 carries)
+        if (re.search(r"\b(on the pitch|of anyone|either side|in the match|on the night|in the game)\b", low)
+                and re.search(r"\b(busiest|most|top|highest|leading)\b", low)
+                and not re.search(r"\b(on our side|of ours|our players|on our team|in our team|for us)\b", low)):
             for what, key in (("carr", "carries"), ("pass", "passes")):
                 if what in low and facts.get(f"top_{key}_both"):
                     nm, n, side = facts[f"top_{key}_both"]
