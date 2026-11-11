@@ -902,7 +902,10 @@ INSTRUCTIONS:
         import asyncio
         key = str(match_id)
         running = _REPORT_INFLIGHT.get(key)
-        if running is not None and not running.done():
+        # A Regenerate click must not join a plain read that is only returning the saved report: the page fires both at
+        # once, and the click came back in 3 s with the old version (Dublin, 2026-11-11). Join only a forced run, or join
+        # anything when we are a plain read ourselves.
+        if running is not None and not running.done() and (not force_regenerate or getattr(running, "_force", False)):
             logger.info(f"Joining the report generation already running for match {key}")
             try:
                 return await asyncio.shield(running)
@@ -912,6 +915,7 @@ INSTRUCTIONS:
             except Exception:
                 pass                  # the running one failed - fall through and generate our own
         task = asyncio.ensure_future(MatchAgent._generate_post_match_report_impl(db, match_id, force_regenerate, exclude_ball_carry))
+        task._force = bool(force_regenerate)
         _REPORT_INFLIGHT[key] = task
         try:
             return await task
