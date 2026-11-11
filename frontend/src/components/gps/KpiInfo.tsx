@@ -24,14 +24,14 @@ export const GPS_KPI_INFO: Record<string, KpiExplanation> = {
     how: 'Distance covered above 5.5 m/s (about 20 km/h), added up across our tracked outfielders while on the pitch.',
   },
   'Compact without ball': {
-    what: 'How tightly packed our team is when they have the ball. Smaller = a tighter unit, harder to play through.',
-    how: 'Every second, the average distance of each of our outfielders from the team\'s centre point. Averaged over the seconds the opposition had the ball. The smaller figure underneath is the same thing when we had the ball.',
-    accuracy: 'Who has the ball comes from the tagged carries: a team "has the ball" from its carry until the other team\'s next carry, or until play stops (a score, wide, foul, card, or the ball going out for a sideline or 45). Every edge is moved back by the measured tap delay. Set-piece time (a stoppage until the next carry) is left out and shown as its own row in the Shape tab.',
+    what: 'How tightly packed our team is when they have the ball. Smaller = tighter, harder to play through.',
+    how: 'Take all our outfield players and find the middle of the group. Then measure how far, on average, each player is from that middle point. The big number is while they had the ball; the small one underneath is while we had it (we spread out when attacking, which is normal).',
+    accuracy: 'Our players: GPS, to a couple of metres. Who has the ball comes from your tagged carries. Goalkeeper and players without a unit are not counted.',
   },
   'Compactness': {
-    what: 'How tightly packed our team is. Smaller = a tighter unit.',
-    how: 'Every second, the average distance of each of our outfielders from the team\'s centre point, averaged over the seconds without (and with) the ball.',
-    accuracy: 'Possession comes from the tagged carries, ended at stoppages and moved back by the measured tap delay. Set pieces are a separate row in the table below.',
+    what: 'How tightly packed our team is. Smaller = tighter.',
+    how: 'Take all our outfield players and find the middle of the group. Then measure how far, on average, each player is from that middle point. Shown for when they had the ball and when we had it.',
+    accuracy: 'Our players: GPS, to a couple of metres. Who has the ball comes from your tagged carries.',
   },
   'Length': {
     what: 'How long our team is from back to front, along the pitch.',

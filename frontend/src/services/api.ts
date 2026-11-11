@@ -962,6 +962,9 @@ export interface KPICardItem {
   insight?: string;
   /** a short line under the value */
   detail?: string | null;
+  /** rows for the info pop-up, e.g. { label: '11 of 14 outfielders back', value: '5 s' } */
+  breakdown?: { label: string; value: string }[] | null;
+  breakdown_note?: string | null;
   trend?: {
     direction: 'up' | 'down' | 'stable';
     window: number;

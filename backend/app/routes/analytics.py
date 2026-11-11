@@ -285,6 +285,8 @@ class KPICardItem(BaseModel):
     insight: Optional[str] = None
     trend: Optional[KPICardTrend] = None
     detail: Optional[str] = None   # a short line under the value, e.g. "when caught short · 2 of 10 already back"
+    breakdown: Optional[List[dict]] = None   # rows for the info pop-up, e.g. [{"label": "8 back", "value": "4 s"}]
+    breakdown_note: Optional[str] = None
 
 class KPIMetadata(BaseModel):
     matches_played: int

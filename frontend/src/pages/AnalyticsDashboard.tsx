@@ -767,6 +767,19 @@ export default function AnalyticsDashboard() {
                                   <div className="text-sm text-white/60 leading-relaxed">{KPI_EXPLANATIONS[card.key]?.formula}</div>
                                 </div>
                               )}
+                              {card.breakdown && card.breakdown.length > 0 && (
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">How quickly they get back</div>
+                                  <div className="rounded-lg border border-white/10 divide-y divide-white/5">
+                                    {card.breakdown.map(r => (
+                                      <div key={r.label} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                                        <span className="text-white/75">{r.label}</span><span className="text-white font-semibold tabular-nums">{r.value}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {card.breakdown_note && <div className="text-[11px] text-white/45 mt-1.5 leading-snug">{card.breakdown_note}</div>}
+                                </div>
+                              )}
                               {/* what the colour means: the team against itself, never anyone else */}
                               <div>
                                 <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">The colour</div>

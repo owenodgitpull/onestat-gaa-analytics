@@ -2252,11 +2252,33 @@ class SeasonDashboardService:
         s_med, s_back, s_lost = pool(list(per))
         if s_med is None or not s_lost:
             return None
+
+        # The build-up: how long until N players are back, for N = 5..11 (11 = all 14 outfielders but the 3 the rules keep
+        # up). Over every turnover lost (already-back ones count as 0 s); a turnover only counts for an N its players on
+        # the pitch could reach (13 tracked -> up to 10). Middle time; "over 15 s" when fewer than half got there in 15 s.
+        # One set of turnovers for every N - those where all 14 outfielders wore a unit - so the counts are out of the same
+        # 14 and the times rise steadily (mixing in days with 12 tracked made "10 back" quicker than "9 back").
+        build = []
+        allt = [t for mid in per for t in per[mid]]
+        full = [t for t in allt if t.get("players_on") == 14 and t.get("goal_side")]
+        for n in range(6, 12):
+            ok = full
+            if len(ok) < 5:
+                continue
+            times = [next((s_ for s_, c in enumerate(t["goal_side"]) if c >= n), None) for t in ok]
+            got = sorted(x for x in times if x is not None)
+            half = (len(times) + 1) // 2
+            build.append({"players": n, "median_s": got[half - 1] if len(got) >= half else None, "turnovers": len(ok)})
+        # never let a smaller number of players be slower than a bigger one (a jump in the estimated ball can do that)
+        for i in range(len(build) - 2, -1, -1):
+            a, b = build[i]["median_s"], build[i + 1]["median_s"]
+            if a is not None and b is not None and a > b:
+                build[i]["median_s"] = b
         recent_gps = [mid for mid in recent_ids if mid in per] or list(per)
         r_med, r_back, r_lost = pool(recent_gps)
         return {"season_s": round(s_med, 1), "recent_s": round(r_med if r_med is not None else s_med, 1),
                 "season_back_pct": round(100 * s_back / s_lost), "recent_back_pct": round(100 * r_back / r_lost) if r_lost else round(100 * s_back / s_lost),
-                "back": s_back, "lost": s_lost, "matches": len(per)}
+                "back": s_back, "lost": s_lost, "matches": len(per), "build_up": build}
 
     @staticmethod
     async def _kpi_cards(db: AsyncSession, matches: list, funnel: dict) -> dict:
@@ -3089,7 +3111,11 @@ class SeasonDashboardService:
         if bbb:
             cards.append({"key": "back_behind_ball_s", "label": "Back Behind Ball", "value": bbb["season_s"], "format": "seconds",
                           "color": "amber", "trend": make_trend(bbb["season_s"], bbb["recent_s"]),
-                          "detail": f"when caught short · {bbb['back']} of {bbb['lost']} already back · {bbb['matches']} GPS matches"})
+                          "detail": f"when caught short · {bbb['back']} of {bbb['lost']} already back · {bbb['matches']} GPS matches",
+                          "breakdown": [{"label": f"{b['players']} of 14 outfielders back" + (" (all but the 3 left up)" if b["players"] == 11 else ""),
+                                         "value": (f"{b['median_s']} s" if b["median_s"] is not None else "over 15 s")} for b in bbb["build_up"]],
+                          "breakdown_note": (f"Middle time after losing the ball, over the {bbb['build_up'][0]['turnovers']} turnovers when all 14 outfielders wore a unit. "
+                                             "The goalkeeper is always back on top of these." if bbb["build_up"] else None)})
             cards.append({"key": "already_back_pct", "label": "Already Back %", "value": bbb["season_back_pct"], "format": "percent",
                           "color": "amber", "trend": make_trend(bbb["season_back_pct"], bbb["recent_back_pct"]),
                           "detail": f"{bbb['back']} of {bbb['lost']} turnovers lost"})
