@@ -109,3 +109,9 @@ Entry format:
 ## A backspace character in useVideoEvents.ts
 - **What:** `frontend/src/hooks/useVideoEvents.ts` contains a literal backspace (0x08) character - probably a regex `\b` written through a shell. Not from today's work; not checked whether it breaks anything.
 - **Found while:** scanning for the same slip in the report checker (2026-11-11).
+
+## 2026-11-11 Dublin match: substitutions the GPS contradicts
+- Half-time: Malone off, Oisín Gallen on is not tagged at all (GPS: Malone off the pitch for the whole 2nd half and ET1, Gallen on from the 2nd-half throw-in). Owen to confirm before anything is added.
+- Roarty off (tag ET1 72:03) and Sean Martin off (tag ET1 71:27): GPS has both off from the ET1 throw-in, so the tags are about 1.5-2 minutes late. Left as tagged.
+- `frame.on_pitch_intervals`: a SUB_ON for a player the log still has on the pitch overwrites his open spell, so his earlier minutes are dropped from the GPS replay/metrics. Only matters while an exit is untagged.
+- Raw zip check: J. McGee and E. McHugh units both stop at 12:56 (about a minute after half-time); no other file in the export carries their data.
