@@ -126,7 +126,8 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             for m in re.finditer(r"(\d+) " + re.escape(opp.lower()) + r" scores", low):
                 n = int(m.group(1))
                 total = facts.get("opp_scores")
-                if total and n != total and str(total) not in s:
+                # a named subset ("the 22 Dublin scores with a GPS frame", "tracked", "measured") is not a total
+                if total and n != total and str(total) not in s and not re.search(r"gps frame|tracked|measured|could trace|traced", low):
                     issues.append({"quote": s, "problem": f"{n} {opp} scores quoted as if it were all of them",
                                    "truth": f"{opp} scored {total} times; say how many of them the figure covers"})
 
@@ -136,6 +137,8 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if minute < 2 * hdm:
                 continue
             before = s[max(0, m.start() - 28):m.start()].lower()
+            if re.search(r"^\s*\((?:also )?in (?:the )?(1st half|2nd half|extra time [12])", s[m.end():m.end() + 30].lower()):
+                continue                   # the period straight after: "82' (also in extra time 2, ...)"
             if re.search(r"(extra time [12]|half) (?:at )?\d{1,3}(?:\+\d+)?'(?:[^.;]{0,30}?, \d{1,3}(?:\+\d+)?')*[^.;]{0,30}?(?:,| and| or)\s*$", s[:m.start()].lower()):
                 continue                   # a list after one period label: "extra time 1 71', 75' (a two-pointer) and 77'"
             if re.search(r"(1st half|2nd half|extra time [12])\b[^.;']{0,25}$", s[max(0, m.start() - 45):m.start()].lower()):
@@ -268,6 +271,38 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             issues.append({"quote": s, "problem": "a target sentence with no target figure in it",
                            "truth": "give a figure different from this match's, marked as a suggestion, or delete the sentence"})
 
+        # 12i. a substitution written the wrong way round: "Sean Martin for Dáire Ó Baoill" when Ó Baoill came on for Martin
+        subs = facts.get("subs") or set()
+        # (letters, not A-Z: "Ó Baoill", "Ó Cofaigh Byrne")
+        for m in re.finditer(r"([^\W\d_][\w'’\-]+) for ((?:[^\W\d_][\w'’\-]* ){0,2}[^\W\d_][\w'’\-]+)", s):
+            if not (m.group(1)[0].isupper() and m.group(2)[0].isupper()):
+                continue
+            a, b = _surname(m.group(1)), _surname(m.group(2))
+            if (a, b) not in subs and (b, a) in subs:
+                issues.append({"quote": s, "problem": f"substitution the wrong way round: {m.group(2)} came on for {m.group(1)}, not the reverse",
+                               "truth": f"{m.group(2)} on for {m.group(1)}"})
+
+        # 12j. "the busiest carrier / most passes on the pitch / of anyone" for one of ours, when a Dublin player had more
+        if re.search(r"\b(on the pitch|of anyone|either side|in the match|on the night|in the game)\b", low) and re.search(r"\b(busiest|most|top|highest|leading)\b", low):
+            for what, key in (("carr", "carries"), ("pass", "passes")):
+                if what in low and facts.get(f"top_{key}_both"):
+                    nm, n, side = facts[f"top_{key}_both"]
+                    if side != "own" and not re.search(r"\b" + re.escape(_surname(nm)) + r"\b", s, re.I):
+                        issues.append({"quote": s, "problem": f"claims the most {key} on the pitch for one of ours, but {nm} ({side}) had {n}",
+                                       "truth": f"say 'our most {key}'; {nm} had the most on the pitch ({n})"})
+
+        # 12k. wording the reviewer flagged: frees "followed by a free shot"; "finished in the sin bin" after a 10-minute bin
+        if re.search(r"followed by (?:a )?free shots?", low):
+            issues.append({"quote": s, "problem": "'followed by a free shot' is meaningless (every free is)",
+                           "truth": f"write 'they scored from {facts.get('opp_free_scores', 'N')} of the {facts.get('our_fouls', 'M')} frees we conceded'"})
+        if re.search(r"(finished|ended|stayed) (?:the (?:game|match) )?in the sin bin", low):
+            issues.append({"quote": s, "problem": "a black card is 10 minutes; they came back on", "truth": "say 'were sin-binned at <time>'"})
+
+        # 12l. an outside benchmark (other teams' typical figures): the report compares the team only with itself
+        if re.search(r"\b(the usual|typical(?:ly)?|the norm|benchmark|elite (?:teams|level)|average (?:for|at) (?:county|inter-county|club))\b[^.]{0,40}\b\d", low):
+            issues.append({"quote": s, "problem": "compares with an outside benchmark (other teams' figures)",
+                           "truth": "compare only with this team's own figures, or drop the comparison"})
+
         # 13. our overall return: "N points from M shots" must be the match totals when it claims to be overall
         for m in re.finditer(r"(\d+) points from (\d+) shots", low):
             p_, s_ = int(m.group(1)), int(m.group(2))
@@ -387,6 +422,28 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         ga = json.loads(await execute_tool("get_match_gps_positional_analysis", {"match_id": match_id}, db, club_id=club_id))
         sup = ((ga.get("summary") or {}).get("support") or {})
         facts["means"] = [v for v in (sup.get("mean_within_15m"),) if v is not None]
+    except Exception:
+        pass
+    try:
+        bc2 = json.loads(await execute_tool("get_match_ball_carrying_and_passing", {"match_id": match_id}, db, club_id=club_id))
+        rows = [(r["name"], r.get("carries") or 0, "own") for r in bc2.get("carrier_stats") or []]
+        rows += [(r["name"], r.get("carries") or 0, "Dublin" if False else (facts.get("opponent") or "opposition")) for r in ((bc2.get("opposition") or {}).get("carrier_stats") or [])]
+        if rows:
+            facts["top_carries_both"] = max(rows, key=lambda r: r[1])
+        pl = [(r.get("name"), r.get("passes_made") or r.get("passes") or 0, "own") for r in bc2.get("pass_leaders") or []]
+        pl += [(r.get("name"), r.get("passes_made") or r.get("passes") or 0, facts.get("opponent") or "opposition") for r in ((bc2.get("opposition") or {}).get("pass_leaders") or [])]
+        if pl and any(x[1] for x in pl):
+            facts["top_passes_both"] = max(pl, key=lambda r: r[1])
+    except Exception:
+        pass
+    try:
+        from sqlalchemy import text as _t3
+        rows = (await db.execute(_t3(
+            "select po.name, pi.name from match_events me join players po on po.id = me.player_id join players pi on pi.id = me.sub_in_player_id "
+            "where me.match_id = :m and me.event_type::text = 'substitution'"), {"m": str(match_id)})).all()
+        facts["subs"] = {(_surname(on), _surname(off)) for off, on in rows}      # (came on, went off)
+        facts["our_fouls"] = (await db.execute(_t3("select count(*) from match_events where match_id = :m and team = 'own' and event_type::text = 'foul_committed'"), {"m": str(match_id)})).scalar()
+        facts["opp_free_scores"] = (await db.execute(_t3("select count(*) from match_events where match_id = :m and team = 'opponent' and event_type::text in ('point_free','two_point_free')"), {"m": str(match_id)})).scalar()
     except Exception:
         pass
     try:

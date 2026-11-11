@@ -747,6 +747,9 @@ INSTRUCTIONS:
    - THEIR GOAL: for a Dublin player's distances write "from the goal they were attacking".
    - RATINGS on one scale: more scoring involvement (scores, two-pointers, assists) is rated at least as high as less, unless a sentence says why (cards, errors). Never write an instruction to yourself into the report ("no criticism applies").
    - Every one of our scorers is named with his score at least once.
+   - Top Performers: every player gets a rating out of 10 on his heading line ("**Peadar Mogan (left corner back) – 8/10.**"). Never drop the ratings.
+   - Never compare with other teams' typical figures ("the usual 7-10 km", "elite teams"): compare only with this team's own figures.
+   - "X for Y" means X came on and Y went off; copy the direction from the substitution log.
 
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
