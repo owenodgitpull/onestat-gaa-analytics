@@ -756,6 +756,15 @@ export default function AnalyticsDashboard() {
                                   <div className="text-sm text-white/60 leading-relaxed">{KPI_EXPLANATIONS[card.key]?.formula}</div>
                                 </div>
                               )}
+                              {/* what the colour means: the team against itself, never anyone else */}
+                              <div>
+                                <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">The colour</div>
+                                <div className="text-sm text-white/60 leading-relaxed">
+                                  Compared only with your own team: your last {card.trend?.window ?? 3} matches against your season so far.
+                                  {' '}<span className="text-emerald-300">Green</span> = better, <span className="text-amber-300">amber</span> = about the same, <span className="text-red-300">red</span> = worse.
+                                  {card.trend ? ` Here: ${card.trend.recent} recently vs ${card.trend.season} over the season.` : ''}
+                                </div>
+                              </div>
                               {/* AI team insight */}
                               <div className="pt-3 border-t border-white/10">
                                 <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400/60 mb-1.5">AI Insight</div>

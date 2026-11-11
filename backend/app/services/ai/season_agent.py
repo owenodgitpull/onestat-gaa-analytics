@@ -1131,7 +1131,7 @@ Use the tools to gather data before providing your analysis.
             trend = card.get("trend", {})
             entry = (
                 f"- {card['label']} ({card['key']}): {card['value']} "
-                f"(format: {card['format']}, status: {card['color']})"
+                f"(format: {card['format']}, status vs this team's own season: {dict(green='better', red='worse', amber='about the same').get(card['color'], card['color'])})"
             )
             if trend:
                 entry += (

@@ -189,7 +189,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v6"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v7"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
@@ -3049,6 +3049,15 @@ class SeasonDashboardService:
             t = c.get("trend")
             if t and t.get("direction") in ("up", "down"):
                 t["good"] = (t["direction"] == "up") != (c["key"] in LOWER_IS_BETTER)
+
+        # The card colour is the team against ITSELF, never a fixed cut-off or anyone else's average (Owen 2026-11-11):
+        # green = the last 3 matches are better than this team's own season, red = worse, amber = about the same.
+        # (The old fixed bands - e.g. "green under 5 points conceded from play" - were invented and were red for every
+        # real team: club and county both concede ~19 from play.)
+        for c in cards:
+            t = c.get("trend") or {}
+            c["color"] = "green" if t.get("good") is True else "red" if t.get("good") is False else "amber"
+            c["color_basis"] = "own_season"
 
         return {
             "metadata": {

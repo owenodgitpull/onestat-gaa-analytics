@@ -35,7 +35,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       productivity: {
         what: 'How efficiently we turn possessions into scores — higher means we make the most of every attack',
-        formula: '(Total points scored ÷ Total possessions) × 10. Above 3.0 is strong, below 2.0 needs work.',
+        formula: '(Total points scored ÷ Total possessions) × 10.',
       },
       shot_efficiency: {
         what: 'Percentage of shots that result in scores — shows how clinical we are in front of the posts',
@@ -57,7 +57,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
       },
       fouls_per_game: {
         what: 'Average fouls committed per match — fewer means less frees conceded to opposition',
-        formula: 'Total fouls ÷ Matches played. Below 12 is disciplined, above 15 is a concern.',
+        formula: 'Total fouls ÷ Matches played.',
       },
     },
   },
@@ -71,11 +71,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       kickout_retention: {
         what: 'How often we retain our own goalkeeper\'s kickouts — crucial for building attacks from restarts',
-        formula: '(Own kickouts retained ÷ Total own kickouts) × 100. Target: above 60%.',
+        formula: '(Own kickouts retained ÷ Total own kickouts) × 100.',
       },
       opp_kickout_win: {
         what: 'Percentage of opposition kickouts your team wins. Winning opp kickouts is high-value — you\'re taking the ball in an advanced position with their defence disorganised.',
-        formula: '(Opposition kickouts won by your team ÷ Total opp kickouts) × 100. Above 40% is dominant, 30–40% is competitive, below 30% lets them restart easily.',
+        formula: '(Opposition kickouts won by your team ÷ Total opp kickouts) × 100.',
       },
     },
   },
@@ -119,11 +119,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       score_per_possession: {
         what: 'The percentage of your total possessions that end in a score. The north-star efficiency metric — it strips away possession volume and asks how often you actually hurt the opposition when you have the ball.',
-        formula: '(Total scoring possessions ÷ Total possessions) × 100. Above 30% is elite, 22–30% is solid, below 22% needs attention.',
+        formula: '(Total scoring possessions ÷ Total possessions) × 100.',
       },
       opp_score_per_possession: {
         what: 'How efficiently opponents convert their possessions into scores against you. A low number means your defensive system is forcing opponents into unproductive possessions.',
-        formula: '(Opponent scores ÷ Opponent possessions) × 100, from the tagged possessions. Below 20% is excellent, 20–27% is solid, above 27% means opponents are finding it too easy.',
+        formula: '(Opponent scores ÷ Opponent possessions) × 100, from the tagged possessions.',
       },
     },
   },
@@ -137,11 +137,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       turnover_to_score: {
         what: 'Of all turnovers your team wins, what percentage result in a score. Winning the ball back means nothing if you don\'t capitalise.',
-        formula: '(Turnovers won whose possession ended in our score ÷ Turnovers won) × 100. Turnovers won = turnovers, interceptions and tackles won; the possession ends at our next shot (a score counts), a ball we lose, their shot or turnover, a kickout or the end of the half. Above 35% is excellent, 25–35% is good, below 25% needs work.',
+        formula: '(Turnovers won whose possession ended in our score ÷ Turnovers won) × 100. Turnovers won = turnovers, interceptions and tackles won; the possession ends at our next shot (a score counts), a ball we lose, their shot or turnover, a kickout or the end of the half.',
       },
       turnovers_conceded: {
         what: 'Average times per game your team loses possession through errors — misplaced passes, overcarrying, fumbles.',
-        formula: 'Total turnovers conceded ÷ Matches played. Below 10 is disciplined, 10–16 is average, above 16 is careless.',
+        formula: 'Total turnovers conceded ÷ Matches played.',
       },
     },
   },
@@ -155,11 +155,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       pts_conceded_from_play: {
         what: 'Average points conceded per game specifically from open play — excluding frees, 45s, penalties. Isolates your defensive structure from your discipline.',
-        formula: 'Total opponent scores from play ÷ Matches played. Below 5 is excellent, 5–8 is solid, above 8 means the shape is being breached.',
+        formula: 'Total opponent scores from play ÷ Matches played.',
       },
       frees_in_scoring_range: {
         what: 'Average frees given away per game within realistic scoring range (inside 45m line). These fouls hand the opposition easy scores.',
-        formula: 'Fouls we gave away inside our own 45 m line ÷ Matches played. Below 5 is disciplined, 5–8 is average, above 8 is a problem.',
+        formula: 'Fouls we gave away inside our own 45 m line ÷ Matches played.',
       },
     },
   },
@@ -173,11 +173,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       clean_sheet_rate: {
         what: 'Percentage of matches where your team conceded zero goals. Goals are game-changers in GAA — keeping them out is a massive competitive advantage.',
-        formula: '(Matches with zero goals conceded ÷ Total matches) × 100. Above 50% is exceptional, 30–50% is strong, below 30% is a concern.',
+        formula: '(Matches with zero goals conceded ÷ Total matches) × 100.',
       },
       goals_conceded_pg: {
         what: 'Average goals conceded per match. Even when goals are conceded, is it 1 or 3? A critical defensive metric.',
-        formula: 'Total goals conceded ÷ Matches played. Below 0.7 is excellent, 0.7–1.2 is manageable, above 1.2 needs attention.',
+        formula: 'Total goals conceded ÷ Matches played.',
       },
     },
   },
@@ -191,11 +191,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       opp_inside_45: {
         what: 'Average times per game the opposition gets the ball into your defensive 45. A leading indicator of defensive pressure — measures threat before it becomes a score.',
-        formula: 'Opponent possessions that got inside your 45 m line ÷ Matches played (one per possession, however many shots). Below 16 is excellent pressing, 16–22 is average, above 22 means the press is bypassed regularly.',
+        formula: 'Opponent possessions that got inside your 45 m line ÷ Matches played (one per possession, however many shots).',
       },
       own_inside_45: {
         what: 'How often your team gets the ball into the opposition\'s 45 per game. Measures attacking penetration — are you getting into scoring range?',
-        formula: 'Our possessions that got inside their 45 m line ÷ Matches played (one per possession, however many shots). Above 24 is strong, 18–24 is average, below 18 means struggling to penetrate.',
+        formula: 'Our possessions that got inside their 45 m line ÷ Matches played (one per possession, however many shots).',
       },
     },
   },
@@ -209,11 +209,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       from_play_score_pct: {
         what: 'Percentage of your total score from open play. Elite teams generate the majority from play — over-reliance on dead balls suggests the attack isn\'t functioning.',
-        formula: '(Score value from play ÷ Total score value) × 100. Above 60% is strong, 45–60% is balanced, below 45% is dead-ball dependent.',
+        formula: '(Score value from play ÷ Total score value) × 100.',
       },
       free_conversion: {
-        what: 'Accuracy of your free-taker(s) across the season. Frees are expected scores — converting below 70% is leaving points on the table.',
-        formula: '(Frees scored ÷ Frees attempted) × 100. Above 80% is elite, 70–80% is solid, below 70% is a concern.',
+        what: 'Accuracy of your free-taker(s) across the season. Frees are expected scores, so every missed one is points left on the table.',
+        formula: '(Frees scored ÷ Frees attempted) × 100.',
       },
     },
   },
@@ -227,11 +227,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       goal_scoring_rate: {
         what: 'Average goals scored per match. A team that consistently scores goals puts opponents under psychological pressure.',
-        formula: 'Total goals scored ÷ Matches played. Above 1.5 is a strong goal threat, 1.0–1.5 is average, below 1.0 is struggling.',
+        formula: 'Total goals scored ÷ Matches played.',
       },
       goal_chances_created: {
         what: 'Total goal-scoring opportunities per game — including goals, saves, and misses. Measures goal threat even when finishing isn\'t clinical.',
-        formula: '(Goals + saves + goal misses) ÷ Matches played. Above 3.0 is strong, 2.0–3.0 is average, below 2.0 needs work.',
+        formula: '(Goals + saves + goal misses) ÷ Matches played.',
       },
     },
   },
@@ -245,11 +245,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       card_rate: {
         what: 'Average yellow, black, and red cards per match. Measures severity of indiscipline — black cards are devastating (10 minutes with 14 men).',
-        formula: 'Total cards ÷ Matches played. Below 1.0 is disciplined, 1.0–2.0 is average, above 2.0 is a systemic problem.',
+        formula: 'Total cards ÷ Matches played.',
       },
       mins_14_men: {
         what: 'Average minutes per game played with a numerical disadvantage due to cards. Quantifies the actual cost of indiscipline in game time.',
-        formula: 'Minutes a player was off: 10 per black card, the rest of the match for a red card. Total ÷ Matches played. Under 5 is disciplined, 5–15 is manageable, above 15 is critical.',
+        formula: 'Minutes a player was off: 10 per black card, the rest of the match for a red card. Total ÷ Matches played.',
       },
     },
   },
@@ -263,7 +263,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       unforced_errors_pg: {
         what: 'Average unforced errors per match — possession lost through avoidable mistakes such as misplaced passes, over-carrying, or fumbles under no real pressure.',
-        formula: 'Total unforced errors (own team) ÷ Matches played. These are a subcategory of turnovers lost. Below 3 is disciplined, 4–6 is average, above 6 needs attention.',
+        formula: 'Total unforced errors (own team) ÷ Matches played. These are a subcategory of turnovers lost.',
       },
     },
   },
@@ -277,7 +277,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       ball_recovery_avg_min: {
         what: 'Average minutes to win back possession after a turnover or unforced error. Measures pressing intensity and transition speed — lower is better.',
-        formula: 'For each possession loss event (turnover / unforced error), find the next own-team recovery event and measure the gap, to the second where the match clock is recorded (capped at 10 min to exclude half-time gaps). Average across all losses in the season. Under 2 min = strong press, over 3 min = slow transition.',
+        formula: 'For each possession loss event (turnover / unforced error), find the next own-team recovery event and measure the gap, to the second where the match clock is recorded (capped at 10 min to exclude half-time gaps). Average across all losses in the season.',
       },
     },
   },
