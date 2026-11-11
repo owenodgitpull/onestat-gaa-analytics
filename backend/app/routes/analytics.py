@@ -284,6 +284,7 @@ class KPICardItem(BaseModel):
     color: str
     insight: Optional[str] = None
     trend: Optional[KPICardTrend] = None
+    detail: Optional[str] = None   # a short line under the value, e.g. "when caught short · 2 of 10 already back"
 
 class KPIMetadata(BaseModel):
     matches_played: int

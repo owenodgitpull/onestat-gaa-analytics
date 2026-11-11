@@ -960,6 +960,8 @@ export interface KPICardItem {
   format: string;
   color: string;
   insight?: string;
+  /** a short line under the value */
+  detail?: string | null;
   trend?: {
     direction: 'up' | 'down' | 'stable';
     window: number;

@@ -33,7 +33,7 @@ import {
 } from 'lucide-react'
 import WeeklyBriefCard from '@/components/dashboard/WeeklyBriefCard'
 import KPILibraryModal from '@/components/dashboard/KPILibraryModal'
-import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS } from '@/config/kpiRegistry'
+import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS, NEW_KPIS } from '@/config/kpiRegistry'
 import SquadHealthView from '@/components/SquadHealthView'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import InsightAlertsPanel from '@/components/InsightAlertsPanel'
@@ -67,7 +67,16 @@ const KPI_STORAGE_KEY_BASE = 'gaa-visible-kpis'
 function loadVisibleKpis(clubId: string): string[] {
   try {
     const stored = localStorage.getItem(`${KPI_STORAGE_KEY_BASE}:${clubId}`)
-    if (stored) return JSON.parse(stored)
+    if (stored) {
+      // a card added since this selection was saved is shown once; after that the user's choice stands
+      let ids: string[] = JSON.parse(stored)
+      const seenKey = `${KPI_STORAGE_KEY_BASE}:seen:${clubId}`
+      const seen: string[] = JSON.parse(localStorage.getItem(seenKey) || '[]')
+      const add = NEW_KPIS.filter(id => !seen.includes(id) && !ids.includes(id))
+      if (add.length) { ids = [...ids, ...add]; localStorage.setItem(`${KPI_STORAGE_KEY_BASE}:${clubId}`, JSON.stringify(ids)) }
+      localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...NEW_KPIS])]))
+      return ids
+    }
   } catch { /* ignore */ }
   return DEFAULT_VISIBLE_KPIS
 }
@@ -712,6 +721,8 @@ export default function AnalyticsDashboard() {
                   let displayValue: string
                   if (card.format === 'percent') {
                     displayValue = `${card.value}%`
+                  } else if (card.format === 'seconds') {
+                    displayValue = `${card.value} s`
                   } else if (card.format === 'signed_int') {
                     displayValue = card.value > 0 ? `+${card.value}` : `${card.value}`
                   } else {
@@ -781,6 +792,7 @@ export default function AnalyticsDashboard() {
 
                       <div className="text-white/75 text-xs font-semibold uppercase tracking-wide mb-2 pr-8">{card.label}</div>
                       <div className={`text-4xl font-bold leading-none tabular-nums ${valueColor}`}>{displayValue}</div>
+                      {card.detail && <div className="text-[11px] text-white/55 mt-1.5 leading-snug">{card.detail}</div>}
                       {card.trend && card.trend.direction !== 'stable' && (
                         <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${(card.trend.good ?? card.trend.direction === 'up') ? 'text-emerald-400' : 'text-red-400'}`}
                           title={`Last ${card.trend.window} matches ${card.trend.recent} vs season ${card.trend.season} — ${(card.trend.good ?? card.trend.direction === 'up') ? 'better' : 'worse'}`}>

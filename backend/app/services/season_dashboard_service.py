@@ -6,6 +6,7 @@ No AI calls — just deterministic queries for canonical charts.
 """
 
 import asyncio
+import statistics
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -189,7 +190,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v7"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v8"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
@@ -2221,6 +2222,43 @@ class SeasonDashboardService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    async def _back_behind_ball(db: AsyncSession, matches: list, recent_ids: list):
+        """Season figures for 'back behind ball' from the GPS analysis of every match with a synced GPS time series."""
+        from app.services.gps_analysis import service as gps_service
+        from app.services.gps_analysis.loader import NotReady
+        from app.models.match_gps_track import MatchGPSSync
+        ids = [m.id for m in matches]
+        synced = set((await db.execute(select(MatchGPSSync.match_id).where(
+            MatchGPSSync.match_id.in_(ids), MatchGPSSync.status.in_(("auto", "confirmed"))))).scalars().all())
+        if not synced:
+            return None
+        per = {}
+        for m in matches:
+            if m.id not in synced:
+                continue
+            try:
+                res, _, _ = await gps_service.analyse(db, m)
+            except NotReady:
+                continue
+            per[m.id] = res["transitions"]["lost"]
+
+        def pool(match_ids):
+            lost = [t for mid in match_ids if mid in per for t in per[mid]]
+            times = [t["recovery_s"] for t in lost if not t.get("already_back") and t.get("recovery_s") is not None]
+            back = sum(1 for t in lost if t.get("already_back"))
+            med = float(statistics.median(times)) if times else None
+            return med, back, len(lost)
+
+        s_med, s_back, s_lost = pool(list(per))
+        if s_med is None or not s_lost:
+            return None
+        recent_gps = [mid for mid in recent_ids if mid in per] or list(per)
+        r_med, r_back, r_lost = pool(recent_gps)
+        return {"season_s": round(s_med, 1), "recent_s": round(r_med if r_med is not None else s_med, 1),
+                "season_back_pct": round(100 * s_back / s_lost), "recent_back_pct": round(100 * r_back / r_lost) if r_lost else round(100 * s_back / s_lost),
+                "back": s_back, "lost": s_lost, "matches": len(per)}
+
+    @staticmethod
     async def _kpi_cards(db: AsyncSession, matches: list, funnel: dict) -> dict:
         """
         Compute 17 advanced KPI cards + metadata (matches played, win rate, W-L-D).
@@ -3040,11 +3078,27 @@ class SeasonDashboardService:
             },
         ])
 
+        # --- Back behind ball (GPS matches only): after we lose the ball in open play, seconds until all but 3 of our
+        # players are between the ball and our goal. Every caught-short turnover of the season pooled into one median
+        # (not an average of match medians), plus the share where enough were already back. Same rule as the match card.
+        try:
+            bbb = await asyncio.wait_for(SeasonDashboardService._back_behind_ball(db, matches, recent_ids), timeout=90)
+        except Exception as e:
+            logger.warning(f"Back-behind-ball KPI skipped: {e}")
+            bbb = None
+        if bbb:
+            cards.append({"key": "back_behind_ball_s", "label": "Back Behind Ball", "value": bbb["season_s"], "format": "seconds",
+                          "color": "amber", "trend": make_trend(bbb["season_s"], bbb["recent_s"]),
+                          "detail": f"when caught short · {bbb['back']} of {bbb['lost']} already back · {bbb['matches']} GPS matches"})
+            cards.append({"key": "already_back_pct", "label": "Already Back %", "value": bbb["season_back_pct"], "format": "percent",
+                          "color": "amber", "trend": make_trend(bbb["season_back_pct"], bbb["recent_back_pct"]),
+                          "detail": f"{bbb['back']} of {bbb['lost']} turnovers lost"})
+
         # Is the movement good? "up" was always drawn green, so more unforced errors, fouls or goals conceded over the
         # last 3 showed as a green arrow. direction stays the real movement; good says whether it helps us.
         LOWER_IS_BETTER = {"fouls_per_game", "avg_conceded", "opp_score_per_possession", "turnovers_conceded",
                            "pts_conceded_from_play", "frees_in_scoring_range", "goals_conceded_pg", "opp_inside_45",
-                           "card_rate", "mins_14_men", "unforced_errors_pg", "ball_recovery_avg_min"}
+                           "card_rate", "mins_14_men", "unforced_errors_pg", "ball_recovery_avg_min", "back_behind_ball_s"}
         for c in cards:
             t = c.get("trend")
             if t and t.get("direction") in ("up", "down"):

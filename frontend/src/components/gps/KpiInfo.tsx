@@ -48,14 +48,14 @@ export const GPS_KPI_INFO: Record<string, KpiExplanation> = {
     how: 'Every second, the average distance from our own goal line of our six deepest outfielders, averaged over the seconds the opposition had the ball. Higher = a higher line.',
   },
   'Back behind ball': {
-    what: 'How quickly we get bodies between the ball and our goal after losing it.',
-    how: 'After each turnover we lose in open play: the seconds until enough of our players are nearer our goal than the ball. "Enough" = players on the pitch minus 3, at most 11 (so 9 of 12, 10 of 13). "Already back" = enough were behind the ball the moment we lost it; the figure is the median for the rest (caught short). Restarts (fouls, sidelines, 45s, kickouts) are not counted.',
-    accuracy: 'Timed from the tagged moment of the loss, less the measured tagging delay. The ball\'s position is estimated from the tags (we have no ball or opposition GPS), so read a single turnover with care; the median over many is more reliable.',
+    what: 'When we lose the ball, how quickly we get all but 3 of our players back behind it.',
+    how: 'We lose the ball in open play (not frees, sidelines or kickouts). Draw a line across the pitch at the ball, and count our players on our goal side of it. The clock stops when all but 3 are back. "Already back" = enough were there the moment we lost it. The time shown is the middle one of the rest: half quicker, half slower.',
+    accuracy: 'Our players: GPS, to a couple of metres. The ball: from your tags, a few metres. Read one turnover with care; the middle time over many is the one to trust.',
   },
   'Back behind the ball': {
-    what: 'How quickly we get bodies between the ball and our goal after losing it.',
-    how: 'After each turnover we lose in open play: the seconds until enough of our players (on the pitch minus 3, at most 11) are nearer our goal than the ball. Median over the turnovers where we were caught short. Restarts (fouls, sidelines, 45s, kickouts) are not counted.',
-    accuracy: 'Timed from the tagged moment of the loss, less the measured tagging delay; the ball position is estimated from the tags.',
+    what: 'When we lose the ball, how quickly we get all but 3 of our players back behind it.',
+    how: 'We lose the ball in open play. The clock stops when all but 3 of our players are between the ball and our goal. The time shown is the middle one: half quicker, half slower.',
+    accuracy: 'Our players: GPS, to a couple of metres. The ball: from your tags, a few metres.',
   },
   'Turnovers lost': {
     what: 'Open-play turnovers we lost that the GPS could measure.',

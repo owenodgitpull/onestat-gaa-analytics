@@ -24,6 +24,25 @@ export interface KPIRegistryEntry {
 }
 
 export const KPI_REGISTRY: KPIRegistryEntry[] = [
+  // --- GPS: getting back after losing the ball (matches with synced GPS only) ---
+  {
+    id: 'back-behind-ball',
+    frontKey: 'back_behind_ball_s',
+    frontLabel: 'Back Behind Ball',
+    flipKey: 'already_back_pct',
+    flipLabel: 'Already Back %',
+    theme: 'Transition & Efficiency',
+    explanations: {
+      back_behind_ball_s: {
+        what: 'When we lose the ball, how quickly we get all but 3 of our players back between the ball and our own goal.',
+        formula: 'We lose the ball in open play (not frees, sidelines or kickouts). Draw a line across the pitch at the ball. Count our players on our goal side of it. The clock stops when all but 3 are there. Half our caught-short turnovers this season took less than this, half took longer. GPS knows where our players are; the ball spot comes from your tags.',
+      },
+      already_back_pct: {
+        what: 'How often enough of our players were already behind the ball the moment we lost it, so there was nothing to chase.',
+        formula: 'Turnovers lost in open play where all but 3 of our players were already goal-side of the ball ÷ all turnovers lost in open play (GPS matches only).',
+      },
+    },
+  },
   // --- Existing cards ---
   {
     id: 'productivity-shot',
@@ -289,4 +308,8 @@ export const DEFAULT_VISIBLE_KPIS = [
   'turnover-fouls',
   'kickout-retention',
   'avg-scored',
+  'back-behind-ball',
 ]
+
+/** Cards added after people had already saved their own selection: shown once to everyone (they can hide them again). */
+export const NEW_KPIS = ['back-behind-ball']
