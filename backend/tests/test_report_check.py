@@ -94,3 +94,43 @@ def test_side_and_sprint_superlative_false_alarms():
     assert _problems("Of 17 missed shots, nobody of ours was within 5 m on 7.") == []
     assert [i for i in check_report("Roarty: 10.9 km over 84 minutes, 15 sprints (the most on the team).", f)[2]] == []
     assert any("14 missed shots" in x or "13" in x for x in _problems("We had 13 missed shots in all."))
+
+
+# ---- review round 3 (Dublin v4/v5) ----
+from app.services.ai.report_check import fix_added_time, add_missing_scorers, find_issues
+
+
+def test_late_minute_goes_to_the_next_period_when_the_score_was_there():
+    # McHugh's points were at extra time 2 81' and 82' (written as extra time 1); other events were logged at 81' in both
+    ev = {(3, 81), (4, 81), (4, 82)}
+    sc = {(4, 81), (4, 82)}
+    out, fixed = fix_added_time("He scored 0-3 including points in extra time 1 at 81' and 82'.", 35, ev, sc)
+    assert "extra time 2 at 81'" in out and fixed
+    # a stray pass in extra time 1 added time stays added time
+    out2, _ = fix_added_time("A stray pass at extra time 1 81'.", 35, {(3, 81)}, sc)
+    assert "extra time 1 80+1'" in out2
+
+
+def test_half_level_by_points_to_and_empty_target():
+    f = {"half_duration_mins": 35, "half_scores": {2: (11, 13)}}
+    probs = [i["problem"] for i in find_issues(
+        "The second half was level. Dublin won extra time by 4 points to 1. A target to aim for is better than this match's median.", f)]
+    assert any("not level" in p for p in probs)
+    assert any("mixes a margin" in p for p in probs)
+    assert any("no target figure" in p for p in probs)
+
+
+def test_missing_scorers_named_as_scorers_not_just_mentioned():
+    text = ("## 2. Top Performers\n\n**Gavin Mulreany (goalkeeper), 6/10.** He scored the two-point free in extra time 1 80'.\n\n"
+            "Roarty 1 stray pass (extra time 2 85'). Max Campbell came on for Finnbarr Roarty: in the next ten minutes we scored 2 points.\n\n"
+            "**Dublin's standouts:**\n- C. Basquel 0-7\n")
+    f = {"opponent": "Dublin", "own_scorers": [("Gavin Mulreany", "0-2"), ("Finnbarr Roarty", "0-1")]}
+    out, fixed = add_missing_scorers(text, f)
+    assert "Finnbarr Roarty 0-1" in out and "Mulreany 0-2" not in out.split("Also on the scoresheet")[1]
+    assert out.index("Also on the scoresheet") < out.index("Dublin's standouts")
+
+
+def test_returned_player_described_only_as_replaced():
+    f = {"returned": {"campbell": ["1st half 0' - 1st half 35'", "extra time 1 72' - extra time 2 90+1' (full time)"]}}
+    probs = [i["problem"] for i in find_issues("Ryan McHugh replaced Max Campbell at half-time.", f)]
+    assert any("went back on" in p for p in probs)

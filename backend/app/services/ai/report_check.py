@@ -44,21 +44,32 @@ def _surname(name: str) -> str:
     return name.split(" ")[-1].lower() if name else ""
 
 
-def fix_added_time(text: str, hdm: int) -> Tuple[str, List[str]]:
-    """'extra time 1 81'' -> 'extra time 1 80+1''; the tools now write it this way, this catches a model that did not."""
+NEXT_PERIOD = {1: "2nd half", 2: "extra time 1", 3: "extra time 2"}
+
+
+def fix_added_time(text: str, hdm: int, event_minutes=None, score_minutes=None) -> Tuple[str, List[str]]:
+    """A minute past a period's end: "extra time 1 81'" is either that period's added time ("extra time 1 80+1'") or the
+    NEXT period ("extra time 2 81'" - McHugh's points in Dublin, written as extra time 1). The logged events decide: when
+    nothing was logged at that minute in the named period but something was in the next one, it is the next period."""
     fixed = []
 
     def sub(m):
-        word, minute = m.group(1), int(m.group(2))
+        word, at, minute = m.group(1), m.group(2) or "", int(m.group(3))
         half = {"1st half": 1, "2nd half": 2, "extra time 1": 3, "extra time 2": 4}[word.lower()]
         end = period_bounds(half, hdm)[1]
-        if minute > end:
-            new = f"{word} {end}+{minute - end}'"
-            fixed.append(f"{m.group(0)} -> {new}")
-            return new
-        return m.group(0)
+        if minute <= end:
+            return m.group(0)
+        # a sentence about a score is judged by the scores (both periods had other events at 81' in Dublin)
+        around = m.string[max(0, m.start() - 120): m.end() + 40].lower()
+        ev = (score_minutes if score_minutes and re.search(r"scor|point|goal|two-pointer|free", around) else event_minutes) or set()
+        if ev and (half, minute) not in ev and (half + 1, minute) in ev and half in NEXT_PERIOD:
+            new = f"{NEXT_PERIOD[half]} {at}{minute}'"
+        else:
+            new = f"{word} {at}{end}+{minute - end}'"
+        fixed.append(f"{m.group(0)} -> {new}")
+        return new
 
-    return re.sub(PERIOD_RE + r" (\d{1,3})'", sub, text, flags=re.IGNORECASE), fixed
+    return re.sub(PERIOD_RE + r" (at )?(\d{1,3})'", sub, text, flags=re.IGNORECASE), fixed
 
 
 def fix_field_names(text: str) -> Tuple[str, List[str]]:
@@ -125,7 +136,7 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if minute < 2 * hdm:
                 continue
             before = s[max(0, m.start() - 28):m.start()].lower()
-            if re.search(r"(extra time [12]|half) \d{1,3}(?:\+\d+)?'(?:[^.;]{0,30}?, \d{1,3}(?:\+\d+)?')*[^.;]{0,30}?(?:,| and| or)\s*$", s[:m.start()].lower()):
+            if re.search(r"(extra time [12]|half) (?:at )?\d{1,3}(?:\+\d+)?'(?:[^.;]{0,30}?, \d{1,3}(?:\+\d+)?')*[^.;]{0,30}?(?:,| and| or)\s*$", s[:m.start()].lower()):
                 continue                   # a list after one period label: "extra time 1 71', 75' (a two-pointer) and 77'"
             if re.search(r"(1st half|2nd half|extra time [12])\b[^.;']{0,25}$", s[max(0, m.start() - 45):m.start()].lower()):
                 continue                   # the period a few words before: "extra time 1 at 71'", "the extra time 1 changes at 71'"
@@ -238,6 +249,24 @@ def find_issues(text: str, facts: dict) -> List[dict]:
         if re.search(r"\b(?:did not|didn't|never|could not|couldn't) (?:get|got|come|came) (?:back )?(?:within|closer)", low) and facts.get("late_timeline"):
             issues.append({"quote": s, "problem": "claims we never got within a score again; check it against the score timeline",
                            "truth": "score timeline (us-them after each score): " + facts["late_timeline"]})
+
+        # 12f. "the second half was level / drawn" against the half's real score
+        for m in re.finditer(r"\b(first|second|1st|2nd) half (?:was|ended|finished) (?:level|drawn|even)", low):
+            h = 1 if m.group(1) in ("first", "1st") else 2
+            u, t = (facts.get("half_scores") or {}).get(h, (None, None))
+            if u is not None and u != t:
+                issues.append({"quote": s, "problem": f"the {m.group(1)} half was not level",
+                               "truth": f"{m.group(1)} half: us {u} points, them {t} points ({'we' if u > t else 'they'} won it by {abs(u - t)})"})
+
+        # 12g. "won by 4 points to 1": a margin and a score jumbled together
+        if re.search(r"\bby \d+ points? to \d+\b", low):
+            issues.append({"quote": s, "problem": "'by N points to M' mixes a margin with a score",
+                           "truth": "write the margin and the score separately, e.g. 'by 4 points, 0-08 to 0-04'"})
+
+        # 12h. a target with no figure in it (or this match's own figure as the target)
+        if re.search(r"\btarget (?:to aim for|for next|is)\b", low) and not re.search(r"\d", s):
+            issues.append({"quote": s, "problem": "a target sentence with no target figure in it",
+                           "truth": "give a figure different from this match's, marked as a suggestion, or delete the sentence"})
 
         # 13. our overall return: "N points from M shots" must be the match totals when it claims to be overall
         for m in re.finditer(r"(\d+) points from (\d+) shots", low):
@@ -365,6 +394,20 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
     except Exception:
         pass
     try:
+        from sqlalchemy import text as _t2
+        rows = (await db.execute(_t2("select half, minute, team, event_type::text from match_events where match_id = :m and minute is not null"),
+                                 {"m": str(match_id)})).all()
+        facts["event_minutes"] = {(r[0] or 1, r[1]) for r in rows}
+        facts["score_minutes"] = {(r[0] or 1, r[1]) for r in rows if r[3] in _SCORE_VALUE}
+        hs = {}
+        for h, _mi, team, et in rows:
+            if et in _SCORE_VALUE:
+                u, t = hs.get(h or 1, (0, 0))
+                hs[h or 1] = (u + _SCORE_VALUE[et], t) if team == "own" else (u, t + _SCORE_VALUE[et])
+        facts["half_scores"] = hs
+    except Exception:
+        pass
+    try:
         from sqlalchemy import text as _t
         w = (await db.execute(_t("select pitch_width_m from matches where id = :m"), {"m": str(match_id)})).scalar_one_or_none()
         facts["pitch_width_m"] = float(w or 90.0)
@@ -416,13 +459,14 @@ def add_missing_scorers(text: str, facts: dict) -> Tuple[str, List[str]]:
         # his name, then (within the same stretch, before another bold name starts) his score figure, a two-pointer, or
         # "scored/kicked a point|goal" - not "we scored 2 points", which is the team
         near = (r"(?:" + who + r")(?:(?!\*\*[A-Z])[\s\S]){0,220}?(?:\b" + re.escape(score) + r"\b|\btwo-pointer\b|"
-                r"(?<!we )(?<!they )\b(?:scored|kicked|landed|added)\b(?: (?:a|the|his|one|\d))? (?:point|goal|free|two-pointer))")
+                r"(?<!we )(?<!they )\b(?:scored|kicked|landed|added)\b(?: (?:a|the|his|one|\d))? (?:point|goal|free|two-pointer|two-point free))")
         if not any(re.search(near, x, re.I) for x in sents):
             missing.append(f"{name} {score}")
     if not missing:
         return text, []
     line = "**Also on the scoresheet:** " + ", ".join(missing) + "."
-    m = re.search(r"\n#+ *Opposition standouts", text)
+    m = (re.search(r"\n(?:#+ *|\*\*)(?:Opposition|Their|" + re.escape(facts.get("opponent") or "Opposition") + r"(?:'s)?) standouts", text, re.I)
+         or re.search(r"\n#+ *3\b", text))
     text = (text[:m.start()] + "\n\n" + line + "\n" + text[m.start():]) if m else (text.rstrip() + "\n\n" + line + "\n")
     return text, [f"added missing scorers: {', '.join(missing)}"]
 
@@ -442,7 +486,7 @@ def drop_empty_headings(text: str) -> Tuple[str, List[str]]:
 
 def check_report(text: str, facts: dict) -> Tuple[str, List[str], List[dict]]:
     hdm = facts.get("half_duration_mins") or 30
-    text, f1 = fix_added_time(text, hdm)
+    text, f1 = fix_added_time(text, hdm, facts.get("event_minutes"), facts.get("score_minutes"))
     text, f2 = fix_field_names(text)
     text, f3 = drop_empty_headings(text)
     text, f4 = add_missing_scorers(text, facts)
