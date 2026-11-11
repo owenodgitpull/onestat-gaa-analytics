@@ -47,7 +47,7 @@ def _surname(name: str) -> str:
 NEXT_PERIOD = {1: "2nd half", 2: "extra time 1", 3: "extra time 2"}
 
 
-def fix_added_time(text: str, hdm: int, event_minutes=None, score_minutes=None) -> Tuple[str, List[str]]:
+def fix_added_time(text: str, hdm: int, event_minutes=None, score_minutes=None, score_events=None) -> Tuple[str, List[str]]:
     """A minute past a period's end: "extra time 1 81'" is either that period's added time ("extra time 1 80+1'") or the
     NEXT period ("extra time 2 81'" - McHugh's points in Dublin, written as extra time 1). The logged events decide: when
     nothing was logged at that minute in the named period but something was in the next one, it is the next period."""
@@ -61,6 +61,15 @@ def fix_added_time(text: str, hdm: int, event_minutes=None, score_minutes=None) 
             return m.group(0)
         # a sentence about a score is judged by the scores (both periods had other events at 81' in Dublin)
         around = m.string[max(0, m.start() - 120): m.end() + 40].lower()
+        # the scorer named nearby decides first (Murphy at 70+1' and Guiden at extra time 1 71' share minute 71)
+        for h, mi, sur in score_events or ():
+            if mi == minute and sur and re.search(r"\b" + re.escape(sur) + r"\b", around):
+                if h == half + 1 and half in NEXT_PERIOD:
+                    new = f"{NEXT_PERIOD[half]} {at}{minute}'"
+                    fixed.append(f"{m.group(0)} -> {new}")
+                    return new
+                if h == half:
+                    break
         ev = (score_minutes if score_minutes and re.search(r"scor|point|goal|two-pointer|free", around) else event_minutes) or set()
         if ev and (half, minute) not in ev and (half + 1, minute) in ev and half in NEXT_PERIOD:
             new = f"{NEXT_PERIOD[half]} {at}{minute}'"
@@ -456,6 +465,11 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
                                  {"m": str(match_id)})).all()
         facts["event_minutes"] = {(r[0] or 1, r[1]) for r in rows}
         facts["score_minutes"] = {(r[0] or 1, r[1]) for r in rows if r[3] in _SCORE_VALUE}
+        srows = (await db.execute(_t2(
+            "select me.half, me.minute, coalesce(p.name, op.surname, me.opponent_player_name) from match_events me "
+            "left join players p on p.id = me.player_id left join opposition_players op on op.id = me.opposition_player_id "
+            "where me.match_id = :m and me.minute is not null and me.event_type::text = any(:t)"), {"m": str(match_id), "t": list(_SCORE_VALUE)})).all()
+        facts["score_events"] = {(r[0] or 1, r[1], _surname(r[2] or "")) for r in srows}
         hs = {}
         for h, _mi, team, et in rows:
             if et in _SCORE_VALUE:
@@ -543,7 +557,7 @@ def drop_empty_headings(text: str) -> Tuple[str, List[str]]:
 
 def check_report(text: str, facts: dict) -> Tuple[str, List[str], List[dict]]:
     hdm = facts.get("half_duration_mins") or 30
-    text, f1 = fix_added_time(text, hdm, facts.get("event_minutes"), facts.get("score_minutes"))
+    text, f1 = fix_added_time(text, hdm, facts.get("event_minutes"), facts.get("score_minutes"), facts.get("score_events"))
     text, f2 = fix_field_names(text)
     text, f3 = drop_empty_headings(text)
     text, f4 = add_missing_scorers(text, facts)

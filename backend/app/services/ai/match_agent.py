@@ -1313,7 +1313,9 @@ INSTRUCTIONS:
             clean_analysis, _fixed, _issues = check_report(clean_analysis, _facts)
             if _issues:
                 clean_analysis, _n = await repair(client, "claude-sonnet-5-5", clean_analysis, _issues)
-                _, _, _left = check_report(clean_analysis, _facts)
+                # again after the rewrite: a rewritten sentence can bring back a period slip ("Guiden (2nd half 71', 75', 77')")
+                clean_analysis, _fixed2, _left = check_report(clean_analysis, _facts)
+                _fixed += _fixed2
                 logger.info(f"report check {match_id}: fixed {len(_fixed)} mechanically, {len(_issues)} flagged, "
                             f"{_n} rewritten, {len(_left)} still flagged: {[i['problem'] for i in _left][:10]}")
             elif _fixed:
