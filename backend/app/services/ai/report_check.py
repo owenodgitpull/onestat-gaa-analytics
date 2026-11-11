@@ -17,7 +17,7 @@ import json
 import re
 from typing import List, Optional, Tuple
 
-from app.services.ai.phase_facts import period_bounds
+from app.services.ai.phase_facts import period_bounds, when_label
 
 PERIOD_RE = r"(1st half|2nd half|extra time 1|extra time 2)"
 
@@ -45,6 +45,8 @@ def _surname(name: str) -> str:
 
 
 NEXT_PERIOD = {1: "2nd half", 2: "extra time 1", 3: "extra time 2"}
+PERIOD_NUM = {"1st half": 1, "2nd half": 2, "extra time 1": 3, "extra time 2": 4}
+
 
 
 def fix_added_time(text: str, hdm: int, event_minutes=None, score_minutes=None, score_events=None) -> Tuple[str, List[str]]:
@@ -116,7 +118,9 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             truth = facts.get("opp_missed_total" if theirs else "our_missed_total")
             if truth is not None and n != truth:
                 issues.append({"quote": s, "problem": f"says {n} missed shots", "truth": f"{truth} missed shots in all ({facts.get('opp_missed_parts' if theirs else 'our_missed_parts')})"})
-        parts = re.findall(r"(\d+) (wides?|shorts?|hit posts?|saves?|missed 45s?|missed penalt(?:y|ies))", low)
+        # "a missed 45" / "one save" count as 1 (8 wides, 3 shorts, 1 hit post, 1 save and a missed 45 = 14)
+        parts = [("1" if p[0] in ("a", "an", "one") else p[0], p[1]) for p in
+                 re.findall(r"\b(\d+|a|an|one) (wides?|shorts?|hit posts?|saves?|missed 45s?|missed penalt(?:y|ies))", low)]
         tot = re.search(r"(\d+) (?:missed shots|in all|in total)", low)
         if len(parts) >= 3 and tot and sum(int(p[0]) for p in parts) != int(tot.group(1)):
             issues.append({"quote": s, "problem": f"the parts add to {sum(int(p[0]) for p in parts)}, not {tot.group(1)}",
@@ -146,7 +150,7 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if minute < 2 * hdm:
                 continue
             before = s[max(0, m.start() - 28):m.start()].lower()
-            if re.search(r"^\s*\((?:also )?in (?:the )?(1st half|2nd half|extra time [12])", s[m.end():m.end() + 30].lower()):
+            if re.search(r"^\s*\((?:also )?(?:in )?(?:the )?(1st half|2nd half|extra time [12])", s[m.end():m.end() + 30].lower()):
                 continue                   # the period straight after: "82' (also in extra time 2, ...)"
             if re.search(r"(extra time [12]|half) (?:at )?\d{1,3}(?:\+\d+)?'(?:[^.;]{0,30}?, \d{1,3}(?:\+\d+)?')*[^.;]{0,30}?(?:,| and| or)\s*$", s[:m.start()].lower()):
                 continue                   # a list after one period label: "extra time 1 71', 75' (a two-pointer) and 77'"
@@ -312,6 +316,20 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             issues.append({"quote": s, "problem": "compares with an outside benchmark (other teams' figures)",
                            "truth": "compare only with this team's own figures, or drop the comparison"})
 
+        # 12m. "on at <time>" for a player who was already on the pitch before it (Malone scored at 20' but was "on at extra
+        # time 1 80+2'": his first exit was never logged, so he only appears to come on then)
+        for m in re.finditer(r"\b(?:on at|on from|came on at|came on in|brought on at)\b (?:the )?(1st half|2nd half|extra time [12]) (?:at )?(\d{1,3})", s, re.I):
+            # the player is the last of ours named in the 70 characters before it
+            before = s[max(0, m.start() - 70):m.start()]
+            named = [(k, v) for k, v in (facts.get("first_event") or {}).items() if re.search(r"\b" + re.escape(k) + r"\b", before, re.I)]
+            if not named:
+                continue
+            sur, first = max(named, key=lambda kv: before.lower().rfind(kv[0]))
+            claim = (PERIOD_NUM[m.group(1).lower()], int(m.group(2)))
+            if first[:2] < claim:
+                issues.append({"quote": s, "problem": f"{sur.title()} is said to come on at {m.group(1)} {m.group(2)}', but he was already playing ({first[2]})",
+                               "truth": f"{sur.title()} played from the start; his exit before that was not logged, so say his minutes before then are not known"})
+
         # 13. our overall return: "N points from M shots" must be the match totals when it claims to be overall
         for m in re.finditer(r"(\d+) points from (\d+) shots", low):
             p_, s_ = int(m.group(1)), int(m.group(2))
@@ -470,6 +488,16 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
             "left join players p on p.id = me.player_id left join opposition_players op on op.id = me.opposition_player_id "
             "where me.match_id = :m and me.minute is not null and me.event_type::text = any(:t)"), {"m": str(match_id), "t": list(_SCORE_VALUE)})).all()
         facts["score_events"] = {(r[0] or 1, r[1], _surname(r[2] or "")) for r in srows}
+        frows = (await db.execute(_t2(
+            "select p.name, me.half, me.minute, me.event_type::text from match_events me join players p on p.id = me.player_id "
+            "where me.match_id = :m and me.team = 'own' and me.minute is not null and me.event_type::text not in ('substitution', 'other')"),
+            {"m": str(match_id)})).all()
+        fe = {}
+        for name, h, mi, et in frows:
+            k, v = _surname(name), ((h or 1), mi, f"{et.replace('_', ' ')} at {when_label(h or 1, mi, facts.get('half_duration_mins') or 30)}")
+            if k not in fe or v[:2] < fe[k][:2]:
+                fe[k] = v
+        facts["first_event"] = fe
         hs = {}
         for h, _mi, team, et in rows:
             if et in _SCORE_VALUE:
