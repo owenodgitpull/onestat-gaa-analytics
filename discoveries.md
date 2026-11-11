@@ -100,3 +100,12 @@ Entry format:
 - **What:** Card colours use club-grade bands (e.g. points conceded from play: green under 5, red over 8; opponent inside-45 entries: red over 22). Inter-county figures (19 from play, 31 entries a game) are red on every card regardless of how good they are for that level.
 - **Suggested fix:** thresholds per level (club / inter-county) or relative to the team's own season. Owen to decide.
 - **Found while:** KPI audit (2026-11-10).
+
+## Dublin: McGee's GPS unit stops at half-time
+- **What:** J. McGee's track covers the whole first half and nothing after (37.9% of the match), while the tags show him playing the second half (scores at 61' and 63') and extra time. A track counts only above 50% coverage, so he shows as "no unit" on the replay and his first half is also dropped. No other unit picked up his second half.
+- **Suggested fix:** check whether a second-half file exists for his unit; and/or use partial tracks for the time they cover (show the dot, note "no GPS after half-time").
+- **Found while:** Owen's question on the replay (2026-11-11).
+
+## A backspace character in useVideoEvents.ts
+- **What:** `frontend/src/hooks/useVideoEvents.ts` contains a literal backspace (0x08) character - probably a regex `\b` written through a shell. Not from today's work; not checked whether it breaks anything.
+- **Found while:** scanning for the same slip in the report checker (2026-11-11).
