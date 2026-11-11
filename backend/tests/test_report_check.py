@@ -134,3 +134,21 @@ def test_returned_player_described_only_as_replaced():
     f = {"returned": {"campbell": ["1st half 0' - 1st half 35'", "extra time 1 72' - extra time 2 90+1' (full time)"]}}
     probs = [i["problem"] for i in find_issues("Ryan McHugh replaced Max Campbell at half-time.", f)]
     assert any("went back on" in p for p in probs)
+
+
+def test_goalkeeper_two_point_free_counts_as_named():
+    # v5 listed Mulreany under "Also on the scoresheet" although his heading said "the two-point free at extra time 1 80'"
+    f = {"own_scorers": [("Gavin Mulreany", "0-2")], "opponent": "Dublin"}
+    text = "**Gavin Mulreany (goalkeeper) – 6/10.** One score: the two-point free at extra time 1 80'.\n\n**Dublin's standouts.**\n- x"
+    out, fixed = add_missing_scorers(text, f)
+    assert out == text and not fixed
+
+
+def test_top_performers_sorted_by_rating():
+    from app.services.ai.report_check import sort_ratings
+    text = ("## 2. Top Performers\n\n**A (x) – 8/10.** a\n\n**B (x) – 6/10.** b\n\n**C (x) – 5/10.** c\n\n"
+            "**D (x) – 6/10.** d\n\n**Also on the scoresheet:** E 0-1.")
+    out, fixed = sort_ratings(text)
+    assert [l[2] for l in out.split("\n\n") if l.startswith("**") and "/10" in l] == ["A", "B", "D", "C"]
+    assert fixed and out.endswith("**Also on the scoresheet:** E 0-1.")
+    assert sort_ratings(out) == (out, [])

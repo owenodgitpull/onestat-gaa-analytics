@@ -557,7 +557,7 @@ def add_missing_scorers(text: str, facts: dict) -> Tuple[str, List[str]]:
         who = (re.escape(first) + r" O'Donnell|\b" + re.escape(first[0]) + r"\. ?O'Donnell") if sur == "o'donnell" else (r"\b" + re.escape(sur) + r"\b")
         # his name, then (within the same stretch, before another bold name starts) his score figure, a two-pointer, or
         # "scored/kicked a point|goal" - not "we scored 2 points", which is the team
-        near = (r"(?:" + who + r")(?:(?!\*\*[A-Z])[\s\S]){0,220}?(?:\b" + re.escape(score) + r"\b|\btwo-pointer\b|"
+        near = (r"(?:" + who + r")(?:(?!\*\*[A-Z])[\s\S]){0,220}?(?:\b" + re.escape(score) + r"\b|\btwo-pointer\b|\btwo-point free\b|"
                 r"(?<!we )(?<!they )\b(?:scored|kicked|landed|added)\b(?: (?:a|the|his|one|\d))? (?:point|goal|free|two-pointer|two-point free))")
         if not any(re.search(near, x, re.I) for x in sents):
             missing.append(f"{name} {score}")
@@ -583,13 +583,43 @@ def drop_empty_headings(text: str) -> Tuple[str, List[str]]:
     return "\n".join(out), fixed
 
 
+_RATED = re.compile(r"^\*\*[^\n]*?[–-] *(\d{1,2})/10\.?\*\*")
+
+
+def sort_ratings(text: str) -> Tuple[str, List[str]]:
+    """Top Performers highest rating first (v5 had Conor O'Donnell 5/10 above McGonagle and Mulreany 6/10). Only a run of
+    consecutive rated paragraphs is reordered, stably, so equal ratings keep the writer's order."""
+    paras = re.split(r"(\n\s*\n)", text)
+    blocks = paras[0::2]
+    i = 0
+    changed = False
+    while i < len(blocks):
+        if not _RATED.match(blocks[i].strip()):
+            i += 1
+            continue
+        j = i
+        while j < len(blocks) and _RATED.match(blocks[j].strip()):
+            j += 1
+        run = blocks[i:j]
+        srt = sorted(run, key=lambda b: -int(_RATED.match(b.strip()).group(1)))
+        if srt != run:
+            blocks[i:j] = srt
+            changed = True
+        i = j
+    if not changed:
+        return text, []
+    paras[0::2] = blocks
+    return "".join(paras), ["top performers put in rating order"]
+
+
 def check_report(text: str, facts: dict) -> Tuple[str, List[str], List[dict]]:
     hdm = facts.get("half_duration_mins") or 30
     text, f1 = fix_added_time(text, hdm, facts.get("event_minutes"), facts.get("score_minutes"), facts.get("score_events"))
     text, f2 = fix_field_names(text)
     text, f3 = drop_empty_headings(text)
     text, f4 = add_missing_scorers(text, facts)
-    return text, f1 + f2 + f3 + f4, find_issues(text, facts)
+    text, f5 = sort_ratings(text)
+    return text, f1 + f2 + f3 + f4 + f5, find_issues(text, facts)
 
 
 REPAIR_SYSTEM = """You correct specific factual errors in a finished GAA match report. You get the report and a list of problems,
