@@ -204,11 +204,40 @@ def find_issues(text: str, facts: dict) -> List[dict]:
                 issues.append({"quote": s, "problem": f"{m.group(1)} had {want} wide(s), not {m.group(2)}", "truth": f"{m.group(1)}: {want} wide(s)"})
 
         # 12. a player's score against the tool's score string (same notation as the team score)
-        for m in re.finditer(r"([A-Z][\w'’\-]+)\**(?: \([^)]*\))?,? (?:scored|finished with|had|kicked) (\d+)-(\d+)\b", s):
+        for m in re.finditer(r"([A-Z][\w'’\-]+)\**(?: \([^)]*\))?,? (?:scored|scoring|scores|finished with|had|kicked|added|with) (\d+)-(\d+)\b", s):
             want = (facts.get("player_scores") or {}).get(_surname(m.group(1)))
             got = f"{m.group(2)}-{m.group(3)}"
             if want and want != got:
                 issues.append({"quote": s, "problem": f"{m.group(1)} scored {want}, not {got}", "truth": f"{m.group(1)}: {want}"})
+
+        # 12b. the same in other forms: "Guiden (0-3)", "S. Guiden: 0-3", "Guiden's 0-3" (reviewer: Guiden 0-3 was 0-4)
+        for m in re.finditer(r"\b([A-Z][\w'’\-]+)(?:'s)?\**(?: \((?=\d)|:\s*|\s+)(\d+)-(\d{1,2})\b", s):
+            want = (facts.get("player_scores") or {}).get(_surname(m.group(1)))
+            got = f"{m.group(2)}-{m.group(3)}"
+            if want and want != got and not any(i["quote"] == s and m.group(1) in i["problem"] for i in issues):
+                issues.append({"quote": s, "problem": f"{m.group(1)} scored {want}, not {got}",
+                               "truth": f"{m.group(1)}: {want}" + (f" ({facts['player_score_detail'][_surname(m.group(1))]})" if _surname(m.group(1)) in (facts.get("player_score_detail") or {}) else "")})
+
+        # 12c. a player who came off and went back on, described as only replaced / taken off
+        for sur, spells in (facts.get("returned") or {}).items():
+            if re.search(r"\b" + re.escape(sur) + r"\b", s, re.I) and re.search(r"\b(replaced|taken off|came off|went off|withdrawn|replaced by)\b", low) \
+                    and not re.search(r"\b(return|returned|came back|back on|re-?enter)", low):
+                issues.append({"quote": s, "problem": f"{sur.title()} came off and went back on; the sentence says only that he was replaced",
+                               "truth": f"{sur.title()} on the pitch: {'; '.join(spells)} (write 'returned' with the time)"})
+
+        # 12d. "played the full match / the full N minutes" for someone who did not
+        if re.search(r"\bfull (?:match|game|\d+ minutes)|\bevery minute\b|\bplayed (?:it )?all\b", low):
+            mins, full = facts.get("player_minutes") or {}, facts.get("match_minutes")
+            short = [f"{k.title()} {v} min" for k, v in mins.items() if v is not None and full and v < full - 1
+                     and re.search(r"\b" + re.escape(k) + r"\b", s, re.I)]
+            if short:
+                issues.append({"quote": s, "problem": "says the full match for players who did not play it: " + ", ".join(short),
+                               "truth": f"the match ran {full} minutes; " + ", ".join(short)})
+
+        # 12e. a claim about never getting close again, against the real score timeline
+        if re.search(r"\b(?:did not|didn't|never|could not|couldn't) (?:get|got|come|came) (?:back )?(?:within|closer)", low) and facts.get("late_timeline"):
+            issues.append({"quote": s, "problem": "claims we never got within a score again; check it against the score timeline",
+                           "truth": "score timeline (us-them after each score): " + facts["late_timeline"]})
 
         # 13. our overall return: "N points from M shots" must be the match totals when it claims to be overall
         for m in re.finditer(r"(\d+) points from (\d+) shots", low):
@@ -280,6 +309,9 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         pass
     try:
         gps = json.loads(await execute_tool("get_match_gps_running_totals", {"match_id": match_id}, db, club_id=club_id))
+        facts["match_minutes"] = gps.get("match_minutes")
+        facts["player_minutes"] = {_surname(p["name"]): p.get("playing_minutes") for p in gps.get("players", []) if p.get("name")}
+        facts["returned"] = {_surname(p["name"]): p.get("on_the_pitch") for p in gps.get("players", []) if p.get("returned_after_going_off")}
         sp = [(p["name"], p.get("max_speed_ms") or 0) for p in gps.get("players", [])]
         if sp:
             facts["max_speed"] = max(sp, key=lambda r: r[1])
@@ -305,7 +337,7 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         pass
     try:
         imp = json.loads(await execute_tool("get_match_player_impact", {"match_id": match_id}, db, club_id=club_id))
-        sc, dup = {}, set()
+        sc, dup, detail, own_scorers = {}, set(), {}, []
         for side in ("own", "opposition"):
             for r in (imp.get(side) or []):
                 if not r.get("score"):
@@ -314,7 +346,12 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
                 if k in sc:
                     dup.add(k)
                 sc[k] = r["score"].split(" ")[0]
+                detail[k] = r["score"]
+                if side == "own":
+                    own_scorers.append((r.get("player", ""), r["score"].split(" ")[0]))
         facts["player_scores"] = {k: v for k, v in sc.items() if k not in dup}
+        facts["player_score_detail"] = {k: v for k, v in detail.items() if k not in dup}
+        facts["own_scorers"] = own_scorers
     except Exception:
         pass
     try:
@@ -324,12 +361,70 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
     except Exception:
         pass
     try:
+        facts["late_timeline"] = await _late_timeline(db, match_id, facts.get("half_duration_mins") or 30)
+    except Exception:
+        pass
+    try:
         from sqlalchemy import text as _t
         w = (await db.execute(_t("select pitch_width_m from matches where id = :m"), {"m": str(match_id)})).scalar_one_or_none()
         facts["pitch_width_m"] = float(w or 90.0)
     except Exception:
         facts["pitch_width_m"] = 90.0
     return facts
+
+
+_SCORE_VALUE = {"goal": 3, "point": 1, "two_point": 2, "point_free": 1, "two_point_free": 2, "forty_five": 1, "penalty_goal": 3}
+
+
+async def _late_timeline(db, match_id, hdm) -> str:
+    """Every score of the last period played, with the running margin after it: "ET2 81' McHugh -> 27-29 ..."."""
+    from sqlalchemy import text as _t
+    from app.services.ai.phase_facts import when_label
+    rows = (await db.execute(_t(
+        "select me.team, me.event_type::text, me.half, me.minute, coalesce(p.name, op.surname, me.opponent_player_name) "
+        "from match_events me left join players p on p.id = me.player_id left join opposition_players op on op.id = me.opposition_player_id "
+        "where me.match_id = :m and me.event_type::text = any(:t) order by me.half, me.match_clock_s nulls last, me.minute, me.created_at"),
+        {"m": str(match_id), "t": list(_SCORE_VALUE)})).all()
+    if not rows:
+        return ""
+    last = max(r[2] or 1 for r in rows)
+    us = them = 0
+    out = []
+    for team, et, half, minute, name in rows:
+        if team == "own":
+            us += _SCORE_VALUE[et]
+        else:
+            them += _SCORE_VALUE[et]
+        if (half or 1) >= last - 1:
+            out.append(f"{when_label(half or 1, minute or 0, hdm)} {(name or '?').split(' ')[-1]} ({'us' if team == 'own' else 'them'}) -> {us}-{them}")
+    return "; ".join(out)
+
+
+def add_missing_scorers(text: str, facts: dict) -> Tuple[str, List[str]]:
+    """Every one of our scorers is named somewhere; the ones the writer left out get one line before the opposition
+    standouts (reviewer: Gallagher, C. O'Donnell and Roarty each scored 0-1 and were never mentioned)."""
+    missing = []
+    # paragraphs, not sentences: "**Michael Langan (...) – 7/10.** Scored 0-4" splits at the rating's full stop
+    sents = [p for p in re.split(r"\n\s*\n|\n(?=[-*#|])", text) if p.strip()]
+    for name, score in facts.get("own_scorers") or []:
+        first, sur = name.split(" ")[0], _surname(name)
+        if not sur:
+            continue
+        # named AS a scorer: a sentence with his name (first name or initial where two share the surname) and his score or
+        # a scoring word. Being named for something else (a stray pass, a workload flag) does not count.
+        who = (re.escape(first) + r" O'Donnell|\b" + re.escape(first[0]) + r"\. ?O'Donnell") if sur == "o'donnell" else (r"\b" + re.escape(sur) + r"\b")
+        # his name, then (within the same stretch, before another bold name starts) his score figure, a two-pointer, or
+        # "scored/kicked a point|goal" - not "we scored 2 points", which is the team
+        near = (r"(?:" + who + r")(?:(?!\*\*[A-Z])[\s\S]){0,220}?(?:\b" + re.escape(score) + r"\b|\btwo-pointer\b|"
+                r"(?<!we )(?<!they )\b(?:scored|kicked|landed|added)\b(?: (?:a|the|his|one|\d))? (?:point|goal|free|two-pointer))")
+        if not any(re.search(near, x, re.I) for x in sents):
+            missing.append(f"{name} {score}")
+    if not missing:
+        return text, []
+    line = "**Also on the scoresheet:** " + ", ".join(missing) + "."
+    m = re.search(r"\n#+ *Opposition standouts", text)
+    text = (text[:m.start()] + "\n\n" + line + "\n" + text[m.start():]) if m else (text.rstrip() + "\n\n" + line + "\n")
+    return text, [f"added missing scorers: {', '.join(missing)}"]
 
 
 def drop_empty_headings(text: str) -> Tuple[str, List[str]]:
@@ -350,7 +445,8 @@ def check_report(text: str, facts: dict) -> Tuple[str, List[str], List[dict]]:
     text, f1 = fix_added_time(text, hdm)
     text, f2 = fix_field_names(text)
     text, f3 = drop_empty_headings(text)
-    return text, f1 + f2 + f3, find_issues(text, facts)
+    text, f4 = add_missing_scorers(text, facts)
+    return text, f1 + f2 + f3 + f4, find_issues(text, facts)
 
 
 REPAIR_SYSTEM = """You correct specific factual errors in a finished GAA match report. You get the report and a list of problems,

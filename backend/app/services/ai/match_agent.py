@@ -732,6 +732,22 @@ INSTRUCTIONS:
     - Two-pointers: copy get_match_summary two_pointers (ours and theirs, from_play and from_frees) exactly - never work the split
       out from player counts. Each scorer appears once, under the heading the list gives. Whoever scored more two-pointers
       gained from range; say it that way round.
+7n. REVIEW FIXES, THIRD ROUND - REQUIRED (each was a real mistake a reviewer found and the data confirmed):
+   - SUBSTITUTIONS AND MINUTES: before writing about any player's minutes, read his on_the_pitch spells in get_match_gps_running_totals. A player with returned_after_going_off came off and went back on: write "returned" with both times ("off at half-time, returned at extra time 1 72'"), never only "replaced". sin_bin = his minutes already have the black card's 10 minutes taken off; say so beside the minutes. A player with minutes_note has a gap in the log: say his minutes are not known, and say his distance covers only the spell(s) listed ("1.4 km, from his last spell only"). Never call someone "on from X" if he scored or assisted before X.
+   - "0-N" counts points with a two-pointer worth 2. Whenever a two-pointer is part of a player's total, also write "N points from M scores" (Guiden: "0-4, 4 points from 3 scores"). A goalkeeper's single two-point free is "one score, the two-point free at <time>", never "two points from frees". Copy every player's 0-N from his own row; never retype it.
+   - "TOP" CLAIMS: "the top / joint-top / most ... on the night" compares BOTH teams. Check the other side's players before writing it; otherwise say "our top ...".
+   - SOURCES: every "N of M" names where it comes from (match summary, phase table, possession chains, zone count, GPS list). When two counts of the same thing differ (turnovers lost 12 in the summary, 13 in the phase table; scores 19 in the chains, 16 in the phase table), say which is which once: the chains are built from the tagged carries; the phase table counts possessions that began from a tagged kickout, turnover, contest or free. Two different measures for one player (41 passes made against 36 passes the support figure could measure) are named as different measures.
+   - LATE MARGINS: before writing how close we got in the last period ("never got within a score again"), list that period's scores in order from get_match_event_log with the margin after each, and write what the list shows.
+   - FREES: never "N frees were followed by a free shot" (every free is). Write "they scored from N of the M frees we conceded".
+   - CAUSE: two separate measures side by side are not cause and effect. Write "separately, the shot-support data shows ...", never "the cost shows here". "Decided it" only for the one thing that was bigger than the margin and everything else; otherwise "was the largest gap".
+   - RECOMMENDATIONS come from the whole-match figure (both halves, the biggest sample). A single channel or a single half is described, never the basis of a training bullet. A numeric target must differ from what happened and be marked as a suggestion ("aim to get under 6 seconds"); this match's own figure is never the target.
+   - SMALL COUNTS: a percentage from fewer than 60 events carries its count ("10.5% of 57 receptions"); do not compare two small percentages as a trend.
+   - DIRECTION WORDS: say plainly which way to go ("training load reduced", "more recovery"), never "recovery should be reduced" when you mean the opposite.
+   - LISTS AGREE: if you say a group all played the full match, never later describe only some of them as playing "into extra time".
+   - THEIR GOAL: for a Dublin player's distances write "from the goal they were attacking".
+   - RATINGS on one scale: more scoring involvement (scores, two-pointers, assists) is rated at least as high as less, unless a sentence says why (cards, errors). Never write an instruction to yourself into the report ("no criticism applies").
+   - Every one of our scorers is named with his score at least once.
+
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>

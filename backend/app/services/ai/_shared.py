@@ -1658,6 +1658,27 @@ async def _player_stints(db: AsyncSession, match_uuid, half_duration_mins: int, 
         row["minutes"] += total - t0
         row["spells"].append(f"{l0} - {end_label} (full time)")
         row["on_at_end"] = True
+    # cards: a black card is 10 minutes off the pitch (sin bin), a red card is the rest of the match. Murphy and McGee were
+    # shown 94 minutes in Dublin after black cards at extra time 1 70' (reviewer, 2026-11-11).
+    cards = (await db.execute(
+        select(MatchEvent.player_id, MatchEvent.event_type, MatchEvent.minute, MatchEvent.half)
+        .where(MatchEvent.match_id == match_uuid, MatchEvent.event_type.in_([EventType.BLACK_CARD, EventType.RED_CARD]),
+               MatchEvent.minute.isnot(None), MatchEvent.player_id.isnot(None)))).all()
+    for pid, et, minute, half in cards:
+        row = out.get(str(pid))
+        if not row:
+            continue
+        t, lab = elapsed(minute, half), when_label(half_of(minute, half), minute, hdm)
+        if et == EventType.BLACK_CARD:
+            row["minutes"] -= min(10.0, max(0.0, total - t))
+            row["sin_bin"] = f"black card at {lab}: 10 minutes in the sin bin, taken off his minutes"
+        else:
+            if row.get("on_at_end"):
+                row["minutes"] -= max(0.0, total - t)
+                row["on_at_end"] = False
+                if row["spells"]:
+                    row["spells"][-1] = row["spells"][-1].rsplit(" - ", 1)[0] + f" - {lab} (sent off)"
+            row["sin_bin"] = f"red card at {lab}: off for the rest of the match"
     for k, row in out.items():
         row["minutes"] = None if k in broken else (round(row["minutes"]) if row["featured"] else 0)
         if k in broken:
@@ -1791,6 +1812,11 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
             player_data["came_on_as_sub"] = True
         if st.get("spells"):
             player_data["on_the_pitch"] = st["spells"]
+            if len(st["spells"]) > 1:
+                # went off and came back on: the report must say "returned", never just "replaced"
+                player_data["returned_after_going_off"] = True
+        if st.get("sin_bin"):
+            player_data["sin_bin"] = st["sin_bin"]
         if st.get("note"):
             player_data["minutes_note"] = st["note"]
             player_data["playing_minutes"] = None      # never the GPS unit's own duration (warm-up included)
@@ -1835,8 +1861,10 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
         **({"match_minutes": match_minutes,
             "minutes_note": ("playing_minutes are real minutes on the pitch from the lineup and every substitution in order (added "
                              "time and extra time included). on_the_pitch lists each spell. A player with minutes_note has a gap in "
-                             "the substitution log: say his minutes are not known, never quote a figure. workload_flag is only "
-                             "set for players who played the whole match.")} if match_minutes else {}),
+                             "the substitution log: say his minutes are not known, never quote a figure, and say his distance "
+                             "covers only the spell(s) listed. returned_after_going_off = he came off and went back on: write "
+                             "\"returned\" with both times. sin_bin = his minutes already have the card's time taken off. "
+                             "workload_flag is only set for players who played the whole match.")} if match_minutes else {}),
         "players": players,
         "bench_players_not_used": sorted(bench_not_used, key=lambda p: p["total_distance_m"], reverse=True) if bench_not_used else [],
     })
