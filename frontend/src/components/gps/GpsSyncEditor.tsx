@@ -52,7 +52,7 @@ function ShiftRow({ label, hint, value, range, onChange, describeAs }: {
   )
 }
 
-export interface BallChoice { id: string; label: string; ours: boolean; pinned: boolean }
+export interface BallChoice { id: string; label: string; says: string; ours: boolean; pinned: boolean; shot: boolean }
 type PinState = { kind: 'idle' | 'saving' | 'saved' | 'error'; text: string } | null
 
 export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift, savedTagShift, onDotShift, onTagShift, onReset, onSaved, onClose, tagNote, onJumpToTag,
@@ -100,7 +100,7 @@ export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift,
       </div>
       <div>
         <div className="text-sm font-medium text-white">Ball · who just got it?</div>
-        <div className="text-xs text-white/50 mt-0.5 mb-2">Pause the video the moment a player gets the ball, then tap him. His carry starts there; the carries either side keep their order. Saved straight away.</div>
+        <div className="text-xs text-white/50 mt-0.5 mb-2">Pause the video the moment a player gets the ball, then tap him. For a score or a wide, pause as the ball is kicked and tap the Point / Wide button. The carries either side keep their order. Saved straight away.</div>
         {tagNote && (
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-white/70">
             <span className="inline-block w-2.5 h-2.5 rounded-full bg-white border border-slate-900 shrink-0" aria-hidden="true" />
@@ -113,16 +113,16 @@ export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift,
         <div className="flex flex-wrap gap-2">
           {ballChoices.map(c => (
             <div key={c.id} className="flex items-stretch">
-              <button type="button" onClick={() => onPin(c.id, c.label)} disabled={pinState?.kind === 'saving'}
-                className={`flex items-center gap-1.5 h-10 px-3 text-sm text-white disabled:opacity-50 ${c.pinned ? 'rounded-l-lg' : 'rounded-lg'} bg-white/10 hover:bg-white/20 active:bg-white/25`}
-                aria-label={`${c.label} gets the ball now`}>
-                <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.ours ? '#10b981' : '#f97316' }} aria-hidden="true" />
+              <button type="button" onClick={() => onPin(c.id, c.says)} disabled={pinState?.kind === 'saving'}
+                className={`flex items-center gap-1.5 h-10 px-3 text-sm text-white disabled:opacity-50 ${c.pinned ? 'rounded-l-lg' : 'rounded-lg'} ${c.shot ? 'bg-white/5 border border-dashed border-white/25 hover:bg-white/15' : 'bg-white/10 hover:bg-white/20'} active:bg-white/25`}
+                aria-label={`${c.says}: now`}>
+                <span className={`inline-block w-2.5 h-2.5 shrink-0 ${c.shot ? 'rotate-45' : 'rounded-full'}`} style={{ background: c.ours ? '#10b981' : '#f97316' }} aria-hidden="true" />
                 {c.label}
                 {c.pinned && <Check size={13} className="text-emerald-300" aria-label="fixed by hand" />}
               </button>
               {c.pinned && (
-                <button type="button" onClick={() => onUnpin(c.id, c.label)} disabled={pinState?.kind === 'saving'} title="Remove your fix"
-                  className="h-10 px-2 rounded-r-lg bg-white/5 hover:bg-white/15 border-l border-white/10 disabled:opacity-50" aria-label={`Remove your fix for ${c.label}`}>
+                <button type="button" onClick={() => onUnpin(c.id, c.says)} disabled={pinState?.kind === 'saving'} title="Remove your fix"
+                  className="h-10 px-2 rounded-r-lg bg-white/5 hover:bg-white/15 border-l border-white/10 disabled:opacity-50" aria-label={`Remove your fix: ${c.says}`}>
                   <X size={13} className="text-white/60" />
                 </button>
               )}

@@ -17,7 +17,7 @@ import { useVideoSession } from '../../hooks/useVideoSessions'
 import { api, type GpsWindow } from '../../services/api'
 import { pointInSideFrame, ownAttacksRight } from '../../utils/attackDirection'
 import { humanEventType } from '../../utils/eventLabels'
-import { seekTimeForEvent } from '../../utils/videoSeek'
+import { seekLeadForType } from '../../utils/videoSeek'
 import { type GpsReplayContext, periodClock, COLOR_OURS, COLOR_THEIRS, gpsAnalysisApi } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption } from './GpsPitch'
 import { insideArc, pullOutOfArc } from '../../utils/gpsKickoutArc'
@@ -42,6 +42,7 @@ function halfAt(periods: GpsReplayContext['periods'], ms: number): number {
  * as the backend (gps_analysis/lag.py).
  */
 const DEFAULT_LAG_MS: Record<string, number> = { PASS_HAND: 1200, LONG_KICK_PASS: 1200, POINT_SCORED: 2200, GOAL_SCORED: 2200, TWO_POINT_SCORED: 2200, WIDE: 3400, TURNOVER_LOST: 1600, TURNOVER_WON: 1600, FOUL_COMMITTED: 5600, FREE_WON: 5600 }
+const SHOT_WORD: Record<string, string> = { POINT_SCORED: 'Point', TWO_POINT_SCORED: '2-pointer', GOAL_SCORED: 'Goal', WIDE: 'Wide' }
 const END_TYPE: Record<string, string> = { score: 'POINT_SCORED', wide: 'WIDE', free: 'FOUL_COMMITTED', turnover: 'TURNOVER_LOST', pass: 'PASS_HAND' }
 function makeLag(tagLag: GpsReplayContext['sync']['tag_lag'] | undefined, shiftMs: number) {
   return (type: string | null | undefined): number => {
@@ -166,18 +167,25 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     for (let i = st.length - 2; i >= 0; i--) if (!pinned[i] && st[i] > st[i + 1] - 200) st[i] = st[i + 1] - 200
     const startOf = (i: number) => st[i]
     return cs.map((c, i) => {
-      const start = startOf(i)
+      let start = startOf(i)
       let endRaw = c.end_video_ms
       let endType = END_TYPE[c.ended_by ?? ''] ?? 'PASS_HAND'
-      if (endRaw == null && (c.ended_by === 'score' || c.ended_by === 'wide')) {
-        const want = c.team === 'own' ? 'team_a' : 'team_b'
-        const ev = scoring.find(e => e.team === want && e.video_ms >= c.video_ms && e.video_ms <= c.video_ms + 20000)
-        if (ev) { endRaw = ev.video_ms; endType = ev.event_type }
-      }
+      const want = c.team === 'own' ? 'team_a' : 'team_b'
+      const shotEv = c.ended_by === 'score' || c.ended_by === 'wide'
+        ? scoring.find(e => e.team === want && e.video_ms >= c.video_ms && e.video_ms <= c.video_ms + 20000) : undefined
+      if (endRaw == null && shotEv) { endRaw = shotEv.video_ms; endType = shotEv.event_type }
       const nextStart = cs[i + 1] ? startOf(i + 1) : Infinity
       const shot = endType !== 'PASS_HAND' && endType !== 'TURNOVER_LOST'
-      const end = endRaw != null ? ((aligned || pinned[i]) && !shot ? endRaw - (c.video_ms - start) : endRaw - lag(endType)) : null
-      return { ...c, video_ms: start, end_video_ms: end != null ? Math.max(start + 300, end) : null, next_ms: nextStart, pinned: pinned[i] }
+      let end = endRaw != null ? ((aligned || pinned[i]) && !shot ? endRaw - (c.video_ms - start) : endRaw - lag(endType)) : null
+      // "Point now" / "Wide now": the shot where the user put it; a carry that would start after it starts 1.5 s before
+      const endPin = pins[`${c.id}:end`]
+      if (endPin != null) {
+        end = endPin + leadAt(endPin)
+        if (!pinned[i] && end < start + 300) start = end - 1500
+      }
+      return { ...c, video_ms: start, end_video_ms: end != null ? Math.max(start + 300, end) : null, next_ms: nextStart, pinned: pinned[i],
+        shotEventId: shotEv?.id ?? null, shotType: shotEv ? shotEv.event_type : (shot && endRaw != null ? endType : null),
+        shotAt: endPin != null ? end : null, endPinned: endPin != null }
     })
   }, [ctx.carries, ctx.events, lag, aligned, tagShift, pins, leadAt])
 
@@ -224,10 +232,14 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const ballChoices = useMemo(() => {
     if (!editOpen) return []
     const k = lastIndexAtOrBefore(ownCarries, pitchMs)
-    const out: { id: string; label: string; ours: boolean; pinned: boolean }[] = []
+    const out: { id: string; label: string; says: string; ours: boolean; pinned: boolean; shot: boolean }[] = []
     for (let i = Math.max(0, k - 1); i <= Math.min(ownCarries.length - 1, k + 2); i++) {
       const c = ownCarries[i]
-      out.push({ id: c.id, label: who(c), ours: c.team === 'own', pinned: !!c.pinned })
+      out.push({ id: c.id, label: who(c), says: `${who(c)} gets the ball`, ours: c.team === 'own', pinned: !!c.pinned, shot: false })
+      if (c.shotType) {
+        const word = SHOT_WORD[c.shotType] ?? 'Shot'
+        out.push({ id: `${c.id}:end`, label: `${word} · ${who(c)}`, says: `${who(c)}'s ${word.toLowerCase()}`, ours: c.team === 'own', pinned: !!c.endPinned, shot: true })
+      }
     }
     return out
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,14 +256,14 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
       setPinState({ kind: 'error', text: /403|forbidden|permission/i.test(msg) ? 'Only a club admin can save this.' : `Could not save: ${msg}` })
     }
   }
-  const pinCarry = (id: string, label: string) => {
+  const pinCarry = (id: string, says: string) => {
     player.current?.pause()
     const at = Math.round(now)
-    savePins({ [id]: at }, `Saving: ${label} gets the ball at ${periodClock(at, ctx.periods)}…`,
-      `Saved. ${label} gets the ball at ${periodClock(at, ctx.periods)}; the carries either side keep their order.`)
+    savePins({ [id]: at }, `Saving: ${says} at ${periodClock(at, ctx.periods)}…`,
+      `Saved: ${says} at ${periodClock(at, ctx.periods)}. The carries either side keep their order.`)
   }
-  const unpinCarry = (id: string, label: string) =>
-    savePins({ [id]: null }, `Removing your fix for ${label}…`, `Removed. ${label}'s carry is timed automatically again.`)
+  const unpinCarry = (id: string, says: string) =>
+    savePins({ [id]: null }, `Removing your fix: ${says}…`, `Removed: ${says} is timed automatically again.`)
 
   // a kickout being taken now: nobody may be inside the arc at the kicking end (display only, see gpsKickoutArc)
   const kickout = useMemo(() => {
@@ -320,9 +332,14 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     return { x: a.x + (b.x - a.x) * w, y: a.y + (b.y - a.y) * w }
   }, [carry, toM, pitchMs, half])
 
+  const shotPinAt = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const c of ownCarries) if (c.shotEventId && c.shotAt != null) m.set(c.shotEventId, c.shotAt)
+    return m
+  }, [ownCarries])
   const recentEvents = useMemo(() => ctx.events
-    .map(e => ({ ...e, video_ms: e.video_ms - lag(e.event_type) }))
-    .filter(e => e.video_ms <= pitchMs + 300 && e.video_ms > pitchMs - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, pitchMs, lag])
+    .map(e => ({ ...e, video_ms: shotPinAt.get(e.id) ?? e.video_ms - lag(e.event_type) }))
+    .filter(e => e.video_ms <= pitchMs + 300 && e.video_ms > pitchMs - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, pitchMs, lag, shotPinAt])
 
   const jumpList = useMemo(() => ctx.events.filter(e => /KICKOUT|POINT_SCORED|GOAL_SCORED|TURNOVER|WIDE/.test(e.event_type)), [ctx.events])
   const jersey = (pid: string) => ctx.players[pid]?.jersey
@@ -361,7 +378,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           </div>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <select onChange={e => { const ev = jumpList[Number(e.target.value)]; if (ev) seek(seekTimeForEvent(ev.video_ms, ev.event_type)); e.target.value = '' }} defaultValue=""
+          <select onChange={e => { const ev = jumpList[Number(e.target.value)]; if (ev) seek(Math.max(0, ev.video_ms - Math.max(seekLeadForType(ev.event_type), (alignQ.data?.replay?.median_delay_ms ?? 0) + 2000))); e.target.value = '' }} defaultValue=""
             className="min-w-0 flex-1 bg-white/10 border border-white/15 rounded-lg px-2 py-2 text-sm text-white" aria-label="Jump to an event">
             <option value="">Jump to a kickout, score or turnover…</option>
             {jumpList.map((e, i) => (
