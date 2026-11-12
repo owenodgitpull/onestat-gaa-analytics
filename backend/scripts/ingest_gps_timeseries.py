@@ -67,7 +67,7 @@ async def main(match_id: str, folder: str, do_sync: bool, dry_run: bool):
             print(f"sync status {row.status} in {time.time()-t:.1f}s" + (f": {row.error}" if row.error else ""))
             for p in row.periods or []:
                 print(f"  period {p['half']}: offset {p['offset_ms']/1000:.1f} s rate {p['rate']:.6f} residual {p['median_residual_m']} m (p75 {p['p75_residual_m']}) n {p['n_carries']} anchors {len(p['anchors'])} spread {p['implied_offset_spread_s']} s")
-            for k, v in sorted((row.tag_lag or {}).items(), key=lambda kv: -kv[1]["n"]):
+            for k, v in sorted(((k, v) for k, v in (row.tag_lag or {}).items() if not k.startswith("_")), key=lambda kv: -kv[1]["n"]):
                 print(f"  lag {k:34s} n={v['n']:3d} median {v['median_s']:+.1f}s (p25 {v['p25_s']:+.1f} p75 {v['p75_s']:+.1f})")
             notin = [pid for pid, q in (row.quality or {}).items() if not q["in_match"]]
             print(f"  tracks not in the match window: {len(notin)}")

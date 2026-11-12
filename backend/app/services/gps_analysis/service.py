@@ -90,6 +90,17 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
     out["carry_times"]["saved_shift_ms"] = manual_shift_ms(inp.sync.get("tag_lag"))
     out["carry_times"]["carries"] = [{"video_ms": c.video_ms, "start_ms": s_, "how": h}
                                      for c, s_, h in zip(cs, al.get("starts") or [], al.get("how") or [])]
+    # replay display timing (frame.replay_times): the pitch drawn lead_ms ahead of the video per period, and carry
+    # starts matched with that lead allowed for. The analysis above is unchanged.
+    try:
+        from .frame import replay_times
+        rt = replay_times(inp, g10.t, g10.half, g10.pids, g10.X, g10.Y, g10.S, g10.on, period_bounds(inp))
+        out["carry_times"]["replay"] = {"lead_ms": rt["lead_ms"], "lead_from": rt["lead_from"], "median_delay_ms": rt["median_delay_ms"],
+                                        "matched": rt["matched"], "total": rt["total"]}
+        for item, s_, h in zip(out["carry_times"]["carries"], rt["starts"], rt["how"]):
+            item["replay_start_ms"] = s_; item["replay_how"] = h
+    except Exception as e:     # the replay falls back to the analysis starts
+        out["carry_times"]["replay"] = {"error": str(e)[:200]}
     return out, g1
 
 
@@ -130,7 +141,7 @@ async def replay_context(db: AsyncSession, match) -> dict:
         "players": inp.players, "starters": inp.starters, "bench": inp.bench,
         "on_pitch": {pid: [[int(a), int(b)] for a, b in iv] for pid, iv in on_pitch_intervals(inp, bounds).items()},
         "tracked": [pid for pid, q in (inp.sync.get("quality") or {}).items() if q.get("in_match") is not False],
-        "carries": [{"team": c.team, "player_id": c.player_id, "half": c.half, "start_x": c.start_x, "start_y": c.start_y,
+        "carries": [{"id": c.id, "team": c.team, "player_id": c.player_id, "half": c.half, "start_x": c.start_x, "start_y": c.start_y,
                      "end_x": c.end_x, "end_y": c.end_y, "video_ms": c.video_ms, "end_video_ms": c.end_video_ms, "ended_by": c.ended_by,
                      # their carrier's name (the replay labels the opposition ball with it)
                      "opposition_player": inp.opposition_names.get(c.opposition_player_id or "") if c.team == "opponent" else None}

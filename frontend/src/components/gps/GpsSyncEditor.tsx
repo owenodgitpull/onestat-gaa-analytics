@@ -1,15 +1,16 @@
 /**
  * "Edit sync" on the GPS replay: line the replay up with the video by eye, then save.
  *
- * Two independent adjustments, previewed live on the replay before anything is saved:
- *  - Player dots (per period): the GPS clock against the video. Saved as that period's manual offset
- *    (PATCH .../gps/timeseries/sync), the same value the sync-check nudge writes. Every GPS figure uses it.
- *  - Ball and tags (whole match): how far tagged things are drawn from your tap, on top of the measured tap delay.
- *    Saved as sync.tag_lag._manual.shift_ms; the analysis uses the same rule (backend gps_analysis/lag.py).
+ * - Who just got the ball? (one carry at a time, saved at once): pause on the catch, tap the player; that carry starts
+ *   there on the replay. Saved as sync.tag_lag._pins (carry id -> video ms). Display only: the analysis is unchanged.
+ * - Player dots (per period): the replay already draws the pitch ahead of the video by the measured lead (the sync is
+ *   fitted to the taps, so the GPS clock runs late by the usual tap delay). The slider fine-tunes on top; saved as that
+ *   period's manual offset (PATCH .../gps/timeseries/sync), which every GPS figure uses.
+ * - Shift every tag (whole match, folded away): sync.tag_lag._manual.shift_ms, as before (backend gps_analysis/lag.py).
  * Tagged events are never changed.
  */
 import { useState } from 'react'
-import { Loader2, Check, AlertCircle, X, RotateCcw } from 'lucide-react'
+import { Loader2, Check, AlertCircle, X, RotateCcw, Hand } from 'lucide-react'
 import { api } from '../../services/api'
 import type { GpsReplayContext } from '../../services/gpsAnalysisApi'
 
@@ -51,8 +52,14 @@ function ShiftRow({ label, hint, value, range, onChange, describeAs }: {
   )
 }
 
-export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift, savedTagShift, onDotShift, onTagShift, onReset, onSaved, onClose, tagNote, onJumpToTag }: {
+export interface BallChoice { id: string; label: string; ours: boolean; pinned: boolean }
+type PinState = { kind: 'idle' | 'saving' | 'saved' | 'error'; text: string } | null
+
+export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift, savedTagShift, onDotShift, onTagShift, onReset, onSaved, onClose, tagNote, onJumpToTag,
+  leadMs, leadFrom, timingLoading, ballChoices, pinState, onPin, onUnpin, pinCount }: {
   tagNote?: string | null; onJumpToTag?: () => void
+  leadMs: number; leadFrom?: string; timingLoading?: boolean
+  ballChoices: BallChoice[]; pinState: PinState; onPin: (id: string, label: string) => void; onUnpin: (id: string, label: string) => void; pinCount: number
   matchId: string; ctx: GpsReplayContext; half: number
   dotShifts: Record<number, number>; tagShift: number; savedTagShift: number
   onDotShift: (ms: number) => void; onTagShift: (ms: number) => void; onReset: () => void; onSaved: () => void; onClose: () => void
@@ -83,7 +90,7 @@ export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift,
 
   const status = state.kind !== 'idle' ? state
     : dirty ? { kind: 'idle' as const, text: 'Previewing on the replay. Nothing is saved until you press Save.' }
-    : { kind: 'idle' as const, text: 'Pause on a clear moment, such as a kickout strike, a score or a hand pass, and move the sliders until the dots and the ball match the video.' }
+    : { kind: 'idle' as const, text: 'Slider changes preview on the replay; press Save to keep them.' }
 
   return (
     <div className="mt-3 rounded-xl border border-white/15 bg-white/5 p-3 md:p-4 space-y-4" role="region" aria-label="Edit sync">
@@ -91,21 +98,55 @@ export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift,
         <div className="text-sm font-semibold text-white">Edit sync</div>
         <button type="button" onClick={onClose} aria-label="Close edit sync" className="p-2 -m-1 rounded-lg hover:bg-white/10"><X size={16} className="text-white/60" /></button>
       </div>
-      <ShiftRow label={`Player dots · ${PERIOD[half] || `period ${half}`}`} describeAs="dots"
-        hint="If the dots trail the players on the video, drag right; if they run ahead, drag left. Set each half on its own."
-        value={-dot} range={DOT_RANGE_MS} onChange={v => { onDotShift(-v); setState({ kind: 'idle' }) }} />
-      <ShiftRow label="Ball and tags · whole match" describeAs="tags"
-        hint="Each carry already starts when the GPS shows the player reaching the ball (or by your usual tap delay where it cannot tell). If the ball still trails the video, drag right; if it runs ahead, drag left."
-        value={-tagShift} range={TAG_RANGE_MS} onChange={v => { onTagShift(-v); setState({ kind: 'idle' }) }} />
-      {tagNote && (
-        <div role="status" className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-white/70">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-white border border-slate-900 shrink-0" aria-hidden="true" />
-          <span className="min-w-0">{tagNote}</span>
-          {onJumpToTag && (
-            <button type="button" onClick={onJumpToTag} className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white">Go to next carry</button>
-          )}
+      <div>
+        <div className="text-sm font-medium text-white">Ball · who just got it?</div>
+        <div className="text-xs text-white/50 mt-0.5 mb-2">Pause the video the moment a player gets the ball, then tap him. His carry starts there; the carries either side keep their order. Saved straight away.</div>
+        {tagNote && (
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-white/70">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-white border border-slate-900 shrink-0" aria-hidden="true" />
+            <span className="min-w-0">{tagNote}</span>
+            {onJumpToTag && (
+              <button type="button" onClick={onJumpToTag} className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white">Go to next carry</button>
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {ballChoices.map(c => (
+            <div key={c.id} className="flex items-stretch">
+              <button type="button" onClick={() => onPin(c.id, c.label)} disabled={pinState?.kind === 'saving'}
+                className={`flex items-center gap-1.5 h-10 px-3 text-sm text-white disabled:opacity-50 ${c.pinned ? 'rounded-l-lg' : 'rounded-lg'} bg-white/10 hover:bg-white/20 active:bg-white/25`}
+                aria-label={`${c.label} gets the ball now`}>
+                <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: c.ours ? '#10b981' : '#f97316' }} aria-hidden="true" />
+                {c.label}
+                {c.pinned && <Check size={13} className="text-emerald-300" aria-label="fixed by hand" />}
+              </button>
+              {c.pinned && (
+                <button type="button" onClick={() => onUnpin(c.id, c.label)} disabled={pinState?.kind === 'saving'} title="Remove your fix"
+                  className="h-10 px-2 rounded-r-lg bg-white/5 hover:bg-white/15 border-l border-white/10 disabled:opacity-50" aria-label={`Remove your fix for ${c.label}`}>
+                  <X size={13} className="text-white/60" />
+                </button>
+              )}
+            </div>
+          ))}
+          {!ballChoices.length && <div className="text-xs text-white/50">No tagged carries near this moment.</div>}
         </div>
-      )}
+        <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${pinState?.kind === 'error' ? 'text-red-300' : pinState?.kind === 'saved' ? 'text-emerald-300' : 'text-white/55'}`}>
+          {pinState?.kind === 'saving' ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : pinState?.kind === 'error' ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : pinState?.kind === 'saved' ? <Check size={13} className="mt-0.5 shrink-0" /> : <Hand size={13} className="mt-0.5 shrink-0" />}
+          <span>{pinState?.text ?? (pinCount ? `${pinCount} carr${pinCount === 1 ? 'y' : 'ies'} fixed by hand in this match.` : 'Every carry is timed automatically. Fix only the ones that look wrong.')}</span>
+        </div>
+      </div>
+      <ShiftRow label={`Player dots · ${PERIOD[half] || `period ${half}`}`} describeAs="dots"
+        hint={timingLoading ? 'Measuring how far the GPS runs behind the video…'
+          : `Already drawn ${(Math.abs(leadMs) / 1000).toFixed(1)} s ${leadMs >= 0 ? 'ahead of' : 'behind'} the GPS sync in this half to match the video${leadFrom && leadFrom !== 'none' ? ` (measured from the ${leadFrom})` : ''}. If the dots still trail the players on the video, drag right; if they run ahead, drag left.`}
+        value={-dot} range={DOT_RANGE_MS} onChange={v => { onDotShift(-v); setState({ kind: 'idle' }) }} />
+      <details className="group">
+        <summary className="cursor-pointer text-xs text-white/60 hover:text-white select-none">Shift every tag in the match{tagShift !== 0 ? ` (now ${(Math.abs(tagShift) / 1000).toFixed(1)} s)` : ''}</summary>
+        <div className="mt-3">
+          <ShiftRow label="Ball and tags · whole match" describeAs="tags"
+            hint="Rarely needed: each carry is already timed from the GPS or your usual tap delay. Moves every tag at once."
+            value={-tagShift} range={TAG_RANGE_MS} onChange={v => { onTagShift(-v); setState({ kind: 'idle' }) }} />
+        </div>
+      </details>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={save} disabled={!dirty || state.kind === 'saving'}
           className="flex items-center gap-1.5 h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-sm font-medium text-white">

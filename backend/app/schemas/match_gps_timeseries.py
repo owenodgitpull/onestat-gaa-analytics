@@ -86,6 +86,9 @@ class SyncOverride(BaseModel):
     confirm: bool = True
     # replay "Edit sync": every tag drawn this much later (+) or earlier (-) than the measured tap delay puts it; 0 clears
     tag_shift_ms: Optional[int] = Field(None, ge=-5000, le=5000)
+    # replay "Who has the ball now?": carry id -> the video time (ms) that carry really starts on the footage; null
+    # removes that pin. Display only (the replay); tagged data and the analysis are unchanged.
+    pins: Optional[Dict[str, Optional[int]]] = None
 
 
 class PlayerWindow(BaseModel):

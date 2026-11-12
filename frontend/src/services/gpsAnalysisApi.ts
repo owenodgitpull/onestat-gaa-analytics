@@ -15,7 +15,7 @@ export interface GpsReplayContext {
   attacking_right_first_half: boolean | null
   own_attacks_right_by_half: Record<string, boolean>
   periods: { half: number; video_start_ms: number; video_end_ms: number }[]
-  sync: { status: string; periods: any[]; tag_lag: Record<string, { n: number; median_s: number; p25_s: number; p75_s: number }> & { _manual?: { shift_ms: number } }; computed_at: string | null; confirmed_at: string | null }
+  sync: { status: string; periods: any[]; tag_lag: Record<string, { n: number; median_s: number; p25_s: number; p75_s: number }> & { _manual?: { shift_ms: number }; _pins?: Record<string, number> }; computed_at: string | null; confirmed_at: string | null }
   pitch_length_m: number
   pitch_width_m: number
   players: Record<string, { name: string | null; jersey: number | null }>
@@ -23,8 +23,16 @@ export interface GpsReplayContext {
   bench: string[]
   on_pitch: Record<string, [number, number][]>
   tracked: string[]
-  carries: { team: 'own' | 'opponent'; player_id: string | null; half: number | null; start_x: number | null; start_y: number | null; end_x: number | null; end_y: number | null; video_ms: number; end_video_ms: number | null; ended_by: string | null; opposition_player?: string | null }[]
+  carries: { id: string; team: 'own' | 'opponent'; player_id: string | null; half: number | null; start_x: number | null; start_y: number | null; end_x: number | null; end_y: number | null; video_ms: number; end_video_ms: number | null; ended_by: string | null; opposition_player?: string | null }[]
   events: { id: string; team: string; event_type: string; sub_type: string | null; half: number | null; video_ms: number; pitch_x: number | null; pitch_y: number | null; player_id: string | null; sub_in_player_id: string | null; opposition_player: string | null; match_minute: number | null; match_second: number | null }[]
+}
+
+/** Carry starts for the replay (backend service.carry_times). `replay` = display timing: the pitch drawn `lead_ms`
+ * ahead of the video per period (the synced GPS clock runs late by the usual tap delay) and carry starts that allow for it. */
+export interface GpsCarryTimes {
+  median_delay_ms: number; matched: number; total: number; saved_shift_ms: number
+  replay?: { lead_ms?: Record<string, number>; lead_from?: Record<string, string>; median_delay_ms?: number; matched?: number; total?: number; error?: string }
+  carries: { video_ms: number; start_ms: number; how: 'gps' | 'median'; replay_start_ms?: number; replay_how?: 'gps' | 'median' }[]
 }
 
 export interface ShapeStats { length: number | null; width: number | null; compactness: number | null; area: number | null; centroid_x: number | null; deep6: number | null; seconds: number }
@@ -104,7 +112,7 @@ export interface GpsSeason { matches: GpsSeasonRow[]; load_alerts: GpsLoadAlert[
 export const gpsAnalysisApi = {
   context: (matchId: string) => fetchAPI<GpsReplayContext>(`/matches/${matchId}/gps/analysis/context`),
   /** each carry's start lined up from GPS (start_ms includes the tag shift saved with the sync) */
-  carryTimes: (matchId: string) => fetchAPI<{ median_delay_ms: number; matched: number; total: number; saved_shift_ms: number; carries: { video_ms: number; start_ms: number; how: 'gps' | 'median' }[] }>(`/matches/${matchId}/gps/analysis/carry-times`, { timeoutMs: 60000 }),
+  carryTimes: (matchId: string) => fetchAPI<GpsCarryTimes>(`/matches/${matchId}/gps/analysis/carry-times`, { timeoutMs: 60000 }),
   analysis: (matchId: string) => fetchAPI<GpsMatchAnalysis>(`/matches/${matchId}/gps/analysis`, { timeoutMs: 60000 }),
   shapeSeries: (matchId: string, stepS = 2) => fetchAPI<GpsShapeSeries>(`/matches/${matchId}/gps/analysis/shape-series?step_s=${stepS}`, { timeoutMs: 60000 }),
   heatmap: (matchId: string, opts: { playerId?: string; half?: number; state?: 'all' | 'in' | 'out' }) => {

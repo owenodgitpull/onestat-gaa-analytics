@@ -150,9 +150,9 @@ async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSS
             p["offset_ms"] = old[p["half"]]["offset_ms"]; p["rate"] = old[p["half"]].get("rate", 1.0); p["source"] = "manual"
     out["calibration"] = await refit_pitch_ends(db, match, tracks, out["calibration"], out["periods"], log) or out["calibration"]
     row.calibration = out["calibration"]; row.periods = out["periods"]
-    # keep the user's tag shift (replay "Edit sync") through a re-sync
-    manual = (row.tag_lag or {}).get("_manual")
-    row.tag_lag = {**(out["tag_lag"] or {}), **({"_manual": manual} if manual else {})}; row.quality = out["quality"]
+    # keep the user's tag shift and ball pins (replay "Edit sync") through a re-sync
+    kept = {k: v for k, v in (row.tag_lag or {}).items() if k in ("_manual", "_pins") and v}
+    row.tag_lag = {**(out["tag_lag"] or {}), **kept}; row.quality = out["quality"]
     row.status = "confirmed" if row.status == "confirmed" else "auto"; row.error = None; row.computed_at = datetime.utcnow()
     for r, _ in loaded:
         q = out["quality"].get(str(r.player_id))
@@ -163,10 +163,24 @@ async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSS
 
 
 async def set_manual_periods(db: AsyncSession, match: Match, overrides: list, user_id=None, confirm=True,
-                             tag_shift_ms: Optional[int] = None) -> MatchGPSSync:
+                             tag_shift_ms: Optional[int] = None, pins: Optional[dict] = None) -> MatchGPSSync:
     row = await db.get(MatchGPSSync, match.id)
     if row is None or not row.periods:
         raise ValueError("run the automatic sync first")
+    if pins:
+        # replay ball pins: {carry id: video ms the carry really starts, or None to remove}. Display only.
+        tl = dict(row.tag_lag or {})
+        cur = dict(tl.get("_pins") or {})
+        for cid, v in pins.items():
+            if v is None:
+                cur.pop(str(cid), None)
+            else:
+                cur[str(cid)] = int(v)
+        if cur:
+            tl["_pins"] = cur
+        else:
+            tl.pop("_pins", None)
+        row.tag_lag = tl
     if tag_shift_ms is not None:
         from app.services.gps_analysis.lag import MAX_SHIFT_MS
         v = int(max(-MAX_SHIFT_MS, min(MAX_SHIFT_MS, tag_shift_ms)))

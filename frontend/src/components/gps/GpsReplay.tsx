@@ -108,7 +108,23 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const [tagShift, setTagShift] = useState<number>(savedTagShift)
   useEffect(() => { setTagShift(savedTagShift) }, [savedTagShift])
   const halfNow = halfAt(ctx.periods, now)
-  const posMs = now - (dotShift[halfNow] ?? 0)   // the video time whose positions are drawn now
+
+  // Each carry's real start, lined up from our players' GPS by the analysis (the tap delay varies a lot carry to
+  // carry, so one fixed delay left the ball behind). Until it arrives, or where a carry does not match, the fixed delay.
+  const alignQ = useQuery({ queryKey: ['gps-carry-times', matchId], queryFn: () => gpsAnalysisApi.carryTimes(matchId), retry: false, staleTime: 10 * 60 * 1000 })
+  // The synced GPS clock runs late by the usual tap delay (the sync is fitted to the taps): 1-6 s on our matches. The
+  // pitch is drawn that far ahead of the video, per period, measured from the throw-in burst and the taps
+  // (backend frame.replay_times). `pitchMs` is the synced-clock time drawn now; everything on the pitch uses it.
+  const leadAt = useCallback((videoMs: number) => (alignQ.data?.replay?.lead_ms ?? {})[String(halfAt(ctx.periods, videoMs))] ?? 0, [alignQ.data, ctx.periods])
+  const lead = leadAt(now)
+  const pitchMs = now + lead
+  const posMs = pitchMs - (dotShift[halfNow] ?? 0)   // the synced-clock time whose positions are drawn now
+
+  // "Who just got the ball?" pins: carry id -> the video time it really starts. Saved at once; display only.
+  const savedPins = ctx.sync?.tag_lag?._pins
+  const [pins, setPins] = useState<Record<string, number>>(savedPins ?? {})
+  useEffect(() => { setPins(savedPins ?? {}) }, [savedPins])
+  const [pinState, setPinState] = useState<{ kind: 'idle' | 'saving' | 'saved' | 'error'; text: string } | null>(null)
 
   // Fetch the window under the playhead and the next one
   const winIdx = Math.floor(posMs / WINDOW_MS)
@@ -128,14 +144,13 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
 
   const lag = useMemo(() => makeLag(ctx.sync?.tag_lag, tagShift), [ctx.sync, tagShift])
 
-  // Each carry's real start, lined up from our players' GPS by the analysis (the tap delay varies a lot carry to
-  // carry, so one fixed delay left the ball behind). Until it arrives, or where a carry does not match, the fixed delay.
-  const alignQ = useQuery({ queryKey: ['gps-carry-times', matchId], queryFn: () => gpsAnalysisApi.carryTimes(matchId), retry: false, staleTime: 10 * 60 * 1000 })
   const aligned = useMemo(() => {
     const d = alignQ.data
     const cs = ctx.carries.filter(c => c.team === 'own' || c.team === 'opponent')
     if (!d?.carries || d.carries.length !== cs.length || d.carries.some((a, i) => a.video_ms !== cs[i].video_ms)) return null
-    // the analysis includes the tag shift saved with the sync; the slider's current value replaces it
+    // replay timing when the server has it (no tag shift in it); else the analysis starts, which include the saved
+    // tag shift (the slider's current value replaces it)
+    if (d.carries.every(a => a.replay_start_ms != null)) return d.carries.map(a => a.replay_start_ms as number)
     return d.carries.map(a => a.start_ms - (d.saved_shift_ms || 0))
   }, [alignQ.data, ctx.carries])
 
@@ -144,7 +159,12 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const ownCarries = useMemo(() => {
     const cs = ctx.carries.filter(c => c.team === 'own' || c.team === 'opponent')
     const scoring = ctx.events.filter(e => /POINT_SCORED|GOAL_SCORED|WIDE/.test(e.event_type))
-    const startOf = (i: number) => aligned ? aligned[i] + tagShift : cs[i].video_ms - lag('PASS_HAND')
+    // pinned carries start where the user put them (video time + that period's lead); the others keep their order
+    const pinned = cs.map(c => pins[c.id] != null)
+    const st = cs.map((c, i) => pinned[i] ? pins[c.id] + leadAt(pins[c.id]) : aligned ? aligned[i] + tagShift : c.video_ms - lag('PASS_HAND'))
+    for (let i = 1; i < st.length; i++) if (!pinned[i] && st[i] < st[i - 1] + 200) st[i] = st[i - 1] + 200
+    for (let i = st.length - 2; i >= 0; i--) if (!pinned[i] && st[i] > st[i + 1] - 200) st[i] = st[i + 1] - 200
+    const startOf = (i: number) => st[i]
     return cs.map((c, i) => {
       const start = startOf(i)
       let endRaw = c.end_video_ms
@@ -156,10 +176,10 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
       }
       const nextStart = cs[i + 1] ? startOf(i + 1) : Infinity
       const shot = endType !== 'PASS_HAND' && endType !== 'TURNOVER_LOST'
-      const end = endRaw != null ? (aligned && !shot ? endRaw - (c.video_ms - start) : endRaw - lag(endType)) : null
-      return { ...c, video_ms: start, end_video_ms: end != null ? Math.max(start + 300, end) : null, next_ms: nextStart }
+      const end = endRaw != null ? ((aligned || pinned[i]) && !shot ? endRaw - (c.video_ms - start) : endRaw - lag(endType)) : null
+      return { ...c, video_ms: start, end_video_ms: end != null ? Math.max(start + 300, end) : null, next_ms: nextStart, pinned: pinned[i] }
     })
-  }, [ctx.carries, ctx.events, lag, aligned, tagShift])
+  }, [ctx.carries, ctx.events, lag, aligned, tagShift, pins, leadAt])
 
   /** raw 0-100 -> svg-ready metres in the chosen frame */
   const toM = useCallback((x: number, y: number, h: number) => {
@@ -170,34 +190,68 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const onPitchNow = useCallback((pid: string) => {
     const iv = ctx.on_pitch[pid]
     if (!iv) return false
-    return iv.some(([a, b]) => now >= a && now < b)
-  }, [ctx.on_pitch, now])
+    return iv.some(([a, b]) => pitchMs >= a && pitchMs < b)
+  }, [ctx.on_pitch, pitchMs])
 
   // current carrier
   const carry = useMemo(() => {
-    const k = lastIndexAtOrBefore(ownCarries, now)
+    const k = lastIndexAtOrBefore(ownCarries, pitchMs)
     if (k < 0) return null
     const c = ownCarries[k]
     const nxt = c.next_ms
     const end = Math.min(nxt, c.video_ms + 20000, c.ended_by === 'score' || c.ended_by === 'wide' ? (c.end_video_ms ?? c.video_ms + 4000) + 1500 : Infinity)
-    return now < end ? { ...c, end } : null
-  }, [ownCarries, now])
+    return pitchMs < end ? { ...c, end } : null
+  }, [ownCarries, pitchMs])
 
   const name = (pid: string | null | undefined) => (pid && ctx.players[pid]?.name) || 'Unknown'
   // "Edit sync" feedback for the ball-and-tags slider: who has the ball now, or how far away the next tagged carry is
   // (paused between carries, moving the slider changes nothing on the pitch, which read as "it does nothing")
   const nextCarry = useMemo(() => {
-    const k = lastIndexAtOrBefore(ownCarries, now)
+    const k = lastIndexAtOrBefore(ownCarries, pitchMs)
     return ownCarries[k + 1] ?? null
-  }, [ownCarries, now])
+  }, [ownCarries, pitchMs])
+  const who = (c: { team: string; player_id: string | null; opposition_player?: string | null }) =>
+    c.team === 'own' ? name(c.player_id) : (c.opposition_player || `${ctx.opponent || 'Opposition'} player`)
   const tagNote = useMemo(() => {
     if (!editOpen) return null
-    const who = (c: typeof ownCarries[number]) => c.team === 'own' ? `${name(c.player_id)} (${team})` : `${c.opposition_player || ctx.opponent || 'Opposition'} (${ctx.opponent || 'opposition'})`
-    if (carry) return `Ball now: ${who(carry)}. Drag to move when the ball reaches him.`
-    if (nextCarry) return `No tagged carry at this moment. Next: ${who(nextCarry)} in ${((nextCarry.video_ms - now) / 1000).toFixed(1)} s.`
+    if (carry) return `Ball on the pitch now: ${who(carry)}${carry.team === 'opponent' ? ` (${ctx.opponent || 'opposition'})` : ''}.`
+    if (nextCarry) return `No tagged carry at this moment. Next: ${who(nextCarry)} in ${((nextCarry.video_ms - pitchMs) / 1000).toFixed(1)} s.`
     return 'No tagged carry near this moment.'
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editOpen, carry, nextCarry, now, team, ctx.opponent])
+  }, [editOpen, carry, nextCarry, pitchMs, team, ctx.opponent])
+
+  // "Who just got the ball?": the tagged carries either side of this moment, in tag order
+  const ballChoices = useMemo(() => {
+    if (!editOpen) return []
+    const k = lastIndexAtOrBefore(ownCarries, pitchMs)
+    const out: { id: string; label: string; ours: boolean; pinned: boolean }[] = []
+    for (let i = Math.max(0, k - 1); i <= Math.min(ownCarries.length - 1, k + 2); i++) {
+      const c = ownCarries[i]
+      out.push({ id: c.id, label: who(c), ours: c.team === 'own', pinned: !!c.pinned })
+    }
+    return out
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOpen, ownCarries, pitchMs])
+
+  const savePins = async (change: Record<string, number | null>, doing: string, done: string) => {
+    setPinState({ kind: 'saving', text: doing })
+    try {
+      await api.matchGpsTimeseries.overrideSync(matchId, [], false, undefined, change)
+      setPins(p => { const n = { ...p }; for (const [k, v] of Object.entries(change)) { if (v == null) delete n[k]; else n[k] = v } return n })
+      setPinState({ kind: 'saved', text: done })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setPinState({ kind: 'error', text: /403|forbidden|permission/i.test(msg) ? 'Only a club admin can save this.' : `Could not save: ${msg}` })
+    }
+  }
+  const pinCarry = (id: string, label: string) => {
+    player.current?.pause()
+    const at = Math.round(now)
+    savePins({ [id]: at }, `Saving: ${label} gets the ball at ${periodClock(at, ctx.periods)}…`,
+      `Saved. ${label} gets the ball at ${periodClock(at, ctx.periods)}; the carries either side keep their order.`)
+  }
+  const unpinCarry = (id: string, label: string) =>
+    savePins({ [id]: null }, `Removing your fix for ${label}…`, `Removed. ${label}'s carry is timed automatically again.`)
 
   // a kickout being taken now: nobody may be inside the arc at the kicking end (display only, see gpsKickoutArc)
   const kickout = useMemo(() => {
@@ -206,22 +260,22 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
       const e = evs[i]
       if (!e.event_type.includes('KICKOUT')) continue
       const t = e.video_ms
-      if (now < t - 15000 || now > t + 1500) continue
+      if (pitchMs < t - 15000 || pitchMs > t + 1500) continue
       // players line up after the play that stopped the ball: start no earlier than just after it
       let prev = t - 12000
       for (let k = i - 1; k >= 0; k--) {
         if (evs[k].video_ms < t - 60000) break
         if (!evs[k].event_type.includes('KICKOUT') && evs[k].event_type !== 'PASS_HAND' && evs[k].video_ms < t) { prev = Math.max(prev, evs[k].video_ms + 1500); break }
       }
-      if (now < prev) continue
-      const weight = now < prev + 800 ? (now - prev) / 800 : now <= t + 500 ? 1 : Math.max(0, 1 - (now - t - 500) / 1000)
+      if (pitchMs < prev) continue
+      const weight = pitchMs < prev + 800 ? (pitchMs - prev) / 800 : pitchMs <= t + 500 ? 1 : Math.max(0, 1 - (pitchMs - t - 500) / 1000)
       const ownKick = e.event_type.startsWith('OWN_')
       const h = e.half ?? half
       const right = raw ? (ownKick ? !ownAttacksRight(arfh, h) : ownAttacksRight(arfh, h)) : !ownKick
       return { weight, right }
     }
     return null
-  }, [ctx.events, now, raw, arfh, half])
+  }, [ctx.events, pitchMs, raw, arfh, half])
 
   // dots
   const dots = useMemo(() => {
@@ -262,13 +316,13 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     const a = toM(carry.start_x, carry.start_y, h)
     const b = carry.end_x != null && carry.end_y != null ? toM(carry.end_x, carry.end_y, h) : a
     const span = Math.max(1, (carry.end_video_ms ?? carry.end) - carry.video_ms)
-    const w = Math.min(1, Math.max(0, (now - carry.video_ms) / span))
+    const w = Math.min(1, Math.max(0, (pitchMs - carry.video_ms) / span))
     return { x: a.x + (b.x - a.x) * w, y: a.y + (b.y - a.y) * w }
-  }, [carry, toM, now, half])
+  }, [carry, toM, pitchMs, half])
 
   const recentEvents = useMemo(() => ctx.events
     .map(e => ({ ...e, video_ms: e.video_ms - lag(e.event_type) }))
-    .filter(e => e.video_ms <= now + 300 && e.video_ms > now - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, now, lag])
+    .filter(e => e.video_ms <= pitchMs + 300 && e.video_ms > pitchMs - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, pitchMs, lag])
 
   const jumpList = useMemo(() => ctx.events.filter(e => /KICKOUT|POINT_SCORED|GOAL_SCORED|TURNOVER|WIDE/.test(e.event_type)), [ctx.events])
   const jersey = (pid: string) => ctx.players[pid]?.jersey
@@ -314,7 +368,9 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
         </div>
         {editOpen && (
           <GpsSyncEditor matchId={matchId} ctx={ctx} half={halfNow} dotShifts={dotShift} tagShift={tagShift} savedTagShift={savedTagShift}
-            tagNote={tagNote} onJumpToTag={nextCarry ? () => { player.current?.pause(); seek(Math.max(0, nextCarry.video_ms - 2000)) } : undefined}
+            tagNote={tagNote} onJumpToTag={nextCarry ? () => { player.current?.pause(); seek(Math.max(0, nextCarry.video_ms - lead - 3000)) } : undefined}
+            leadMs={lead} leadFrom={alignQ.data?.replay?.lead_from?.[String(halfNow)]} timingLoading={alignQ.isLoading}
+            ballChoices={ballChoices} pinState={pinState} onPin={pinCarry} onUnpin={unpinCarry} pinCount={Object.keys(pins).length}
             onDotShift={v => setDotShift(d => ({ ...d, [halfNow]: v }))} onTagShift={setTagShift}
             onReset={() => { setDotShift({}); setTagShift(savedTagShift) }}
             onSaved={() => { setDotShift({}); setWindows({}); queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('gps') }) }}
@@ -355,11 +411,11 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                     return <circle key={d.pid} cx={sc.x(d.x)} cy={sc.y(d.y)} r={isCarrier ? 60 : 44} fill={isCarrier ? '#ffffff' : COLOR_OURS} opacity={isCarrier ? 0.55 : 0.5} />
                   })}
                   {theirBall && <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={36} fill={COLOR_THEIRS} opacity={0.7} />}
-                  {recentEvents.map(e => { const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half); return <circle key={e.id} cx={sc.x(p.x)} cy={sc.y(p.y)} r={26} fill={e.team === 'team_a' ? COLOR_OURS : COLOR_THEIRS} opacity={0.45 * Math.max(0, 1 - Math.max(0, (now - e.video_ms) / 3000))} /> })}
+                  {recentEvents.map(e => { const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half); return <circle key={e.id} cx={sc.x(p.x)} cy={sc.y(p.y)} r={26} fill={e.team === 'team_a' ? COLOR_OURS : COLOR_THEIRS} opacity={0.45 * Math.max(0, 1 - Math.max(0, (pitchMs - e.video_ms) / 3000))} /> })}
                 </g>
                 {recentEvents.map(e => {
                   const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half)
-                  const age = (now - e.video_ms) / 3000
+                  const age = (pitchMs - e.video_ms) / 3000
                   const ours = e.team === 'team_a'
                   return (
                     <g key={e.id} opacity={Math.max(0.25, 1 - Math.max(0, age))}>

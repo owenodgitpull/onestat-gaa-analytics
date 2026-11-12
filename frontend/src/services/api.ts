@@ -2925,8 +2925,9 @@ const matchGpsTimeseriesAPI = {
 
   /** Manual nudge of a period's offset; marks the sync confirmed. */
   /** tagShiftMs: the replay's "Edit sync" tag shift (+ = tags drawn later); omit to leave it as is, 0 clears it */
-  overrideSync: (matchId: string, periods: { half: number; offset_ms: number; rate?: number }[], confirm = true, tagShiftMs?: number): Promise<GpsSyncSummary> =>
-    fetchAPI(`/matches/${matchId}/gps/timeseries/sync`, { method: 'PATCH', body: JSON.stringify({ periods, confirm, ...(tagShiftMs != null ? { tag_shift_ms: tagShiftMs } : {}) }) }),
+  overrideSync: (matchId: string, periods: { half: number; offset_ms: number; rate?: number }[], confirm = true, tagShiftMs?: number,
+    pins?: Record<string, number | null>): Promise<GpsSyncSummary> =>
+    fetchAPI(`/matches/${matchId}/gps/timeseries/sync`, { method: 'PATCH', body: JSON.stringify({ periods, confirm, ...(tagShiftMs != null ? { tag_shift_ms: tagShiftMs } : {}), ...(pins ? { pins } : {}) }) }),
 
   getSummary: (matchId: string): Promise<GpsTimeseriesSummary> => fetchAPI(`/matches/${matchId}/gps/timeseries`),
 

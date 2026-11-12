@@ -174,6 +174,126 @@ def align_carry_starts(inp: MatchInputs, t: np.ndarray, pids, X: np.ndarray, Y: 
             "total": sum(1 for c in cs if c.team == "own"), "carries": len(cs)}
 
 
+# ---- Replay timing (display only: the analysis keeps the clock above, see docs/gps-replay-timing.md)
+# The automatic sync fits each period's GPS offset to the tap times, so the GPS clock carries the usual tap delay: on
+# the five 2026 matches the dots ran 1-6 s behind the video (median ~3 s), measured two ways that agree within ~1 s:
+#  - the throw-in: the team's speed burst comes that long after the period's throw-in mark;
+#  - the taps: nobody taps before seeing the play, yet 30-60% of carries "start" after the tap on the synced clock;
+#    the 10th percentile of that early side is the lateness.
+# The analysis pairs tags with GPS on that same clock, so it stays right on average and is left alone. The replay draws
+# the pitch `lead_ms` ahead of the video to line both up with the footage.
+REPLAY_TAU_MIN_MS, REPLAY_TAU_MAX_MS = -8000, 15000   # tap minus GPS moment, searched for the lead estimate
+REPLAY_MATCH_BEFORE_MS = 12000                        # a carry may start up to 12 s before the tap (on the video)
+REPLAY_EARLY_TAP_MS = 1000                            # ... or 1 s after it (a paused, early tap)
+LEAD_MIN_MS, LEAD_MAX_MS = -5000, 10000
+
+
+def _nearest_tau(t, X, Y, i, sx, sy, tap, lo_ms, hi_ms, step_ms):
+    """tau (ms, tap minus moment) when player row i is nearest (sx, sy), searched over tau in [lo, hi]; with the
+    distance and the best distance more than 3 s away from it (ambiguity)."""
+    taus = np.arange(lo_ms, hi_ms + 1, step_ms)
+    want = tap - taus
+    idx = np.clip(np.searchsorted(t, want), 0, len(t) - 1)
+    d = np.hypot(X[i, idx] - sx, Y[i, idx] - sy)
+    d[np.abs(t[idx] - want) > step_ms * 2] = np.nan       # outside a period
+    if np.all(np.isnan(d)):
+        return None
+    j = int(np.nanargmin(d))
+    far = (np.abs(taus - taus[j]) > 3000) & ~np.isnan(d)
+    d2 = float(np.nanmin(d[far])) if far.any() else float("inf")
+    return float(taus[j]), float(d[j]), d2
+
+
+def _throw_in_lateness_ms(t, S, on, start_ms) -> Optional[float]:
+    """How long after the throw-in mark the team's speed bursts, on the synced clock. None when the players were
+    already moving at the mark (no clean burst)."""
+    i0 = int(np.searchsorted(t, start_ms))
+    if i0 >= len(t):
+        return None
+    hz = 1000.0 / max(1.0, float(np.median(np.diff(t[i0:i0 + 20])))) if i0 + 2 < len(t) else 10.0
+    seg = slice(i0, min(len(t), i0 + int(25 * hz)))
+    with np.errstate(all="ignore"):
+        sp = np.nanmean(np.where(on[:, seg], S[:, seg], np.nan), axis=0)
+    if len(sp) < 3 * hz:
+        return None
+    base = float(np.nanmedian(sp[: max(2, int(hz))]))
+    if not np.isfinite(base) or base > 1.5:
+        return None
+    hold = max(1, int(hz))
+    for j in range(len(sp) - hold):
+        if np.all(sp[j:j + hold] > base + 1.2):
+            return float(t[i0 + j] - start_ms)
+    return None
+
+
+def replay_times(inp: MatchInputs, t, half_arr, pids, X, Y, S, on, bounds) -> dict:
+    """Display timing for the replay: per period how far to draw the pitch ahead of the video (`lead_ms`), and each
+    own/opposition carry's start on the synced clock (`starts`), matched from the carrier's GPS with a window that
+    allows for the lead, else the tap less the usual delay. Read-only; the user's tag shift is NOT included."""
+    cs = [c for c in inp.carries if c.team in ("own", "opponent")]
+    row = {p: i for i, p in enumerate(pids)}
+    L, W, arfh = inp.pitch_length_m, inp.pitch_width_m, inp.attacking_right_first_half
+    step = float(np.median(np.diff(t))) if len(t) > 1 else 100.0
+    spots = [frame_point(c.start_x, c.start_y, c.half, arfh, L, W) for c in cs]
+    # 1. clean own matches over a wide window: the floor of tau per period
+    clean: Dict[int, list] = {}
+    if len(t):
+        for c, (sx, sy) in zip(cs, spots):
+            if c.team != "own" or c.player_id not in row or sx is None:
+                continue
+            r = _nearest_tau(t, X, Y, row[c.player_id], sx, sy, c.video_ms, REPLAY_TAU_MIN_MS, REPLAY_TAU_MAX_MS, step)
+            if r and r[1] < 6.0 and r[2] - r[1] > 4.0:
+                clean.setdefault(int(half_at(bounds, c.video_ms) or 1), []).append(r[0])
+    lead, how_lead = {}, {}
+    for h, start, _ in bounds:
+        burst = _throw_in_lateness_ms(t, S, on, start) if len(t) else None
+        v = clean.get(h, [])
+        floor = -float(np.percentile(v, 10)) if len(v) >= 20 else None
+        if burst is not None and floor is not None:
+            if abs(burst - floor) <= 2000:
+                est, src = (burst + floor) / 2, "throw-in and taps"
+            elif len(v) >= 30:
+                est, src = floor, "taps"
+            else:
+                est, src = burst, "throw-in"
+        elif floor is not None:
+            est, src = floor, "taps"
+        elif burst is not None:
+            est, src = burst, "throw-in"
+        else:
+            est, src = None, None
+        if est is not None:
+            lead[h] = int(round(min(LEAD_MAX_MS, max(LEAD_MIN_MS, est)) / 100.0) * 100)
+            how_lead[h] = src
+    known = list(lead.values())
+    for h, _, _ in bounds:                     # a period with no estimate borrows the match's median
+        if h not in lead:
+            lead[h] = int(np.median(known)) if known else 0
+            how_lead[h] = "other periods" if known else "none"
+    # 2. each own carry: nearest approach between 12 s before and 1 s after the tap ON THE VIDEO (lead added)
+    found: List[Optional[float]] = [None] * len(cs)
+    for k, (c, (sx, sy)) in enumerate(zip(cs, spots)):
+        if c.team != "own" or c.player_id not in row or sx is None or not len(t):
+            continue
+        D = lead.get(int(half_at(bounds, c.video_ms) or 1), 0)
+        r = _nearest_tau(t, X, Y, row[c.player_id], sx, sy, c.video_ms, -(D + REPLAY_EARLY_TAP_MS), REPLAY_MATCH_BEFORE_MS - D, step)
+        if r and r[1] <= CARRY_MATCH_RADIUS_M:
+            found[k] = c.video_ms - r[0]
+    # the tap delay on the video, median of the matched ones; the others start that long before the tap
+    delays = [c.video_ms - f + lead.get(int(half_at(bounds, c.video_ms) or 1), 0) for c, f in zip(cs, found) if f is not None]
+    med = float(np.median(delays)) if len(delays) >= 5 else float(CARRY_DEFAULT_DELAY_MS)
+    med = min(8000.0, max(0.0, med))
+    starts, how, prev = [], [], -1e18
+    for c, f in zip(cs, found):
+        D = lead.get(int(half_at(bounds, c.video_ms) or 1), 0)
+        s = f if f is not None else c.video_ms - med + D
+        s = max(s, prev + 200)
+        starts.append(int(s)); how.append("gps" if f is not None else "median"); prev = s
+    return {"lead_ms": {str(h): v for h, v in lead.items()}, "lead_from": {str(h): v for h, v in how_lead.items()},
+            "starts": starts, "how": how, "median_delay_ms": int(med), "matched": len(delays),
+            "total": sum(1 for c in cs if c.team == "own")}
+
+
 def possession_series(inp: MatchInputs, t: np.ndarray, bounds, with_set_pieces: bool = False, starts=None):
     """+1 we have the ball / -1 they have it / 0 dead or unknown, per sample. With with_set_pieces, also a bool mask of
     the set-piece samples (a stoppage until the next carry)."""

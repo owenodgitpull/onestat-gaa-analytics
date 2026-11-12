@@ -135,7 +135,7 @@ async def override_sync(match_id: UUID, body: SyncOverride, user: AuthenticatedU
     """Manual per-period offset (the sync-check screen's nudge). Marks the sync confirmed."""
     match = await _verify_match_club(db, match_id, user)
     try:
-        await service.set_manual_periods(db, match, [p.model_dump() for p in body.periods], getattr(user, "user_id", None), body.confirm, body.tag_shift_ms)
+        await service.set_manual_periods(db, match, [p.model_dump() for p in body.periods], getattr(user, "user_id", None), body.confirm, body.tag_shift_ms, body.pins)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     await db.commit()
