@@ -174,7 +174,7 @@ def align_carry_starts(inp: MatchInputs, t: np.ndarray, pids, X: np.ndarray, Y: 
             "total": sum(1 for c in cs if c.team == "own"), "carries": len(cs)}
 
 
-# ---- Replay timing (display only: the analysis keeps the clock above, see docs/gps-replay-timing.md)
+# ---- Replay timing (display only: the analysis keeps the clock above)
 # The automatic sync fits each period's GPS offset to the tap times, so the GPS clock carries the usual tap delay: on
 # the five 2026 matches the dots ran 1-6 s behind the video (median ~3 s), measured two ways that agree within ~1 s:
 #  - the throw-in: the team's speed burst comes that long after the period's throw-in mark;
