@@ -332,10 +332,13 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   useEffect(() => { if (!active) player.current?.pause() }, [active])
 
   // jumps requested from other tabs (the first one may arrive before the video has loaded: initialTimeMs covers that)
+  // the tabs' moments are on the synced GPS clock, which runs `lead` behind the video: land on the moment in the footage
   useEffect(() => {
     if (!seekRequest) return
-    player.current?.seekTo(seekRequest.ms)
-    setNow(seekRequest.ms)
+    const ms = Math.max(0, seekRequest.ms - leadAt(seekRequest.ms))
+    player.current?.seekTo(ms)
+    setNow(ms)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seekRequest])
 
   const s = ctx.session
