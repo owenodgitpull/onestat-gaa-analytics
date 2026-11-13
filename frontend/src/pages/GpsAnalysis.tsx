@@ -103,6 +103,9 @@ export default function GpsAnalysis() {
           <div className={tab === 'replay' ? '' : 'hidden'}>
             <GpsReplay matchId={matchId} ctx={ctx} initialMs={initialT} seekRequest={seekRequest} team={team} onTimeChange={onTime} active={tab === 'replay'} />
           </div>
+          {/* Only the replay (pitch beside the video) runs full width; every other tab keeps a readable width so a
+              pitch fits on screen without scrolling */}
+          {tab !== 'replay' && <div className="max-w-6xl mx-auto space-y-4">
           {tab === 'sync' && <GpsSyncCheck matchId={matchId} ctx={ctx} canEdit={canEdit} onOpenReplay={openReplay} />}
           {needsAnalysis && (aQ.isLoading ? <Loading text="Working out the GPS numbers for this match (a few seconds the first time)…" /> : aQ.isError ? <Failed e={aQ.error} /> : aQ.data && (
             <>
@@ -119,6 +122,7 @@ export default function GpsAnalysis() {
             </>
           ))}
           {needsAnalysis && aQ.isFetching && !aQ.isLoading && <p className="flex items-center gap-2 text-xs text-white/50"><Loader2 size={12} className="animate-spin" /> Updating…</p>}
+          </div>}
         </>
       )}
     </div>
