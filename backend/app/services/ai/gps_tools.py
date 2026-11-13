@@ -123,8 +123,13 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
     if section == "kickouts":
         ko = res["kickouts"]
         rows = [{k: v for k, v in r.items() if k not in ("at_kick", "after_6s", "moved")} for r in ko["kickouts"]]
-        return {"groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
-                "how_to_read": "team_mean_x = mean distance of our outfielders from our own goal line at the kick (higher = pushed up)."}
+        return {"totals": ko.get("totals"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
+                "how_to_read": "totals = kickouts with a GPS frame per side (own = ours, opp = theirs), won/lost from OUR side, over_the_sideline "
+                               "included (our kick straight out = lost, theirs = won); quote these, never add groups up. team_mean_x = mean distance "
+                               "of our outfielders from our own goal line at the kick (higher = pushed up). ours_within_10m_of_landing = our "
+                               "outfielders within 10 m of the TAGGED landing spot at the tag (the spot is a few metres out, so a count, never a "
+                               "distance); won_near_landing / lost_near_landing give its mean for kept v lost with how many landed. A group "
+                               "under 5 kickouts is described, never compared."}
     if section == "intensity":
         it = res["intensity"]
         return {"thresholds": it["thresholds"], "by_half": it["by_half"],
@@ -132,11 +137,18 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
                 "blocks": it["blocks"]}
     if section == "tag_health":
         th = res["tag_health"]
-        return {**{k: th[k] for k in ("checked", "n_flagged", "untracked_player")}, "flagged": th["flagged"][:limit]}
+        return {**{k: th[k] for k in ("checked", "n_flagged", "untracked_player")},
+                "flagged": [{k: v for k, v in f.items() if k not in ("severity", "id", "player_id")} for f in th["flagged"][:limit]],
+                "how_to_read": "Probable mis-tags: the tagged spot disagrees with the named player's own GPS (wrong player or a late tap). "
+                               "same_moment_events = his other tagged events within 3 s of it (the same tap: they share the doubt); "
+                               "when = the match clock of the nearest tagged event."}
     if section == "support":
         sp = res["support"]
         return {**{k: v for k, v in sp.items() if k != "further_option_passes"}, "further_option_passes": sp["further_option_passes"][:limit],
-                "how_to_read": "within_15m = team-mates within 15 m of the passer at the pass. further_option = a team-mate within 25 m of the "
+                "how_to_read": "within_15m = team-mates within 15 m of the passer at the pass. players[].isolated = his passes with nobody "
+                               "of ours within 15 m, isolated_pct = that as a share of his passes checked (compare with the team's "
+                               "isolated_share_pct; under 15 passes checked, describe only). passes = passes the GPS could check, fewer than his "
+                               "tagged passes. further_option = a team-mate within 25 m of the "
                                "passer was at least 15 m further forward than the receiver (we cannot see whether he was marked)."}
     if section == "marking":
         mk = res["marking"]
@@ -164,12 +176,30 @@ async def get_gps_match_analysis(db, match_id: str, sections=None, limit: int = 
     return safe_json(out)
 
 
-async def get_gps_season_trends(db, club_id=None) -> str:
+BASELINE_FIELDS = ("compactness_out_m", "compactness_in_m", "length_out_m", "median_recovery_s", "median_forward_runners",
+                   "hsr_per_player_min", "m_per_player_min", "push_up_mean_x_m", "support_within_15m", "their_receptions_within_5m_pct")
+
+
+def _baseline(rows: list, exclude_match_id) -> dict:
+    """The mean of each figure over the OTHER GPS matches, with its N, so the agent copies a baseline instead of working one out."""
+    others = [r for r in rows if str(r.get("match_id")) != str(exclude_match_id)]
+    out = {"n_matches": len(others), "matches": [f"{r['opponent']} ({r['match_date']})" for r in others]}
+    for f in BASELINE_FIELDS:
+        v = [r[f] for r in others if r.get(f) is not None]
+        out[f] = {"mean": round(sum(v) / len(v), 1), "n": len(v)} if v else None
+    return out
+
+
+async def get_gps_season_trends(db, club_id=None, exclude_match_id=None) -> str:
     se = await gps.season(db, club_id)
-    return safe_json({"frame_note": FRAME_NOTE, "matches": se["matches"], "load_alerts": se["load_alerts"][:30], "note": se["note"],
+    extra = {"baseline_other_matches": _baseline(se["matches"], exclude_match_id)} if exclude_match_id else {}
+    return safe_json({"frame_note": FRAME_NOTE, "matches": se["matches"], **extra, "load_alerts": se["load_alerts"][:30], "note": se["note"],
                       "how_to_read": "compactness_out_m = mean distance of our outfielders from their centre while the opposition had the ball "
                                      "(lower = tighter). hsr = running above 5.5 m/s. load_alerts compare a player's high-speed metres per "
-                                     "minute in one match with his own average in the other GPS matches (+-25% or more)."})
+                                     "minute in one match with his own average in the other GPS matches (+-25% or more). "
+                                     "baseline_other_matches (only with exclude_match_id) = the mean over our OTHER GPS matches, n = how many "
+                                     "had that figure: write 'over our other N GPS matches' with that n. Running figures are already per "
+                                     "player-minute, so matches of different length compare fairly."})
 
 
 TOOL_DEFS = [
@@ -213,6 +243,8 @@ TOOL_DEFS = [
             "support at passes, distance of the nearest defender to their shots; plus running-load alerts per player (high-speed "
             "metres per minute vs his own average). Use for cross-match questions and wins-vs-losses comparisons."
         ),
-        "input_schema": {"type": "object", "properties": {}, "required": []},
+        "input_schema": {"type": "object", "properties": {
+            "exclude_match_id": {"type": "string", "description": "The match being analysed: adds baseline_other_matches, the mean of each figure over our other GPS matches"}},
+            "required": []},
     },
 ]

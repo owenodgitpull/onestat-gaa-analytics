@@ -227,8 +227,9 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
 
 // outcome colours: won = our green (clean strong, break light), lost = their orange (clean strong, break light);
 // always shown with the outcome word, never colour alone
-const KO_OUTCOMES = ['won clean', 'won break', 'lost break', 'lost clean'] as const
-const KO_COLOR: Record<string, string> = { 'won clean': '#10b981', 'won break': '#6ee7b7', 'lost break': '#fdba74', 'lost clean': '#f97316' }
+// 'over the sideline' = the kick went straight out (lost for the kicking side); neutral grey, always with its word
+const KO_OUTCOMES = ['won clean', 'won break', 'lost break', 'lost clean', 'over the sideline'] as const
+const KO_COLOR: Record<string, string> = { 'won clean': '#10b981', 'won break': '#6ee7b7', 'lost break': '#fdba74', 'lost clean': '#f97316', 'over the sideline': '#94a3b8' }
 const surname = (n?: string | null) => (n || '').split(' ').slice(-1)[0]
 
 function KickoutPitch({ k, L, W }: { k: GpsKickout; L: number; W: number }) {
@@ -272,7 +273,7 @@ function KickoutPitch({ k, L, W }: { k: GpsKickout; L: number; W: number }) {
                 <circle cx={s.x(k.landing_x)} cy={s.y(k.landing_y)} r={34} fill="none" stroke={color} strokeWidth={8} />
                 <circle cx={s.x(k.landing_x)} cy={s.y(k.landing_y)} r={12} fill="#fff" />
                 <text x={s.x(k.landing_x)} y={s.y(k.landing_y) - 52} textAnchor="middle" fontSize={32} fontWeight={700} fill="#fff" stroke="rgba(5,10,20,0.9)" strokeWidth={8} paintOrder="stroke">
-                  Landed · {k.outcome}{k.player ? ` (${surname(k.player)})` : ''}
+                  {k.outcome === 'over the sideline' ? 'Went out here' : `Landed · ${k.outcome}${k.player ? ` (${surname(k.player)})` : ''}`}
                 </text>
               </g>
             )}
@@ -330,7 +331,7 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
       <div className="glass-card p-4 space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="text-white text-base font-semibold">{whose}: we won {nWon} of {all.length}{all.length ? ` (${Math.round((nWon / all.length) * 100)}%)` : ''}</div>
-          <div className="text-xs text-white/55">won = we had the ball after it, clean (caught) or off the break</div>
+          <div className="text-xs text-white/55">won = we had the ball after it, clean (caught) or off the break · over the sideline = straight out, lost by the kicking side</div>
         </div>
         {all.length > 0 && (
           <div className="flex h-7 rounded-md overflow-hidden gap-[2px]" role="img" aria-label={KO_OUTCOMES.map(o => `${o} ${counts[o]}`).join(', ')}>
@@ -369,6 +370,7 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
               {k.player && <div className="text-white/70">Won by {k.player}</div>}
               <div className="text-white/70">Team height {n1(k.team_mean_x, ' m')} from our goal · {k.players_in_their_half} of {k.players_tracked} in their half</div>
               <div className="text-white/70">{k.sprinting_after} sprinted in the next 6 s</div>
+              {k.ours_within_10m_of_landing != null && <div className="text-white/70">{k.ours_within_10m_of_landing} of ours within 10 m of where it landed</div>}
             </div>
             <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-[22rem] overflow-y-auto" role="listbox" aria-label="Kickouts">
               {list.map((x, i) => (
@@ -376,7 +378,7 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
                   className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs ${i === Math.min(sel, list.length - 1) ? 'bg-white/12 text-white' : 'text-white/75 hover:bg-white/5'}`}>
                   <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: KO_COLOR[x.outcome] }} aria-hidden="true" />
                   <span className="tabular-nums w-16 shrink-0">{periodClock(x.video_ms, periods)}</span>
-                  <span className="capitalize w-20 shrink-0">{x.outcome}</span>
+                  <span className="capitalize w-24 shrink-0 truncate">{x.outcome}</span>
                   <span className="truncate">{x.player ? surname(x.player) : ''}</span>
                   <span className="ml-auto tabular-nums text-white/50">{n0(x.team_mean_x, ' m')}</span>
                 </button>
@@ -386,11 +388,11 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
         </div>
       ) : <p className="text-sm text-white/55">No kickouts with that outcome.</p>}
 
-      <Section title="Our shape at the kick, by outcome" note="Team height = average distance of our tracked outfielders from our own goal line at the moment of the kick (higher = pushed up). Small groups (under 5) say little.">
-        <Table head={['Outcome', 'Kickouts', 'Team height', 'In their half']} align={['l', 'r', 'r', 'r']}
+      <Section title="Our shape at the kick, by outcome" note="Team height = average distance of our tracked outfielders from our own goal line at the moment of the kick (higher = pushed up). Near landing = our players within 10 m of the tagged landing spot (the spot is a few metres out). Small groups (under 5) say little.">
+        <Table head={['Outcome', 'Kickouts', 'Team height', 'In their half', 'Ours near landing']} align={['l', 'r', 'r', 'r', 'r']}
           rows={KO_OUTCOMES.map(o => groups.find(([key]) => key.split('|')[1] === o)).filter((g): g is [string, any] => !!g).map(([key, g]) => [
             <span key="o" className="flex items-center gap-2 capitalize"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: KO_COLOR[key.split('|')[1]] }} aria-hidden="true" />{key.split('|')[1]}</span>,
-            g.n, n1(g.team_mean_x, ' m'), n1(g.players_in_their_half)])} />
+            g.n, n1(g.team_mean_x, ' m'), n1(g.players_in_their_half), g.mean_ours_within_10m_of_landing != null ? n1(g.mean_ours_within_10m_of_landing) : '–'])} />
       </Section>
       {kind === 'opp' && (
         <Section title="Push-up on their kickouts, by half">

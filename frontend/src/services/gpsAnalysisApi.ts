@@ -52,7 +52,7 @@ export interface GpsTransitionWon {
 }
 export interface GpsKickout {
   video_ms: number; half: number | null; kind: 'own' | 'opp'; outcome: string; won: boolean; event_type: string; player: string | null
-  landing_x: number | null; landing_y: number | null; team_mean_x: number | null; players_in_their_half: number; players_tracked: number
+  landing_x: number | null; landing_y: number | null; ours_within_10m_of_landing?: number | null; team_mean_x: number | null; players_in_their_half: number; players_tracked: number
   sprinting_after: number; at_kick: GpsPos[]; after_6s: GpsPos[]
   moved: { player_id: string; name: string | null; dx: number | null; dy: number | null; dist: number | null; max_speed: number | null }[]
 }
@@ -86,7 +86,7 @@ export interface GpsMatchAnalysis {
     marking: { n_shots: number; median_nearest_m: number | null; median_nearest_m_scores: number | null; unpressured_share_pct: number | null }
   }
   transitions: { lost: GpsTransitionLost[]; won: GpsTransitionWon[]; summary: GpsMatchAnalysis['summary']['transitions'] }
-  kickouts: { kickouts: GpsKickout[]; groups: Record<string, { n: number; team_mean_x: number | null; players_in_their_half: number | null }>; push_up_on_their_kickouts: Record<string, { n: number; team_mean_x: number | null; players_in_their_half: number | null }> }
+  kickouts: { kickouts: GpsKickout[]; groups: Record<string, { n: number; team_mean_x: number | null; players_in_their_half: number | null; mean_ours_within_10m_of_landing?: number | null }>; push_up_on_their_kickouts: Record<string, { n: number; team_mean_x: number | null; players_in_their_half: number | null }> }
   intensity: { players: GpsIntensityPlayer[]; blocks: GpsBlock[]; by_half: Record<string, { team_distance_m: number; team_hsr_m: number }>; thresholds: { hsr_ms: number; sprint_ms: number; accel_ms2: number } }
   tag_health: { checked: number; flagged: GpsTagFlag[]; n_flagged: number; untracked_player: number }
   support: { n_passes: number; mean_within_15m: number | null; isolated_share_pct: number | null; further_option_share_pct: number | null; players: { player_id: string; name: string | null; passes: number; isolated: number; further_option: number; mean_within_15m: number | null }[]; further_option_passes: { video_ms: number; half: number | null; passer: string | null; receiver: string | null; within_15m: number; nearest_ahead_m: number | null; gain_m: number | null; further_option: string | null; further_option_ahead_m: number | null }[] }

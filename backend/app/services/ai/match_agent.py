@@ -202,7 +202,7 @@ What it can and cannot see (a manager will check one claim against the video; ge
   Translate into football language: "our six deepest averaged 27 m from goal without the ball", "McColgan held 16 m out
   in the first half and was 13 m further up in the second".
 
-How to write it - section "Off the Ball", after Phase Analysis, 4-6 short headed paragraphs, figures inside sentences:
+How to write it - section "Off the Ball", after Phase Analysis, 5-7 short headed paragraphs, figures inside sentences:
 - "Shape": with and without the ball, by half (compactness, length, width, deepest six, team height). Say what changed
   between halves. Game state (who was ahead) only from margin_by_ten_minutes / halves, quoted with the score - never assumed,
   and never the phrase "not a trend".
@@ -217,6 +217,30 @@ How to write it - section "Off the Ball", after Phase Analysis, 4-6 short headed
   closed down most. It is pressure at the moment of receiving only, and comparisons (half v half, zone v zone) are safer
   than the single figure.
 - "Support": support around our carrier and our_shots (team-mates near the shooter, players ahead of the ball). Keep it short.
+  Per passer, from support.players: name the one or two passers whose isolated_pct differs most from the team's
+  isolated_share_pct, with both counts ("X: 11 of his 36 passes checked had nobody of ours within 15 m, against 15.8% for the
+  team" - the shape only, take the figures from the tool). A passer with under 15 passes checked is not compared. "Passes checked" is fewer than his tagged passes:
+  never set the two side by side as one figure.
+- "Kickouts" (our own): from kickouts.totals.own - how many kept and lost (over_the_sideline is part of lost; say how many), the
+  team height (team_mean_x) per outcome group, and won_near_landing v lost_near_landing (our players within 10 m of where it
+  landed, kept v lost, with n_landed). If the team heights of the won and lost groups are within about 3 m of each other, say
+  plainly that our shape at the kick did not separate the ones we kept from the ones we lost. A group under 5 is described, never
+  compared. These totals include kicks over the sideline, so they match the phase table's kickouts.
+- BASELINE: get_gps_shape_trends_by_match baseline_other_matches gives the mean of each figure over our OTHER GPS matches. Use it
+  for the two or three figures where this match stood out: "N m without the ball, against M m over our other K GPS matches" (n_matches / the field's n, exactly). Running is per player-minute, so periods of different length compare. If
+  n_matches is 0, leave baselines out and say nothing about it - never write that no baseline was available.
+- EXTRA TIME (only when shape_by_half has periods 3 / 4): compare with and without the ball in each period from shape_by_half,
+  quoting compactness for both states. If the gap between with and without the ball changed between normal time and extra time,
+  say so with the figures and give the seconds each state covers (`seconds`); a state under 180 seconds in a period is described
+  as resting on little time, never as a trend. Cards, fewer players and tiredness are not recorded causes: state no cause.
+- MIS-TAGS: tag_health.flagged lists moments where the tagged player's own GPS was nowhere near the tagged spot. Never name a
+  player on such a moment or on one of its same_moment_events (the same tap): leave that moment out of player paragraphs,
+  ratings and training points. If it matters to the story, say "a moment tagged to X at <when> does not match his GPS", once.
+- ROLES AND CAUSES: never give a player a role or a reason the data does not record ("did the defensive running of a half-back",
+  "his role was to carry and then retreat"). Write where he was and what he did, with the figure. A sentence that says one
+  figure "fits" or "explains" another must compare two figures that measure the same thing over the same moments; a share of
+  one count is never set against a different count ("39 of our 90-odd ..." when the two come from different measures). If they
+  do not, write them as two separate facts or leave one out.
 Every figure copied from the tool. Advice from this section is the off-the-ball kind in your list of what advice may be (never print that label) and names the figure it follows from. If the tool
 returns an error (no GPS), leave the section out silently.
 """
@@ -621,7 +645,7 @@ INSTRUCTIONS:
     - Compare shooting by range with points_per_shot, not by score counts. If a long-range two-pointer is worth about as much per shot as a close-in point, say so and do NOT advise avoiding long shots.
     - When a figure moved and the data cannot say why (for example we won more of their kickouts after half-time: pressing, their kickout choice and game state are not recorded), say what is not in the data instead of offering a cause.
     - Do not use seconds between carriers as evidence of tempo. Tempo is median_seconds_to_shot (only where given) and the ball-path possession lengths. median_seconds_to_shot only counts possessions the clock timed within two minutes.
-    - If get_season_phase_profile returned data, add a short "Against our last N matches" line naming the two or three phases where this match differed most, with both figures. If it did not give anything usable, leave the line out - never write that a profile "was not used".
+    - If get_season_phase_profile returned data, add a short "Against our last N matches" line naming the two or three phases where this match differed most, with both figures. If it did not give anything usable, leave the line AND its heading out - never write that a profile "was not used" or that "no baseline was available to compare with".
     - MINUTES: second-half minutes begin at the half length, so 30'-34' exist in both halves. Write every second-half minute with its half ("2nd half 40'") and a first-half minute between 30' and 34' as "1st half 32'". Use the `when` text on a sequence (it is the SHOT's own minute and half, not when the possession began). Never place a player's action before the minute he came on.
     - SAVES: use saved_chances. A save from distance is often a routine catch - do not call it a chance. Every save from inside the 13m line (from_inside_the_13m) IS a goal chance: name each one in the match story or the key moments (who shot, when with the half, which goalkeeper saved it), say a goal was denied, and credit our goalkeeper for the ones he made. Never invent a save that is not in that list.
     - MISSED SHOTS: a wide, a short, a hit post and a save are different. The stats give wides, shorts, hit_posts and saved separately and missed_shots_total for all of them: whenever you quote them show the shorts and hit posts, never call a short a wide, and call the group "missed shots" (not "wides").
@@ -766,8 +790,9 @@ INSTRUCTIONS:
         tool_instruction = f"First, use get_match_summary and get_match_event_log tools with match_id '{match_id}' to retrieve all match data."
         if has_tracking:
             tool_instruction += (f" This match has GPS tracking of our players: also call get_match_gps_positional_analysis with match_id '{match_id}', "
-                                 "sections ['summary', 'situations', 'positions', 'pressure', 'transitions', 'kickouts', 'support'] and limit 10, "
-                                 "and write the Off the Ball section from it.")
+                                 "sections ['summary', 'situations', 'positions', 'pressure', 'transitions', 'kickouts', 'support', 'tag_health'] and limit 10, "
+                                 f"and get_gps_shape_trends_by_match with exclude_match_id '{match_id}' for the baseline, "
+                                 "and write the Off the Ball section from them.")
 
         if question:
             user_message = f"{tool_instruction}\n\nThen answer this: {question}"
@@ -826,7 +851,7 @@ INSTRUCTIONS:
                         "input": block.input,
                     })
                     _tool_input = dict(block.input or {})
-                    if block.name == "get_season_phase_profile" and not _tool_input.get("exclude_match_id"):
+                    if block.name in ("get_season_phase_profile", "get_gps_shape_trends_by_match") and not _tool_input.get("exclude_match_id"):
                         _tool_input["exclude_match_id"] = str(match_id)   # the baseline is the matches BEFORE this one
                     tool_result = await execute_tool(block.name, _tool_input, db, club_id=_cid)
                     logger.info(f"Tool {block.name} returned {len(tool_result)} chars")

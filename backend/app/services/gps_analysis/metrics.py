@@ -226,6 +226,20 @@ KO_OUTCOME = {
     "OPP_KICKOUT_WON": ("opp", "won clean"), "OPP_KICKOUT_WON_BREAK": ("opp", "won break"),
     "OPP_KICKOUT_OPPOSITION_WON": ("opp", "lost clean"), "OPP_KICKOUT_OPPOSITION_WON_BREAK": ("opp", "lost break"),
 }
+KO_OUTCOMES = ("won clean", "won break", "lost clean", "lost break", "over the sideline")
+NEAR_LANDING_M = 10.0     # "near where it landed": the tagged spot is itself a few metres out, so a wide band
+
+
+def _ko_kind(e):
+    """(kind, outcome) for a kickout event, or None. Video SIDELINE_KICK is a kickout that went straight over the sideline
+    (event_mapper: team_a = our kickout): a lost own kickout / a won opposition one, kept as its own outcome."""
+    if e.event_type in KO_OUTCOME:
+        return KO_OUTCOME[e.event_type]
+    if e.event_type == "SIDELINE_KICK":
+        return ("own", "over the sideline") if e.team == "team_a" else ("opp", "over the sideline")
+    if e.event_type in ("OWN_KICKOUT_SIDELINE", "OPP_KICKOUT_SIDELINE"):
+        return ("own" if e.event_type.startswith("OWN") else "opp", "over the sideline")
+    return None
 
 
 def kickouts(inp: MatchInputs, g: Grid) -> dict:
@@ -233,9 +247,13 @@ def kickouts(inp: MatchInputs, g: Grid) -> dict:
     V = g.valid()
     rows = []
     for e in inp.events:
-        if e.event_type not in KO_OUTCOME:
+        ko = _ko_kind(e)
+        if ko is None:
             continue
-        kind, outcome = KO_OUTCOME[e.event_type]
+        kind, outcome = ko
+        over = outcome == "over the sideline"
+        # won = we had the ball after it: our kickout over the sideline is lost, theirs is won
+        won = outcome.startswith("won") or (over and kind == "opp")
         j0 = g.idx(e.video_ms); j6 = g.idx(e.video_ms + 6000)
         n = int(V[:, j0].sum())
         if n < 8:
@@ -249,28 +267,47 @@ def kickouts(inp: MatchInputs, g: Grid) -> dict:
             if V[i, j0] and V[i, j6]:
                 moved.append({"player_id": pid, "name": name_of(inp, pid), "dx": r1(g.X[i, j6] - g.X[i, j0]), "dy": r1(g.Y[i, j6] - g.Y[i, j0]),
                               "dist": r1(np.hypot(g.X[i, j6] - g.X[i, j0], g.Y[i, j6] - g.Y[i, j0])), "max_speed": r1(vmax[i])})
+        # our outfielders within 10 m of the tagged landing spot at the tag (none for a kick over the sideline: it never landed)
+        near = None
+        if not over and land[0] is not None:
+            dl = np.hypot(g.X[V[:, j0], j0] - land[0], g.Y[V[:, j0], j0] - land[1])
+            near = int((dl <= NEAR_LANDING_M).sum())
         rows.append({
-            "video_ms": e.video_ms, "half": e.half, "kind": kind, "outcome": outcome, "won": outcome.startswith("won"),
+            "video_ms": e.video_ms, "half": e.half, "kind": kind, "outcome": outcome, "won": won,
             "event_type": e.event_type, "player": name_of(inp, e.player_id),
-            "landing_x": r1(land[0]), "landing_y": r1(land[1]),
+            "landing_x": r1(land[0]), "landing_y": r1(land[1]), "ours_within_10m_of_landing": near,
             "team_mean_x": r1(xs.mean()), "players_in_their_half": int((xs > L / 2).sum()), "players_tracked": n,
             "sprinting_after": int(np.nansum(vmax > HSR)),
             "at_kick": positions_at(g, j0, inp), "after_6s": positions_at(g, j6, inp), "moved": moved,
         })
     groups = {}
     for kind in ("own", "opp"):
-        for outcome in ("won clean", "won break", "lost clean", "lost break"):
+        for outcome in KO_OUTCOMES:
             rs = [r for r in rows if r["kind"] == kind and r["outcome"] == outcome]
             if rs:
+                nl = [r["ours_within_10m_of_landing"] for r in rs if r["ours_within_10m_of_landing"] is not None]
                 groups[f"{kind}|{outcome}"] = {"n": len(rs), "team_mean_x": r1(np.mean([r["team_mean_x"] for r in rs])),
-                                               "players_in_their_half": r1(np.mean([r["players_in_their_half"] for r in rs]))}
+                                               "players_in_their_half": r1(np.mean([r["players_in_their_half"] for r in rs])),
+                                               "mean_ours_within_10m_of_landing": r1(np.mean(nl)) if nl else None}
+    # kept v lost per side, so nobody adds groups up by hand
+    totals = {}
+    for kind in ("own", "opp"):
+        rs = [r for r in rows if r["kind"] == kind]
+        if rs:
+            def nl_mean(sub):
+                v = [r["ours_within_10m_of_landing"] for r in sub if r["ours_within_10m_of_landing"] is not None]
+                return {"n_landed": len(v), "mean_ours_within_10m_of_landing": r1(np.mean(v)) if v else None}
+            won_rs = [r for r in rs if r["won"]]; lost_rs = [r for r in rs if not r["won"]]
+            totals[kind] = {"n": len(rs), "won": len(won_rs), "lost": len(lost_rs),
+                            "over_the_sideline": sum(r["outcome"] == "over the sideline" for r in rs),
+                            "won_near_landing": nl_mean(won_rs), "lost_near_landing": nl_mean(lost_rs)}
     push = {}
     for h in sorted({r["half"] for r in rows if r["half"]}):
         rs = [r for r in rows if r["kind"] == "opp" and r["half"] == h]
         if rs:
             push[str(h)] = {"n": len(rs), "team_mean_x": r1(np.mean([r["team_mean_x"] for r in rs])),
                             "players_in_their_half": r1(np.mean([r["players_in_their_half"] for r in rs]))}
-    return {"kickouts": rows, "groups": groups, "push_up_on_their_kickouts": push}
+    return {"kickouts": rows, "groups": groups, "totals": totals, "push_up_on_their_kickouts": push}
 
 
 # ------------------------------------------------------------------ 5. intensity
@@ -429,6 +466,17 @@ def tag_health(inp: MatchInputs, g: Grid) -> dict:
                             "video_ms": vms, "half": half, "dist_at_tap_m": r1(d_tap), "nearest_m": r1(d_min), "nearest_lag_s": r1(lag),
                             "reason": reason, "severity": d_min if d_min > 20 else abs(lag)})
     flagged.sort(key=lambda f: -f["severity"])
+    # the clock label and the tagged events at the same moment for that player (a flagged carry is often the same tap as a
+    # turnover or a pass named elsewhere in a report: that event carries the same doubt)
+    from .situations import _when
+    ours = [e for e in inp.events if e.team == "team_a" and e.video_ms is not None]
+    for f in flagged:
+        near = sorted(ours, key=lambda e: abs(e.video_ms - f["video_ms"]))
+        clock = next((e for e in near[:1] if abs(e.video_ms - f["video_ms"]) <= 15000 and e.match_minute is not None), None)
+        f["when"] = _when(clock, inp.half_duration_mins) if clock else None
+        f["same_moment_events"] = [{"event_type": e.event_type, "sub_type": e.sub_type, "when": _when(e, inp.half_duration_mins)}
+                                   for e in near if abs(e.video_ms - f["video_ms"]) <= 3000 and e.player_id == f["player_id"]
+                                   and e.id != f["id"]][:4]
     return {"checked": checked, "flagged": flagged, "n_flagged": len(flagged), "untracked_player": untracked}
 
 
@@ -478,6 +526,7 @@ def support(inp: MatchInputs, g: Grid) -> dict:
         pp["passes"] += 1; pp["within_15m"] += within15; pp["isolated"] += within15 == 0; pp["further_option"] += bool(skipped)
     for pp in per_player.values():
         pp["mean_within_15m"] = r1(pp.pop("within_15m") / pp["passes"])
+        pp["isolated_pct"] = r1(100 * pp["isolated"] / pp["passes"])
     n = len(passes)
     return {"n_passes": n, "mean_within_15m": r1(np.mean([p["within_15m"] for p in passes])) if n else None,
             "isolated_share_pct": r1(100 * sum(p["within_15m"] == 0 for p in passes) / n) if n else None,
