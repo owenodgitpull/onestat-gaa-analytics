@@ -225,55 +225,172 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
 
 // ---------------------------------------------------------------- 4. kickouts
 
+// outcome colours: won = our green (clean strong, break light), lost = their orange (clean strong, break light);
+// always shown with the outcome word, never colour alone
+const KO_OUTCOMES = ['won clean', 'won break', 'lost break', 'lost clean'] as const
+const KO_COLOR: Record<string, string> = { 'won clean': '#10b981', 'won break': '#6ee7b7', 'lost break': '#fdba74', 'lost clean': '#f97316' }
+const surname = (n?: string | null) => (n || '').split(' ').slice(-1)[0]
+
 function KickoutPitch({ k, L, W }: { k: GpsKickout; L: number; W: number }) {
+  const ownKick = k.kind === 'own'
+  const color = KO_COLOR[k.outcome] || '#fff'
   return (
-    <GpsPitch lengthM={L} widthM={W} label="Positions at the kick">
-      {(s) => (
-        <>
-          {k.at_kick.map(p => {
-            const after = k.after_6s.find(q => q.player_id === p.player_id)
-            if (p.x == null || p.y == null) return null
-            return (
-              <g key={p.player_id}>
-                {after && after.x != null && after.y != null && <line x1={s.x(p.x)} y1={s.y(p.y)} x2={s.x(after.x)} y2={s.y(after.y)} stroke="rgba(255,255,255,0.55)" strokeWidth={6} />}
-                <circle cx={s.x(p.x)} cy={s.y(p.y)} r={26} fill={COLOR_OURS} stroke="#0b1226" strokeWidth={4} />
+    <GpsPitch lengthM={L} widthM={W} label={`${ownKick ? 'Our' : 'Their'} kickout: our players at the kick and 6 s later`}>
+      {(s) => {
+        const kx = ownKick ? 0 : L, ky = W / 2
+        return (
+          <>
+            <defs>
+              <marker id="koArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="rgba(255,255,255,0.85)" />
+              </marker>
+            </defs>
+            {/* the kick: from the kicking goal to where it landed (tagged) */}
+            {k.landing_x != null && k.landing_y != null && (
+              <line x1={s.x(kx)} y1={s.y(ky)} x2={s.x(k.landing_x)} y2={s.y(k.landing_y)} stroke={color} strokeWidth={6} strokeDasharray="22 16" opacity={0.9} />
+            )}
+            {/* where our players ran in the 6 s after the kick */}
+            {k.at_kick.map(p => {
+              const after = k.after_6s.find(q => q.player_id === p.player_id)
+              if (p.x == null || p.y == null || !after || after.x == null || after.y == null) return null
+              if (Math.hypot(after.x - p.x, after.y - p.y) < 2) return null
+              return <line key={`a-${p.player_id}`} x1={s.x(p.x)} y1={s.y(p.y)} x2={s.x(after.x)} y2={s.y(after.y)} stroke="rgba(255,255,255,0.55)" strokeWidth={5} markerEnd="url(#koArrow)" />
+            })}
+            {k.at_kick.map(p => {
+              if (p.x == null || p.y == null) return null
+              const winner = !!k.player && p.name === k.player
+              return (
+                <g key={p.player_id}>
+                  {winner && <circle cx={s.x(p.x)} cy={s.y(p.y)} r={44} fill="none" stroke="#fff" strokeWidth={6} />}
+                  <circle cx={s.x(p.x)} cy={s.y(p.y)} r={26} fill={COLOR_OURS} stroke="#0b1226" strokeWidth={4} />
+                  <text x={s.x(p.x)} y={s.y(p.y) + 62} textAnchor="middle" fontSize={28} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={7} paintOrder="stroke">{surname(p.name)}</text>
+                </g>
+              )
+            })}
+            {k.landing_x != null && k.landing_y != null && (
+              <g>
+                <circle cx={s.x(k.landing_x)} cy={s.y(k.landing_y)} r={34} fill="none" stroke={color} strokeWidth={8} />
+                <circle cx={s.x(k.landing_x)} cy={s.y(k.landing_y)} r={12} fill="#fff" />
+                <text x={s.x(k.landing_x)} y={s.y(k.landing_y) - 52} textAnchor="middle" fontSize={32} fontWeight={700} fill="#fff" stroke="rgba(5,10,20,0.9)" strokeWidth={8} paintOrder="stroke">
+                  Landed · {k.outcome}{k.player ? ` (${surname(k.player)})` : ''}
+                </text>
               </g>
-            )
-          })}
-          {k.landing_x != null && k.landing_y != null && (
-            <g>
-              <line x1={s.x(k.landing_x) - 26} y1={s.y(k.landing_y) - 26} x2={s.x(k.landing_x) + 26} y2={s.y(k.landing_y) + 26} stroke="#fff" strokeWidth={9} />
-              <line x1={s.x(k.landing_x) + 26} y1={s.y(k.landing_y) - 26} x2={s.x(k.landing_x) - 26} y2={s.y(k.landing_y) + 26} stroke="#fff" strokeWidth={9} />
-            </g>
-          )}
-        </>
-      )}
+            )}
+            <text x={s.x(kx) + (ownKick ? 30 : -30)} y={s.y(0) - 24} textAnchor={ownKick ? 'start' : 'end'} fontSize={30} fontWeight={600} fill="rgba(255,255,255,0.8)">
+              {ownKick ? 'Our kickout from here ↓' : '↓ Their kickout from here'}
+            </text>
+          </>
+        )
+      }}
     </GpsPitch>
   )
+}
+
+/** One-line finding from the kickout groups: does our shape at the kick separate the ones we won from the ones we lost? */
+function kickoutFinding(list: GpsKickout[], kind: 'own' | 'opp'): string | null {
+  const avg = (xs: (number | null | undefined)[]) => { const v = xs.filter((x): x is number => x != null); return v.length ? v.reduce((t, x) => t + x, 0) / v.length : null }
+  const won = list.filter(k => k.won), lost = list.filter(k => !k.won)
+  if (won.length < 3 || lost.length < 3) return null
+  const hw = avg(won.map(k => k.team_mean_x)), hl = avg(lost.map(k => k.team_mean_x))
+  const pw = avg(won.map(k => k.players_in_their_half)), plost = avg(lost.map(k => k.players_in_their_half))
+  if (hw == null || hl == null) return null
+  const diff = hw - hl
+  const who = kind === 'own' ? 'our kickouts' : 'their kickouts'
+  const same = Math.abs(diff) < 3
+  return `On ${who} we won, the team stood ${hw.toFixed(0)} m from our goal on average; on the ones we lost, ${hl.toFixed(0)} m` +
+    (pw != null && plost != null ? ` (${pw.toFixed(1)} v ${plost.toFixed(1)} players in their half)` : '') +
+    (same ? '. Our shape at the kick does not separate won from lost.' : `: ${diff > 0 ? 'higher' : 'deeper'} when we won.`) +
+    ` Based on ${won.length} won and ${lost.length} lost.`
 }
 
 export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string }) {
   const [kind, setKind] = useState<'own' | 'opp'>('own')
   const [outcome, setOutcome] = useState<string>('all')
-  const list = a.kickouts.kickouts.filter(k => k.kind === kind && (outcome === 'all' || k.outcome === outcome))
+  const all = a.kickouts.kickouts.filter(k => k.kind === kind)
+  const list = all.filter(k => outcome === 'all' || k.outcome === outcome)
   const [sel, setSel] = useState(0)
   const k = list[Math.min(sel, list.length - 1)]
   const groups = Object.entries(a.kickouts.groups).filter(([key]) => key.startsWith(kind + '|'))
+  const counts = Object.fromEntries(KO_OUTCOMES.map(o => [o, all.filter(x => x.outcome === o).length]))
+  const nWon = all.filter(x => x.won).length
+  const finding = kickoutFinding(all, kind)
+  const whose = kind === 'own' ? `${team} kickouts` : 'Their kickouts'
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Whose kickouts">
         {(['own', 'opp'] as const).map(x => (
-          <button key={x} onClick={() => { setKind(x); setSel(0) }} className={`px-3 py-1.5 rounded-lg text-sm ${kind === x ? 'bg-white/15 text-white' : 'bg-white/5 text-white/65'}`}>
+          <button key={x} onClick={() => { setKind(x); setSel(0); setOutcome('all') }} aria-pressed={kind === x}
+            className={`px-3 py-1.5 rounded-lg text-sm ${kind === x ? 'bg-white/15 text-white' : 'bg-white/5 text-white/65 hover:bg-white/10'}`}>
             {x === 'own' ? `${team} kickouts` : 'Their kickouts'}
           </button>
         ))}
-        <select value={outcome} onChange={e => { setOutcome(e.target.value); setSel(0) }} className="bg-white/10 border border-white/15 rounded-lg px-2 py-1.5 text-sm text-white" aria-label="Outcome">
-          {['all', 'won clean', 'won break', 'lost clean', 'lost break'].map(o => <option key={o} value={o}>{o === 'all' ? 'Every outcome' : o}</option>)}
-        </select>
       </div>
-      <Section title="Our shape at the kick, by outcome" note="Team height = average distance of our outfielders from our own goal line at the moment of the kick (higher = pushed up).">
+
+      {/* headline: how they went, as one bar, plus what the shape data says */}
+      <div className="glass-card p-4 space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="text-white text-base font-semibold">{whose}: we won {nWon} of {all.length}{all.length ? ` (${Math.round((nWon / all.length) * 100)}%)` : ''}</div>
+          <div className="text-xs text-white/55">won = we had the ball after it, clean (caught) or off the break</div>
+        </div>
+        {all.length > 0 && (
+          <div className="flex h-7 rounded-md overflow-hidden gap-[2px]" role="img" aria-label={KO_OUTCOMES.map(o => `${o} ${counts[o]}`).join(', ')}>
+            {KO_OUTCOMES.filter(o => counts[o] > 0).map(o => (
+              <div key={o} style={{ width: `${(counts[o] / all.length) * 100}%`, background: KO_COLOR[o] }} className="flex items-center justify-center text-[11px] font-semibold text-slate-900 min-w-[18px]" title={`${o}: ${counts[o]}`}>{counts[o]}</div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Show kickouts">
+          {(['all', ...KO_OUTCOMES] as string[]).map(o => (
+            <button key={o} onClick={() => { setOutcome(o); setSel(0) }} aria-pressed={outcome === o}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border ${outcome === o ? 'bg-white/15 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'}`}>
+              {o !== 'all' && <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: KO_COLOR[o] }} aria-hidden="true" />}
+              {o === 'all' ? `All ${all.length}` : `${o} ${counts[o]}`}
+            </button>
+          ))}
+        </div>
+        {finding && <p className="text-sm text-white/80">{finding}</p>}
+      </div>
+
+      {k ? (
+        <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
+          <div>
+            <div className="rounded-xl overflow-hidden border border-white/10">
+              <KickoutPitch k={k} L={a.pitch_length_m} W={a.pitch_width_m} />
+            </div>
+            <PitchFrameCaption team={team} />
+            <p className="text-xs text-white/50 mt-1">Dots: our players at the kick (ringed: who won it). Arrows: where they ran in the next 6 s. Dashed line and circle: the kick and where it landed (tagged). No goalkeeper or opposition GPS.</p>
+          </div>
+          <div className="space-y-2 min-w-0">
+            <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-sm space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-white font-medium capitalize"><span className="inline-block w-3 h-3 rounded-full" style={{ background: KO_COLOR[k.outcome] }} aria-hidden="true" />{k.outcome}</span>
+                <PlayAt ms={k.video_ms} lead={2000} periods={periods} onOpen={onOpen} />
+              </div>
+              {k.player && <div className="text-white/70">Won by {k.player}</div>}
+              <div className="text-white/70">Team height {n1(k.team_mean_x, ' m')} from our goal · {k.players_in_their_half} of {k.players_tracked} in their half</div>
+              <div className="text-white/70">{k.sprinting_after} sprinted in the next 6 s</div>
+            </div>
+            <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-[22rem] overflow-y-auto" role="listbox" aria-label="Kickouts">
+              {list.map((x, i) => (
+                <button key={`${x.video_ms}-${i}`} role="option" aria-selected={i === Math.min(sel, list.length - 1)} onClick={() => setSel(i)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs ${i === Math.min(sel, list.length - 1) ? 'bg-white/12 text-white' : 'text-white/75 hover:bg-white/5'}`}>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: KO_COLOR[x.outcome] }} aria-hidden="true" />
+                  <span className="tabular-nums w-16 shrink-0">{periodClock(x.video_ms, periods)}</span>
+                  <span className="capitalize w-20 shrink-0">{x.outcome}</span>
+                  <span className="truncate">{x.player ? surname(x.player) : ''}</span>
+                  <span className="ml-auto tabular-nums text-white/50">{n0(x.team_mean_x, ' m')}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : <p className="text-sm text-white/55">No kickouts with that outcome.</p>}
+
+      <Section title="Our shape at the kick, by outcome" note="Team height = average distance of our tracked outfielders from our own goal line at the moment of the kick (higher = pushed up). Small groups (under 5) say little.">
         <Table head={['Outcome', 'Kickouts', 'Team height', 'In their half']} align={['l', 'r', 'r', 'r']}
-          rows={groups.map(([key, g]) => [key.split('|')[1], g.n, n1(g.team_mean_x, ' m'), n1(g.players_in_their_half)])} />
+          rows={KO_OUTCOMES.map(o => groups.find(([key]) => key.split('|')[1] === o)).filter((g): g is [string, any] => !!g).map(([key, g]) => [
+            <span key="o" className="flex items-center gap-2 capitalize"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: KO_COLOR[key.split('|')[1]] }} aria-hidden="true" />{key.split('|')[1]}</span>,
+            g.n, n1(g.team_mean_x, ' m'), n1(g.players_in_their_half)])} />
       </Section>
       {kind === 'opp' && (
         <Section title="Push-up on their kickouts, by half">
@@ -281,28 +398,6 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
             rows={Object.entries(a.kickouts.push_up_on_their_kickouts).map(([h, g]) => [PERIOD[h] || h, g.n, n1(g.team_mean_x, ' m'), n1(g.players_in_their_half)])} />
         </Section>
       )}
-      {k ? (
-        <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
-          <div>
-            <KickoutPitch k={k} L={a.pitch_length_m} W={a.pitch_width_m} />
-            <PitchFrameCaption team={team} />
-            <p className="text-xs text-white/50 mt-1">Dots: where our players stood at the kick; lines: where they were 6 s later; ✕: where it landed (tagged).</p>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <button disabled={sel <= 0} onClick={() => setSel(sel - 1)} className="px-3 py-1.5 rounded-lg bg-white/10 text-sm text-white disabled:opacity-30">‹ Prev</button>
-              <span className="text-xs text-white/60">{Math.min(sel, list.length - 1) + 1} of {list.length}</span>
-              <button disabled={sel >= list.length - 1} onClick={() => setSel(sel + 1)} className="px-3 py-1.5 rounded-lg bg-white/10 text-sm text-white disabled:opacity-30">Next ›</button>
-            </div>
-            <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-sm space-y-1">
-              <div className="flex items-center justify-between"><span className="text-white font-medium capitalize">{k.outcome}</span><PlayAt ms={k.video_ms} lead={2000} periods={periods} onOpen={onOpen} /></div>
-              {k.player && <div className="text-white/70">Won by {k.player}</div>}
-              <div className="text-white/70">Team height {n1(k.team_mean_x, ' m')} · {k.players_in_their_half} in their half</div>
-              <div className="text-white/70">{k.sprinting_after} sprinting in the next 6 s</div>
-            </div>
-          </div>
-        </div>
-      ) : <p className="text-sm text-white/55">No kickouts with that outcome.</p>}
     </div>
   )
 }
@@ -346,13 +441,58 @@ export function IntensityView({ a }: { a: GpsMatchAnalysis }) {
 
 // ---------------------------------------------------------------- 6. heat maps
 
-const HEAT_STOPS = ['#0b2a22', '#0d4a37', '#0f6a4c', '#0d9f6e', '#3fd18f', '#b6f5cf']
+// One-hue sequential ramp (more time = brighter), transparent at the low end so the pitch shows through
+const HEAT_RAMP: [number, number, number, number, number][] = [
+  [0.00, 13, 74, 55, 0.0], [0.12, 13, 106, 76, 0.35], [0.35, 16, 159, 110, 0.62], [0.65, 63, 209, 143, 0.8], [1.00, 214, 250, 228, 0.92],
+]
+const HEAT_SIGMA_M = 4          // smoothing: how far a 5 m square's time spreads (Gaussian sigma)
+const HEAT_RES_M = 0.5          // image resolution
 
-function heatColor(v: number, max: number) {
-  if (v <= 0 || max <= 0) return null
-  const f = Math.min(1, Math.sqrt(v / max))
-  return HEAT_STOPS[Math.min(HEAT_STOPS.length - 1, Math.floor(f * (HEAT_STOPS.length - 1) + 0.5))]
+function heatRgba(f: number): [number, number, number, number] {
+  const r = HEAT_RAMP
+  for (let k = 1; k < r.length; k++) {
+    if (f <= r[k][0]) {
+      const a = r[k - 1], b = r[k], w = (f - a[0]) / (b[0] - a[0])
+      return [a[1] + (b[1] - a[1]) * w, a[2] + (b[2] - a[2]) * w, a[3] + (b[3] - a[3]) * w, a[4] + (b[4] - a[4]) * w]
+    }
+  }
+  const l = r[r.length - 1]; return [l[1], l[2], l[3], l[4]]
 }
+
+/** The 5 m squares spread with a Gaussian onto a fine grid and drawn into one image (a smooth heat map, not blocks). */
+function heatImage(seconds: number[][], cellM: number, L: number, W: number): string | null {
+  if (typeof document === 'undefined') return null
+  const nx = Math.ceil(L / HEAT_RES_M), ny = Math.ceil(W / HEAT_RES_M)
+  const pts: [number, number, number][] = []
+  seconds.forEach((col, i) => col.forEach((v, j) => { if (v > 0) pts.push([(i + 0.5) * cellM, (j + 0.5) * cellM, v]) }))
+  if (!pts.length) return null
+  const dens = new Float32Array(nx * ny)
+  const reach = HEAT_SIGMA_M * 3, k2 = 1 / (2 * HEAT_SIGMA_M * HEAT_SIGMA_M)
+  for (const [px, py, v] of pts) {
+    const x0 = Math.max(0, Math.floor((px - reach) / HEAT_RES_M)), x1 = Math.min(nx - 1, Math.ceil((px + reach) / HEAT_RES_M))
+    const y0 = Math.max(0, Math.floor((py - reach) / HEAT_RES_M)), y1 = Math.min(ny - 1, Math.ceil((py + reach) / HEAT_RES_M))
+    for (let gx = x0; gx <= x1; gx++) {
+      const dx = (gx + 0.5) * HEAT_RES_M - px
+      for (let gy = y0; gy <= y1; gy++) {
+        const dy = (gy + 0.5) * HEAT_RES_M - py
+        dens[gy * nx + gx] += v * Math.exp(-(dx * dx + dy * dy) * k2)
+      }
+    }
+  }
+  let max = 0
+  for (let q = 0; q < dens.length; q++) if (dens[q] > max) max = dens[q]
+  if (max <= 0) return null
+  const cv = document.createElement('canvas'); cv.width = nx; cv.height = ny
+  const g = cv.getContext('2d'); if (!g) return null
+  const img = g.createImageData(nx, ny)
+  for (let q = 0; q < dens.length; q++) {
+    const [r, gg, b, a] = heatRgba(Math.sqrt(dens[q] / max))
+    img.data[q * 4] = r; img.data[q * 4 + 1] = gg; img.data[q * 4 + 2] = b; img.data[q * 4 + 3] = Math.round(a * 255)
+  }
+  g.putImageData(img, 0, 0)
+  return cv.toDataURL()
+}
+const HEAT_LEGEND = `linear-gradient(90deg, ${HEAT_RAMP.map(([f, r, g, b, a]) => `rgba(${r},${g},${b},${Math.max(a, 0.15)}) ${f * 100}%`).join(', ')})`
 
 export function HeatmapView({ matchId, ctx, team }: { matchId: string; ctx: GpsReplayContext; team: string }) {
   const [playerId, setPlayerId] = useState('')
@@ -360,7 +500,8 @@ export function HeatmapView({ matchId, ctx, team }: { matchId: string; ctx: GpsR
   const [state, setState] = useState<'all' | 'in' | 'out'>('all')
   const q = useQuery<GpsHeatmap>({ queryKey: ['gps-analysis', matchId, 'heat', playerId, half, state], queryFn: () => gpsAnalysisApi.heatmap(matchId, { playerId: playerId || undefined, half: half || undefined, state }) })
   const tracked = ctx.tracked.filter(pid => ctx.on_pitch[pid]).sort((x, y) => (ctx.players[x]?.name || '').localeCompare(ctx.players[y]?.name || ''))
-  const max = useMemo(() => Math.max(0, ...(q.data?.seconds.flat() || [0])), [q.data])
+  const total = useMemo(() => (q.data?.seconds.flat() || []).reduce((t, v) => t + v, 0), [q.data])
+  const img = useMemo(() => q.data ? heatImage(q.data.seconds, q.data.cell_m, q.data.pitch_length_m, q.data.pitch_width_m) : null, [q.data])
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -383,12 +524,17 @@ export function HeatmapView({ matchId, ctx, team }: { matchId: string; ctx: GpsR
           <div>
             <div className="rounded-xl overflow-hidden border border-white/10">
               <GpsPitch lengthM={q.data.pitch_length_m} widthM={q.data.pitch_width_m} label="Heat map" dim>
-                {(s) => q.data!.seconds.map((col, i) => col.map((v, j) => {
-                  const c = heatColor(v, max)
-                  if (!c) return null
-                  const x0 = i * q.data!.cell_m, y0 = j * q.data!.cell_m
-                  return <rect key={`${i}-${j}`} x={s.x(x0) + 2} y={s.y(y0) + 2} width={s.len(q.data!.cell_m) - 4} height={q.data!.cell_m * s.sy - 4} rx={6} fill={c} opacity={0.85}><title>{Math.round(v)} s</title></rect>
-                }))}
+                {(s) => (
+                  <>
+                    {img && <image href={img} x={s.x(0)} y={s.y(0)} width={s.len(q.data!.pitch_length_m)} height={q.data!.pitch_width_m * s.sy} preserveAspectRatio="none" style={{ imageRendering: 'auto' }} />}
+                    {/* hover: time in each 5 m square (invisible hit areas over the smooth image) */}
+                    {q.data!.seconds.map((col, i) => col.map((v, j) => v > 0 && (
+                      <rect key={`${i}-${j}`} x={s.x(i * q.data!.cell_m)} y={s.y(j * q.data!.cell_m)} width={s.len(q.data!.cell_m)} height={q.data!.cell_m * s.sy} fill="transparent">
+                        <title>{v >= 60 ? `${(v / 60).toFixed(1)} player-min` : `${Math.round(v)} s`} in this 5 m square · {total ? ((v / total) * 100).toFixed(1) : 0}% of the time</title>
+                      </rect>
+                    )))}
+                  </>
+                )}
               </GpsPitch>
             </div>
             <PitchFrameCaption team={team} />
@@ -398,9 +544,9 @@ export function HeatmapView({ matchId, ctx, team }: { matchId: string; ctx: GpsR
             <Tile label="Middle third" value={`${q.data.thirds_pct[1]}%`} />
             <Tile label="Their third" value={`${q.data.thirds_pct[2]}%`} />
             <div className="text-xs text-white/50">
-              <div className="flex items-center gap-1 mb-1">{HEAT_STOPS.map(c => <span key={c} className="inline-block w-5 h-3 rounded-sm" style={{ background: c }} />)}</div>
+              <div className="h-3 rounded-full mb-1" style={{ background: HEAT_LEGEND }} aria-hidden="true" />
               <div className="flex justify-between"><span>less time</span><span>more time</span></div>
-              <div className="mt-1">5 m squares · {Math.round(q.data.total_seconds / 60)} player-minutes</div>
+              <div className="mt-1">Time on the pitch, smoothed over ~{HEAT_SIGMA_M * 2} m · {Math.round(q.data.total_seconds / 60)} player-minutes · hover for the time in each area</div>
             </div>
           </div>
         </div>
@@ -466,8 +612,9 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
         <Tile label="On their scores" value={n1(mk.median_nearest_m_scores, ' m')} sub="median nearest defender" />
         <Tile label="Nobody within 5 m" value={n1(mk.unpressured_share_pct, '%')} sub="of shots" />
       </div>
-      <div className="rounded-xl overflow-hidden border border-white/10">
-        <GpsPitch lengthM={a.pitch_length_m} widthM={a.pitch_width_m} label="Opposition shots">
+      <div className="rounded-xl overflow-hidden border border-white/10 max-w-2xl">
+        <GpsPitch lengthM={a.pitch_length_m} widthM={a.pitch_width_m} label="Opposition shots"
+          half={mk.shots.every(x => x.shot_x == null || x.shot_x <= a.pitch_length_m / 2 + 3) ? 'left' : undefined}>
           {(s) => mk.shots.filter(x => x.shot_x != null && x.shot_y != null).map((x, i) => (
             <circle key={i} cx={s.x(x.shot_x!)} cy={s.y(x.shot_y!)} r={18 + Math.min(40, (x.nearest_m ?? 0) * 3)} fill={/SCORED/.test(x.event_type) ? COLOR_THEIRS : 'none'} fillOpacity={0.55} stroke={COLOR_THEIRS} strokeWidth={5}>
               <title>{x.event_type.replace(/_/g, ' ').toLowerCase()} · nearest {x.nearest} {x.nearest_m} m</title>
