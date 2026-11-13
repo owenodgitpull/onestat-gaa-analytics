@@ -14,9 +14,12 @@ import numpy as np
 # Every tagged point is framed with frame_point (app.utils.attack_direction.own_attacks_right); grid positions are
 # framed when the grid is built (frame.build_grid).
 from .frame import Grid, frame_point, period_bounds
+from .lag import lag_ms
 from .loader import MatchInputs
 
 HSR = 5.5          # m/s, high-speed running
+GOAL_SIDE_MARGIN_M = 2.0    # "goal-side" = at least this much nearer our goal than the ball (level is not back)
+RECOVERY_HOLD_S = 5         # "back in" counts only once the target number stays goal-side this long (or the move ends)
 SPRINT = 7.0       # m/s
 ACCEL = 3.0        # m/s^2
 BLOCK_MS = 5 * 60 * 1000
@@ -165,9 +168,17 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
             goal_side = []
             for s, j in enumerate(js):
                 bx, _ = _ball_at(g, j, spot)
-                goal_side.append(int((V[:, j] & (g.X[:, j] < bx)).sum()))
-            rec = next((s for s, c in enumerate(goal_side) if c >= target), None)
+                # level with the ball is not back: at least GOAL_SIDE_MARGIN_M nearer our goal than the ball
+                goal_side.append(int((V[:, j] & (g.X[:, j] < bx - GOAL_SIDE_MARGIN_M)).sum()))
             shot = next((e for e in inp.events if e.team == "team_b" and e.event_type in SHOT_TYPES and t0 <= e.video_ms <= nxt_own), None)
+            # back = the target reached AND held for RECOVERY_HOLD_S seconds (or until the move ends: we win it back or
+            # they shoot). Taking the first second it touched the target timed Langan (Dublin 2H 11:31) "back in 1 s"
+            # when three players level with the ball shuffled a metre, then Dublin ran it 23 m and only 7 were back.
+            stop_ms = min(nxt_own, shot.video_ms - lag_ms(inp, shot.event_type) if shot else nxt_own)
+            live = [s for s in range(len(js)) if t0 + s * 1000 <= stop_ms] or [0]
+            last = live[-1]
+            rec = next((s for s in live if all(goal_side[q] >= target for q in range(s, min(s + RECOVERY_HOLD_S, last + 1)))
+                        and (s + RECOVERY_HOLD_S <= last + 1 or last < len(js) - 1)), None)
             lost.append({
                 "video_ms": t0, "half": b.half, "lost_by": name_of(inp, a.player_id), "spot_x": r1(spot[0]), "spot_y": r1(spot[1]),
                 "how": (tev.event_type.replace("_", " ").lower() if tev is not None else "pass intercepted / lost" if a.ended_by == "pass" else "turnover"),

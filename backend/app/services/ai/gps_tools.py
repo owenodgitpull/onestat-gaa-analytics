@@ -57,7 +57,8 @@ def _trim_transitions(tr: dict, limit: int) -> dict:
     lost = sorted(tr["lost"], key=lambda x: (x["recovery_s"] is None, x["recovery_s"] or 0), reverse=True)
     return {"summary": tr["summary"], "lost_slowest_first": [t(x) for x in lost[:limit]],
             "won_most_runners_first": [t(x) for x in sorted(tr["won"], key=lambda x: -x["n_forward_runners"])[:limit]],
-            "how_to_read": "recovery_s = seconds until `goal_side_needed` of our tracked outfielders were goal-side of the ball (null = not within 15 s); "
+            "how_to_read": "recovery_s = a TEAM measure (not the player who lost it): seconds until `goal_side_needed` of our tracked outfielders were "
+                           "at least 2 m goal-side of the ball AND stayed so for 5 s or until the move ended (null = not within 15 s); "
                            "players_on = our tracked outfielders on the pitch; n_sprinted + n_did_not_sprint = players_on (sprinted = went above 5.5 m/s in the 10 s after); "
                            "retreat_10s_m = how far the team's centre moved back towards our goal in 10 s. "
                            "outcome / lost_led_to_score = what THEIR possession from that turnover became before we next had the ball "

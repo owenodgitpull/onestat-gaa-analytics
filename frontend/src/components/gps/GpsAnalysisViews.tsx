@@ -89,8 +89,8 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
           rows={Object.entries(s.by_half).map(([h, v]) => [PERIOD[h] || h, n1(v.team_distance_m / 1000, ' km'), n1(v.team_hsr_m / 1000, ' km'), n1(v.compactness_out, ' m'), n1(v.compactness_in, ' m'), n1(v.length_out, ' m')])} />
       </Section>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Section title="Fastest back after losing it">
-          <Table head={['When', 'Lost by', 'Back in', 'Then']} align={['l', 'l', 'r', 'l']}
+        <Section title="Team fastest back after losing it" note="A team measure, not the player who lost it: seconds until all but three of our tracked players (at most 11) were at least 2 m goal-side of the ball and stayed there for 5 s (or until the move ended).">
+          <Table head={['When', 'Lost by', 'Team back in', 'Then']} align={['l', 'l', 'r', 'l']}
             rows={s.fastest_recoveries.map(t => [<PlayAt key="p" ms={t.video_ms} periods={periods} onOpen={onOpen} />, t.lost_by || '–', `${t.recovery_s} s`, t.outcome])} />
         </Section>
         <Section title="Biggest drop-off in high-speed running" note="High-speed metres per minute: first 10 minutes on the pitch vs last 10.">
@@ -201,7 +201,7 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
         <Tile label="Retreat in 10 s" value={n1(t.summary.median_retreat_10s_m, ' m')} sub="team centre towards our goal" />
         <Tile label="Turnovers won" value={t.summary.n_won} sub={`median ${n1(t.summary.median_forward_runners)} broke forward · ${t.summary.won_led_to_score} led to a score`} />
       </div>
-      <Section title="After we lost the ball" note={`"Back in" = seconds until the target number of our tracked outfielders (all but three, at most 11) were between the ball and our goal. "Already back" = that many were goal-side when it was lost.`}>
+      <Section title="After we lost the ball" note={`"Back in" (a team measure) = seconds until the target number of our tracked outfielders (all but three, at most 11) were at least 2 m goal-side of the ball and stayed there for 5 s, or until the move ended. "Already back" = that many were goal-side when it was lost.`}>
         <Table head={['When', 'Lost by', 'How', 'Goal-side at once', 'Back in', 'Retreat 10 s', 'Sprinted (>5.5 m/s)', 'Then']} align={['l', 'l', 'l', 'r', 'r', 'r', 'l', 'l']}
           rows={t.lost.map((x, i) => [
             <PlayAt key="p" ms={x.video_ms} periods={periods} onOpen={onOpen} />, x.lost_by || '–', x.how, `${x.goal_side_at_0} of ${x.players_on}`,
