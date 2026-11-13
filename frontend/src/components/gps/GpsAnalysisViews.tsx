@@ -588,8 +588,8 @@ export function SupportView({ a, periods, onOpen }: { a: GpsMatchAnalysis; perio
         <Tile label="No one within 15 m" value={n1(sp.isolated_share_pct, '%')} sub="of passes" />
         <Tile label="Further option" value={n1(sp.further_option_share_pct, '%')} sub="someone 15 m+ further forward within 25 m" />
       </div>
-      <Section title="By passer">
-        <Table head={['Player', 'Passes', 'Avg within 15 m', 'Isolated', 'Further option']} align={['l', 'r', 'r', 'r', 'r']}
+      <Section title="By passer" note="Passes checked = the passes where his and his team-mates' GPS positions were usable at the moment of the pass, so it can be fewer than his tagged passes.">
+        <Table head={['Player', 'Passes checked', 'Avg within 15 m', 'Isolated', 'Further option']} align={['l', 'r', 'r', 'r', 'r']}
           rows={sp.players.map(p => [p.name || '–', p.passes, n1(p.mean_within_15m), p.isolated, p.further_option])} />
       </Section>
       <Section title="Passes where someone further forward was in range" note="We cannot see the opposition, so this says a team-mate was further forward and within 25 m, not that he was free. Watch the clip.">
