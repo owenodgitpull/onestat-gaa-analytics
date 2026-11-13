@@ -4,6 +4,7 @@ import types
 
 import numpy as np
 
+from app.services.gps_analysis import frame
 from app.services.gps_analysis.frame import replay_times
 from app.services.gps_analysis.loader import Carry
 
@@ -37,7 +38,14 @@ def _setup(seed=1, n=40):
     return inp, t, X, Y, S, on, true_video
 
 
-def test_lead_found_from_the_taps_and_carries_line_up_with_the_video():
+def test_lead_is_off_by_default():
+    inp, t, X, Y, S, on, _ = _setup()
+    r = replay_times(inp, t, np.ones(len(t), dtype=int), ["p1"], X, Y, S, on, [(1, 0, 600_000)])
+    assert r["lead_ms"] == {"1": 0} and r["lead_from"] == {"1": "off"}
+
+
+def test_lead_found_from_the_taps_and_carries_line_up_with_the_video(monkeypatch):
+    monkeypatch.setattr(frame, "REPLAY_AUTO_LEAD", True)
     inp, t, X, Y, S, on, true_video = _setup()
     r = replay_times(inp, t, np.ones(len(t), dtype=int), ["p1"], X, Y, S, on, [(1, 0, 600_000)])
     lead = r["lead_ms"]["1"]
@@ -49,7 +57,8 @@ def test_lead_found_from_the_taps_and_carries_line_up_with_the_video():
     assert np.median(err) <= 700, np.median(err)
 
 
-def test_opposition_carries_use_the_usual_delay_plus_the_lead():
+def test_opposition_carries_use_the_usual_delay_plus_the_lead(monkeypatch):
+    monkeypatch.setattr(frame, "REPLAY_AUTO_LEAD", True)
     inp, t, X, Y, S, on, _ = _setup()
     opp = Carry(id="o", team="opponent", player_id=None, opposition_player_id=None, half=1, start_x=50, start_y=50,
                 end_x=None, end_y=None, video_ms=300_500, end_video_ms=None, ended_by="pass")

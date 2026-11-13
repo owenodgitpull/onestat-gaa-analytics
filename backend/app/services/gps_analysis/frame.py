@@ -182,6 +182,13 @@ def align_carry_starts(inp: MatchInputs, t: np.ndarray, pids, X: np.ndarray, Y: 
 #    the 10th percentile of that early side is the lateness.
 # The analysis pairs tags with GPS on that same clock, so it stays right on average and is left alone. The replay draws
 # the pitch `lead_ms` ahead of the video to line both up with the footage.
+#
+# 2026-11-13: TURNED OFF (REPLAY_AUTO_LEAD = False). Checked against the footage (frames pulled from the video), Dublin
+# 1st half: Murphy's pickup at video ~978.7 s matches his GPS (slowing at the tagged spot at 978-979 s), so the dots
+# were already in time and the 2.8 s lead put them ~3 s in the future. Both estimates were biased: the team's speed
+# burst comes 2-3 s after the throw-in (most players react late), and late taps are often placed where the player is
+# AT the tap, which drags the floor of the delays down. The lead stays 0 until it can be measured from the video.
+REPLAY_AUTO_LEAD = False
 REPLAY_TAU_MIN_MS, REPLAY_TAU_MAX_MS = -8000, 15000   # tap minus GPS moment, searched for the lead estimate
 REPLAY_MATCH_BEFORE_MS = 12000                        # a carry may start up to 12 s before the tap (on the video)
 REPLAY_EARLY_TAP_MS = 1000                            # ... or 1 s after it (a paused, early tap)
@@ -265,6 +272,9 @@ def replay_times(inp: MatchInputs, t, half_arr, pids, X, Y, S, on, bounds) -> di
         if est is not None:
             lead[h] = int(round(min(LEAD_MAX_MS, max(LEAD_MIN_MS, est)) / 100.0) * 100)
             how_lead[h] = src
+    if not REPLAY_AUTO_LEAD:
+        lead = {h: 0 for h, _, _ in bounds}
+        how_lead = {h: "off" for h, _, _ in bounds}
     known = list(lead.values())
     for h, _, _ in bounds:                     # a period with no estimate borrows the match's median
         if h not in lead:

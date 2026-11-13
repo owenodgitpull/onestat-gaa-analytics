@@ -136,7 +136,8 @@ export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift,
         </div>
       </div>
       <ShiftRow label={`Player dots · ${PERIOD[half] || `period ${half}`}`} describeAs="dots"
-        hint={timingLoading ? 'Measuring how far the GPS runs behind the video…'
+        hint={timingLoading ? 'Loading the replay timing…'
+          : Math.abs(leadMs) < 100 ? 'If the dots trail the players on the video, drag right; if they run ahead, drag left. Set each half on its own.'
           : `Already drawn ${(Math.abs(leadMs) / 1000).toFixed(1)} s ${leadMs >= 0 ? 'ahead of' : 'behind'} the GPS sync in this half to match the video${leadFrom && leadFrom !== 'none' ? ` (measured from the ${leadFrom})` : ''}. If the dots still trail the players on the video, drag right; if they run ahead, drag left.`}
         value={-dot} range={DOT_RANGE_MS} onChange={v => { onDotShift(-v); setState({ kind: 'idle' }) }} />
       <details className="group">

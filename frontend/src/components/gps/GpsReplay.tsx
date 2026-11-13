@@ -42,6 +42,9 @@ function halfAt(periods: GpsReplayContext['periods'], ms: number): number {
  * as the backend (gps_analysis/lag.py).
  */
 const DEFAULT_LAG_MS: Record<string, number> = { PASS_HAND: 1200, LONG_KICK_PASS: 1200, POINT_SCORED: 2200, GOAL_SCORED: 2200, TWO_POINT_SCORED: 2200, WIDE: 3400, TURNOVER_LOST: 1600, TURNOVER_WON: 1600, FOUL_COMMITTED: 5600, FREE_WON: 5600 }
+const KICKOUT_ARC_BEFORE_MS = 3000
+const KICKOUT_ARC_MAX_PULL_M = 6
+const EVENT_SHOW_MS = 4000
 const SHOT_WORD: Record<string, string> = { POINT_SCORED: 'Point', TWO_POINT_SCORED: '2-pointer', GOAL_SCORED: 'Goal', WIDE: 'Wide' }
 const END_TYPE: Record<string, string> = { score: 'POINT_SCORED', wide: 'WIDE', free: 'FOUL_COMMITTED', turnover: 'TURNOVER_LOST', pass: 'PASS_HAND' }
 function makeLag(tagLag: GpsReplayContext['sync']['tag_lag'] | undefined, shiftMs: number) {
@@ -265,22 +268,24 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const unpinCarry = (id: string, says: string) =>
     savePins({ [id]: null }, `Removing your fix: ${says}…`, `Removed: ${says} is timed automatically again.`)
 
-  // a kickout being taken now: nobody may be inside the arc at the kicking end (display only, see gpsKickoutArc)
+  // a kickout being taken now: nobody may be inside the arc at the kicking end (display only, see gpsKickoutArc).
+  // Only in the 3 s up to the kick tag (+1 s fade), and only for players a few metres inside (GPS error); anyone deeper is
+  // drawn where the GPS has him (it pulled the whole team out at once from 12 s before)
   const kickout = useMemo(() => {
     const evs = ctx.events
     for (let i = 0; i < evs.length; i++) {
       const e = evs[i]
       if (!e.event_type.includes('KICKOUT')) continue
       const t = e.video_ms
-      if (pitchMs < t - 15000 || pitchMs > t + 1500) continue
+      if (pitchMs < t - KICKOUT_ARC_BEFORE_MS || pitchMs > t + 1000) continue
       // players line up after the play that stopped the ball: start no earlier than just after it
-      let prev = t - 12000
+      let prev = t - KICKOUT_ARC_BEFORE_MS
       for (let k = i - 1; k >= 0; k--) {
         if (evs[k].video_ms < t - 60000) break
         if (!evs[k].event_type.includes('KICKOUT') && evs[k].event_type !== 'PASS_HAND' && evs[k].video_ms < t) { prev = Math.max(prev, evs[k].video_ms + 1500); break }
       }
       if (pitchMs < prev) continue
-      const weight = pitchMs < prev + 800 ? (pitchMs - prev) / 800 : pitchMs <= t + 500 ? 1 : Math.max(0, 1 - (pitchMs - t - 500) / 1000)
+      const weight = pitchMs < prev + 1000 ? (pitchMs - prev) / 1000 : pitchMs <= t ? 1 : Math.max(0, 1 - (pitchMs - t) / 1000)
       const ownKick = e.event_type.startsWith('OWN_')
       const h = e.half ?? half
       const right = raw ? (ownKick ? !ownAttacksRight(arfh, h) : ownAttacksRight(arfh, h)) : !ownKick
@@ -307,8 +312,10 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
       let pulled = false
       if (kickout && kickout.weight > 0 && insideArc(m.x, m.y, kickout.right, L, W)) {
         const p = pullOutOfArc(m.x, m.y, kickout.right, L, W)
-        m = { x: m.x + (p.x - m.x) * kickout.weight, y: m.y + (p.y - m.y) * kickout.weight }
-        pulled = true
+        if (Math.hypot(p.x - m.x, p.y - m.y) <= KICKOUT_ARC_MAX_PULL_M) {
+          m = { x: m.x + (p.x - m.x) * kickout.weight, y: m.y + (p.y - m.y) * kickout.weight }
+          pulled = true
+        }
       }
       out.push({ pid, x: m.x, y: m.y, speed: pw.speed[i] ?? null, pulled })
     }
@@ -339,7 +346,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   }, [ownCarries])
   const recentEvents = useMemo(() => ctx.events
     .map(e => ({ ...e, video_ms: shotPinAt.get(e.id) ?? e.video_ms - lag(e.event_type) }))
-    .filter(e => e.video_ms <= pitchMs + 300 && e.video_ms > pitchMs - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, pitchMs, lag, shotPinAt])
+    .filter(e => e.video_ms <= pitchMs + 300 && e.video_ms > pitchMs - EVENT_SHOW_MS && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, pitchMs, lag, shotPinAt])
 
   const jumpList = useMemo(() => ctx.events.filter(e => /KICKOUT|POINT_SCORED|GOAL_SCORED|TURNOVER|WIDE/.test(e.event_type)), [ctx.events])
   const jersey = (pid: string) => ctx.players[pid]?.jersey
@@ -431,19 +438,15 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                     return <circle key={d.pid} cx={sc.x(d.x)} cy={sc.y(d.y)} r={isCarrier ? 60 : 44} fill={isCarrier ? '#ffffff' : COLOR_OURS} opacity={isCarrier ? 0.55 : 0.5} />
                   })}
                   {theirBall && <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={36} fill={COLOR_THEIRS} opacity={0.7} />}
-                  {recentEvents.map(e => { const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half); return <circle key={e.id} cx={sc.x(p.x)} cy={sc.y(p.y)} r={26} fill={e.team === 'team_a' ? COLOR_OURS : COLOR_THEIRS} opacity={0.45 * Math.max(0, 1 - Math.max(0, (pitchMs - e.video_ms) / 3000))} /> })}
+                  {recentEvents.map(e => { const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half); return <circle key={e.id} cx={sc.x(p.x)} cy={sc.y(p.y)} r={26} fill={e.team === 'team_a' ? COLOR_OURS : COLOR_THEIRS} opacity={0.45 * Math.max(0, 1 - Math.max(0, (pitchMs - e.video_ms) / EVENT_SHOW_MS))} /> })}
                 </g>
                 {recentEvents.map(e => {
                   const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half)
-                  const age = (pitchMs - e.video_ms) / 3000
+                  const age = Math.max(0, pitchMs - e.video_ms)
                   const ours = e.team === 'team_a'
                   return (
-                    <g key={e.id} opacity={Math.max(0.25, 1 - Math.max(0, age))}>
-                      <rect x={sc.x(p.x) - 14} y={sc.y(p.y) - 14} width={28} height={28} transform={`rotate(45 ${sc.x(p.x)} ${sc.y(p.y)})`} fill="none" stroke={ours ? '#5ee6b4' : '#ffa463'} strokeWidth={5} strokeLinejoin="round" />
-                      <text x={sc.x(p.x)} y={sc.y(p.y) - 34} textAnchor="middle" fontSize={32} fontWeight={700} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">
-                        {humanEventType(e.event_type)}{ours && e.player_id ? ` · ${name(e.player_id)}` : ''}
-                      </text>
-                    </g>
+                    <rect key={e.id} x={sc.x(p.x) - 14} y={sc.y(p.y) - 14} width={28} height={28} transform={`rotate(45 ${sc.x(p.x)} ${sc.y(p.y)})`}
+                      fill="none" stroke={ours ? '#5ee6b4' : '#ffa463'} strokeWidth={5} strokeLinejoin="round" opacity={Math.max(0.25, 1 - age / EVENT_SHOW_MS)} />
                   )
                 })}
                 {theirBall && (
@@ -464,6 +467,27 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                       {(showNames || isCarrier) && (
                         <text x={sc.x(d.x)} y={sc.y(d.y) + 78} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{name(d.pid).split(' ').slice(-1)[0]}</text>
                       )}
+                    </g>
+                  )
+                })}
+                {/* event chips last, so no dot or ball covers them: pop in, hold, fade out over EVENT_SHOW_MS */}
+                {recentEvents.map((e, k) => {
+                  const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half)
+                  const age = Math.max(0, pitchMs - e.video_ms)
+                  const ours = e.team === 'team_a'
+                  const label = `${humanEventType(e.event_type)}${ours && e.player_id ? ` · ${name(e.player_id).split(' ').slice(-1)[0]}` : !ours && e.opposition_player ? ` · ${e.opposition_player}` : ''}`
+                  const fs = 32, h = 58, w = Math.round(label.length * fs * 0.56 + 48)
+                  const cx = Math.min(Math.max(sc.x(p.x), sc.x(0) + w / 2 + 6), sc.x(L) - w / 2 - 6)
+                  let cy = sc.y(p.y) - 92 - k * (h + 10)
+                  if (cy - h / 2 < sc.y(0) + 6) cy = sc.y(p.y) + 92 + k * (h + 10)
+                  const pop = age < 250 ? 0.8 + 0.2 * (age / 250) : 1
+                  const fade = age > EVENT_SHOW_MS - 800 ? Math.max(0, (EVENT_SHOW_MS - age) / 800) : 1
+                  const accent = ours ? '#34d399' : '#fb923c'
+                  return (
+                    <g key={`chip-${e.id}`} opacity={fade} transform={`translate(${cx} ${cy}) scale(${pop})`} pointerEvents="none">
+                      <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={h / 2} fill="rgba(8,14,28,0.92)" stroke={accent} strokeWidth={4} />
+                      <circle cx={-w / 2 + 26} cy={0} r={9} fill={accent} />
+                      <text x={12} y={fs * 0.36} textAnchor="middle" fontSize={fs} fontWeight={700} fill="#fff">{label}</text>
                     </g>
                   )
                 })}
