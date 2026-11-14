@@ -123,13 +123,19 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
     if section == "kickouts":
         ko = res["kickouts"]
         rows = [{k: v for k, v in r.items() if k not in ("at_kick", "after_6s", "moved")} for r in ko["kickouts"]]
-        return {"totals": ko.get("totals"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
+        spots = {k: {**v, "players": [{kk: vv for kk, vv in p.items() if kk != "player_id"} for p in v["players"][:6]]}
+                 for k, v in (ko.get("player_spots") or {}).items()}
+        return {"totals": ko.get("totals"), "player_spots": spots, "zones": ko.get("zones"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
                 "how_to_read": "totals = kickouts with a GPS frame per side (own = ours, opp = theirs), won/lost from OUR side, over_the_sideline "
                                "included (our kick straight out = lost, theirs = won); quote these, never add groups up. team_mean_x = mean distance "
                                "of our outfielders from our own goal line at the kick (higher = pushed up). ours_within_10m_of_landing = our "
                                "outfielders within 10 m of the TAGGED landing spot at the tag (the spot is a few metres out, so a count, never a "
                                "distance); won_near_landing / lost_near_landing give its mean for kept v lost with how many landed. A group "
-                               "under 5 kickouts is described, never compared."}
+                               "under 5 kickouts is described, never compared. player_spots = each player's average spot at the kick on kickouts we won v "
+                               "lost (only players with min_each in both), biggest shift_m first; dx_m + = further from our goal when we "
+                               "lost, - = deeper; dy_m + = towards our right touchline. A shift under noise_m is not a pattern. zones = "
+                               "where they landed by length from the KICKING goal (short / mid / long) and channel as WE attack, with won, "
+                               "lost and our numbers within 10 m of the landing; kicks over the sideline are not in zones."}
     if section == "intensity":
         it = res["intensity"]
         return {"thresholds": it["thresholds"], "by_half": it["by_half"],

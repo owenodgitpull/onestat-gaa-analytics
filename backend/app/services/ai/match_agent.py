@@ -221,11 +221,14 @@ How to write it - section "Off the Ball", after Phase Analysis, 5-7 short headed
   isolated_share_pct, with both counts ("X: 11 of his 36 passes checked had nobody of ours within 15 m, against 15.8% for the
   team" - the shape only, take the figures from the tool). A passer with under 15 passes checked is not compared. "Passes checked" is fewer than his tagged passes:
   never set the two side by side as one figure.
-- "Kickouts" (our own): from kickouts.totals.own - how many kept and lost (over_the_sideline is part of lost; say how many), the
-  team height (team_mean_x) per outcome group, and won_near_landing v lost_near_landing (our players within 10 m of where it
-  landed, kept v lost, with n_landed). If the team heights of the won and lost groups are within about 3 m of each other, say
-  plainly that our shape at the kick did not separate the ones we kept from the ones we lost. A group under 5 is described, never
-  compared. These totals include kicks over the sideline, so they match the phase table's kickouts.
+- "Kickouts" (our own): from kickouts.totals.own - how many kept and lost (over_the_sideline is part of lost; say how many).
+  Then the PATTERN in positions, not a team-height number: from player_spots.own, the two or three players whose spot at the
+  kick differed most between kept and lost (shift_m of noise_m or more), in football words with the figure ("on the ones we
+  lost, X stood 9 m deeper and Y 6 m nearer our right touchline" - shape only; dx_m - = deeper, + = further up; dy_m + = to our
+  right). If nobody shifted by noise_m, say our set-up looked the same on kept and lost kickouts. Then zones.own: where they
+  landed (short / mid / long and channel) with won-lost per zone, and won_near_landing v lost_near_landing (our players within
+  10 m of where it landed, with n_landed) - our numbers at the break. A zone or group under 5 is described, never compared.
+  Never quote team_mean_x as the headline. These totals include kicks over the sideline, so they match the phase table.
 - BASELINE: get_gps_shape_trends_by_match baseline_other_matches gives the mean of each figure over our OTHER GPS matches. Use it
   for the two or three figures where this match stood out: "N m without the ball, against M m over our other K GPS matches" (n_matches / the field's n, exactly). Running is per player-minute, so periods of different length compare. If
   n_matches is 0, leave baselines out and say nothing about it - never write that no baseline was available.

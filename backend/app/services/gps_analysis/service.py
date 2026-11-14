@@ -127,6 +127,7 @@ def shape_series_payload(g1: Grid, step_s: int = 2) -> dict:
 
 
 async def replay_context(db: AsyncSession, match) -> dict:
+    from .loader import unit_in_match_q
     """Everything the replay needs besides positions: who is who, carries, events (framing flag per period), marks."""
     inp = await load_match(db, match, with_tracks=False)
     bounds = period_bounds(inp)
@@ -140,7 +141,7 @@ async def replay_context(db: AsyncSession, match) -> dict:
         "pitch_length_m": inp.pitch_length_m, "pitch_width_m": inp.pitch_width_m,
         "players": inp.players, "starters": inp.starters, "bench": inp.bench,
         "on_pitch": {pid: [[int(a), int(b)] for a, b in iv] for pid, iv in on_pitch_intervals(inp, bounds).items()},
-        "tracked": [pid for pid, q in (inp.sync.get("quality") or {}).items() if q.get("in_match") is not False],
+        "tracked": [pid for pid, q in (inp.sync.get("quality") or {}).items() if unit_in_match_q(q)],
         "carries": [{"id": c.id, "team": c.team, "player_id": c.player_id, "half": c.half, "start_x": c.start_x, "start_y": c.start_y,
                      "end_x": c.end_x, "end_y": c.end_y, "video_ms": c.video_ms, "end_video_ms": c.end_video_ms, "ended_by": c.ended_by,
                      # their carrier's name (the replay labels the opposition ball with it)

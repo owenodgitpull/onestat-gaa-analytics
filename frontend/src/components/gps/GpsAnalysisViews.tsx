@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Play } from 'lucide-react'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts'
 import {
-  gpsAnalysisApi, type GpsMatchAnalysis, type GpsShapeSeries, type GpsHeatmap, type GpsKickout, type GpsReplayContext,
+  gpsAnalysisApi, type GpsMatchAnalysis, type GpsShapeSeries, type GpsHeatmap, type GpsKickout, type GpsKoSpots, type GpsKoZone, type GpsReplayContext,
   periodClock, COLOR_OURS, COLOR_THEIRS,
 } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption } from './GpsPitch'
@@ -230,7 +230,8 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
 // 'over the sideline' = the kick went straight out (lost for the kicking side); neutral grey, always with its word
 const KO_OUTCOMES = ['won clean', 'won break', 'lost break', 'lost clean', 'over the sideline'] as const
 const KO_COLOR: Record<string, string> = { 'won clean': '#10b981', 'won break': '#6ee7b7', 'lost break': '#fdba74', 'lost clean': '#f97316', 'over the sideline': '#94a3b8' }
-const surname = (n?: string | null) => (n || '').split(' ').slice(-1)[0]
+// last name without a captain's '(c)' ("Peadar Mogan (c)" -> "Mogan")
+const surname = (n?: string | null) => (n || '').replace(/\s*\(c\)\s*$/i, '').split(' ').slice(-1)[0]
 
 function KickoutPitch({ k, L, W }: { k: GpsKickout; L: number; W: number }) {
   const ownKick = k.kind === 'own'
@@ -287,21 +288,65 @@ function KickoutPitch({ k, L, W }: { k: GpsKickout; L: number; W: number }) {
   )
 }
 
-/** One-line finding from the kickout groups: does our shape at the kick separate the ones we won from the ones we lost? */
-function kickoutFinding(list: GpsKickout[], kind: 'own' | 'opp'): string | null {
-  const avg = (xs: (number | null | undefined)[]) => { const v = xs.filter((x): x is number => x != null); return v.length ? v.reduce((t, x) => t + x, 0) / v.length : null }
-  const won = list.filter(k => k.won), lost = list.filter(k => !k.won)
-  if (won.length < 3 || lost.length < 3) return null
-  const hw = avg(won.map(k => k.team_mean_x)), hl = avg(lost.map(k => k.team_mean_x))
-  const pw = avg(won.map(k => k.players_in_their_half)), plost = avg(lost.map(k => k.players_in_their_half))
-  if (hw == null || hl == null) return null
-  const diff = hw - hl
-  const who = kind === 'own' ? 'our kickouts' : 'their kickouts'
-  const same = Math.abs(diff) < 3
-  return `On ${who} we won, the team stood ${hw.toFixed(0)} m from our goal on average; on the ones we lost, ${hl.toFixed(0)} m` +
-    (pw != null && plost != null ? ` (${pw.toFixed(1)} v ${plost.toFixed(1)} players in their half)` : '') +
-    (same ? '. Our shape at the kick does not separate won from lost.' : `: ${diff > 0 ? 'higher' : 'deeper'} when we won.`) +
-    ` Based on ${won.length} won and ${lost.length} lost.`
+/** The pattern in positions: whose spot at the kick differed most between kickouts we won and lost (from the backend). */
+function spotsFinding(sp: GpsKoSpots | undefined): string | null {
+  if (!sp || !sp.players.length) return null
+  const big = sp.players.filter(p => p.shift_m >= sp.noise_m).slice(0, 3)
+  const base = ` Based on ${sp.n_won} won and ${sp.n_lost} lost; only players there for at least ${sp.min_each} of each.`
+  if (!big.length) return `Our set-up at the kick looked the same on the ones we won and lost: nobody's average spot moved more than ${sp.noise_m} m.` + base
+  const say = (p: GpsKoSpots['players'][number]) => {
+    const parts: string[] = []
+    if (Math.abs(p.dx_m) >= 3) parts.push(`${Math.abs(p.dx_m).toFixed(0)} m ${p.dx_m < 0 ? 'deeper' : 'further up'}`)
+    if (Math.abs(p.dy_m) >= 3) parts.push(`${Math.abs(p.dy_m).toFixed(0)} m nearer our ${p.dy_m > 0 ? 'right' : 'left'} touchline`)
+    return `${surname(p.name)} ${parts.join(' and ') || `${p.shift_m.toFixed(0)} m away`}`
+  }
+  return `On the ones we lost: ${big.map(say).join('; ')}.` + base
+}
+
+/** Each player's average spot at the kick: kept (filled green) v lost (orange ring), joined by a line. */
+function KickoutSpotsPitch({ sp, L, W }: { sp: GpsKoSpots; L: number; W: number }) {
+  return (
+    <GpsPitch lengthM={L} widthM={W} label="Average spot of each player at the kick, kickouts won v lost">
+      {(s) => (
+        <>
+          {sp.players.map(p => p.won.x == null || p.won.y == null || p.lost.x == null || p.lost.y == null ? null : (
+            <g key={p.player_id}>
+              <title>{`${p.name}: won ${p.won.n} (${n0(p.won.x)} m from our goal), lost ${p.lost.n} (${n0(p.lost.x)} m) · ${p.shift_m} m apart`}</title>
+              <line x1={s.x(p.won.x)} y1={s.y(p.won.y)} x2={s.x(p.lost.x)} y2={s.y(p.lost.y)} stroke="rgba(255,255,255,0.6)" strokeWidth={5} />
+              <circle cx={s.x(p.lost.x)} cy={s.y(p.lost.y)} r={22} fill="#0b1226" stroke={KO_COLOR['lost clean']} strokeWidth={7} />
+              <circle cx={s.x(p.won.x)} cy={s.y(p.won.y)} r={22} fill={KO_COLOR['won clean']} stroke="#0b1226" strokeWidth={4} />
+              <text x={s.x(p.won.x)} y={s.y(p.won.y) + 56} textAnchor="middle" fontSize={27} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={7} paintOrder="stroke">{surname(p.name)}</text>
+            </g>
+          ))}
+        </>
+      )}
+    </GpsPitch>
+  )
+}
+
+/** Every landing spot coloured by outcome, with the 45 m / 65 m bands from the kicking goal and the channel thirds. */
+function KickoutLandingPitch({ list, kind, L, W }: { list: GpsKickout[]; kind: 'own' | 'opp'; L: number; W: number }) {
+  const fromKick = (d: number) => (kind === 'own' ? d : L - d)
+  return (
+    <GpsPitch lengthM={L} widthM={W} label="Where the kickouts landed, by outcome">
+      {(s) => (
+        <>
+          {[45, 65].map(d => (
+            <g key={d}>
+              <line x1={s.x(fromKick(d))} y1={s.y(0)} x2={s.x(fromKick(d))} y2={s.y(W)} stroke="rgba(250,204,21,0.55)" strokeWidth={4} strokeDasharray="18 14" />
+              <text x={s.x(fromKick(d))} y={s.y(0) - 18} textAnchor="middle" fontSize={26} fill="rgba(250,204,21,0.85)">{d} m</text>
+            </g>
+          ))}
+          {[W / 3, (2 * W) / 3].map(y => <line key={y} x1={s.x(0)} y1={s.y(y)} x2={s.x(L)} y2={s.y(y)} stroke="rgba(255,255,255,0.25)" strokeWidth={3} strokeDasharray="10 14" />)}
+          {list.filter(k => k.outcome !== 'over the sideline' && k.landing_x != null && k.landing_y != null).map((k, i) => (
+            <circle key={i} cx={s.x(k.landing_x!)} cy={s.y(k.landing_y!)} r={20} fill={KO_COLOR[k.outcome] || '#fff'} stroke="#0b1226" strokeWidth={4}>
+              <title>{`${k.outcome}${k.player ? ` · ${k.player}` : ''}${k.ours_within_10m_of_landing != null ? ` · ${k.ours_within_10m_of_landing} of ours within 10 m` : ''}`}</title>
+            </circle>
+          ))}
+        </>
+      )}
+    </GpsPitch>
+  )
 }
 
 export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string }) {
@@ -314,7 +359,9 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
   const groups = Object.entries(a.kickouts.groups).filter(([key]) => key.startsWith(kind + '|'))
   const counts = Object.fromEntries(KO_OUTCOMES.map(o => [o, all.filter(x => x.outcome === o).length]))
   const nWon = all.filter(x => x.won).length
-  const finding = kickoutFinding(all, kind)
+  const spots = a.kickouts.player_spots?.[kind]
+  const zones: GpsKoZone[] = a.kickouts.zones?.[kind] || []
+  const finding = spotsFinding(spots)
   const whose = kind === 'own' ? `${team} kickouts` : 'Their kickouts'
   return (
     <div className="space-y-5">
@@ -388,7 +435,29 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
         </div>
       ) : <p className="text-sm text-white/55">No kickouts with that outcome.</p>}
 
-      <Section title="Our shape at the kick, by outcome" note="Team height = average distance of our tracked outfielders from our own goal line at the moment of the kick (higher = pushed up). Near landing = our players within 10 m of the tagged landing spot (the spot is a few metres out). Small groups (under 5) say little.">
+      {spots && spots.players.length > 0 && (
+        <Section title="Who stood where: won v lost" note={`Each player's average spot at the kick: green = on the kickouts we won, orange ring = the ones we lost, joined by a line. Long lines are the pattern; under ${spots.noise_m} m is noise. Only players there for at least ${spots.min_each} of each. Hover a player for his figures.`}>
+          <div className="max-w-3xl">
+            <div className="rounded-xl overflow-hidden border border-white/10"><KickoutSpotsPitch sp={spots} L={a.pitch_length_m} W={a.pitch_width_m} /></div>
+            <PitchFrameCaption team={team} />
+          </div>
+        </Section>
+      )}
+
+      {zones.length > 0 && (
+        <Section title="Where they landed" note="Length is measured from the kicking goal: short under 45 m, mid 45-65 m, long over 65 m (the usual bands). Channels are thirds of the width as we attack. Ours near = our outfielders within 10 m of the tagged landing spot at the tag: our numbers at the break. Zones under 5 kickouts say little. Kicks over the sideline are not drawn.">
+          <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-4 items-start">
+            <div>
+              <div className="rounded-xl overflow-hidden border border-white/10"><KickoutLandingPitch list={all} kind={kind} L={a.pitch_length_m} W={a.pitch_width_m} /></div>
+              <PitchFrameCaption team={team} />
+            </div>
+            <Table head={['Landed', 'Kicks', 'Won', 'Lost', 'Ours near']} align={['l', 'r', 'r', 'r', 'r']}
+              rows={zones.map(z => [`${z.length.split(' ')[0]} · ${z.channel}`, z.n, z.won, z.lost, z.mean_ours_within_10m_of_landing != null ? n1(z.mean_ours_within_10m_of_landing) : '–'])} />
+          </div>
+        </Section>
+      )}
+
+      <Section title="Team height at the kick, by outcome" note="Team height = average distance of our tracked outfielders from our own goal line at the moment of the kick (higher = pushed up). Near landing = our players within 10 m of the tagged landing spot (the spot is a few metres out). Small groups (under 5) say little.">
         <Table head={['Outcome', 'Kickouts', 'Team height', 'In their half', 'Ours near landing']} align={['l', 'r', 'r', 'r', 'r']}
           rows={KO_OUTCOMES.map(o => groups.find(([key]) => key.split('|')[1] === o)).filter((g): g is [string, any] => !!g).map(([key, g]) => [
             <span key="o" className="flex items-center gap-2 capitalize"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: KO_COLOR[key.split('|')[1]] }} aria-hidden="true" />{key.split('|')[1]}</span>,

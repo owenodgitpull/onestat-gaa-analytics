@@ -91,6 +91,14 @@ class NotReady(Exception):
     """The match has no synced GPS (no tracks, sync pending or failed)."""
 
 
+
+def unit_in_match_q(q: dict) -> bool:
+    """The stored sync quality re-read with today's rule (gps_timeseries.sync.unit_in_match), so no re-sync is needed."""
+    if not q or "coverage" not in q:
+        return q.get("in_match") is not False if q else True
+    from app.services.gps_timeseries.sync import unit_in_match
+    return unit_in_match(q.get("coverage") or 0.0, q.get("on_pitch_share") or 0.0, q.get("match_distance_m") or 0.0)
+
 def _s(v):
     return str(v) if v is not None else None
 
@@ -126,7 +134,7 @@ async def load_match(db: AsyncSession, match, with_tracks: bool = True) -> Match
     if with_tracks:
         for row, t in await ts_service.load_tracks(db, match.id):
             q = quality.get(str(row.player_id)) or {}
-            if q.get("in_match") is False:
+            if not unit_in_match_q(q):
                 continue          # e.g. a morning session elsewhere: never part of a match view
             tracks[str(row.player_id)] = t
 

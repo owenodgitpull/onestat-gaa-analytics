@@ -307,7 +307,72 @@ def kickouts(inp: MatchInputs, g: Grid) -> dict:
         if rs:
             push[str(h)] = {"n": len(rs), "team_mean_x": r1(np.mean([r["team_mean_x"] for r in rs])),
                             "players_in_their_half": r1(np.mean([r["players_in_their_half"] for r in rs]))}
-    return {"kickouts": rows, "groups": groups, "totals": totals, "push_up_on_their_kickouts": push}
+    return {"kickouts": rows, "groups": groups, "totals": totals, "push_up_on_their_kickouts": push,
+            "player_spots": _ko_player_spots(rows), "zones": _ko_zones(rows, L, W)}
+
+
+KO_SPOT_MIN = 3          # a player's average spot needs at least this many kickouts in BOTH groups
+KO_SHIFT_NOTE_M = 4.0    # smaller won-v-lost differences are within GPS/tagging noise: not a pattern
+
+
+def _ko_player_spots(rows: list) -> dict:
+    """Per side: each player's average spot at the kick on the kickouts we won v the ones we lost, biggest shift first.
+    shift_m = straight-line distance between the two spots; dx_m = lost minus won along the pitch (+ = further from our goal
+    when we lost), dy_m across it (+ = towards the right touchline as we attack)."""
+    out = {}
+    for kind in ("own", "opp"):
+        acc = {}
+        for r in rows:
+            if r["kind"] != kind:
+                continue
+            for p in r["at_kick"]:
+                if p["x"] is None or p["y"] is None:
+                    continue
+                a = acc.setdefault(p["player_id"], {"name": p["name"], "won": [], "lost": []})
+                a["won" if r["won"] else "lost"].append((p["x"], p["y"]))
+        players = []
+        for pid, a in acc.items():
+            if len(a["won"]) < KO_SPOT_MIN or len(a["lost"]) < KO_SPOT_MIN:
+                continue
+            w = np.mean(a["won"], 0); l_ = np.mean(a["lost"], 0)
+            players.append({"player_id": pid, "name": a["name"],
+                            "won": {"x": r1(w[0]), "y": r1(w[1]), "n": len(a["won"])},
+                            "lost": {"x": r1(l_[0]), "y": r1(l_[1]), "n": len(a["lost"])},
+                            "dx_m": r1(l_[0] - w[0]), "dy_m": r1(l_[1] - w[1]), "shift_m": r1(float(np.hypot(*(l_ - w))))})
+        players.sort(key=lambda p: -p["shift_m"])
+        if players:
+            out[kind] = {"players": players, "min_each": KO_SPOT_MIN, "noise_m": KO_SHIFT_NOTE_M,
+                         "n_won": sum(1 for r in rows if r["kind"] == kind and r["won"]),
+                         "n_lost": sum(1 for r in rows if r["kind"] == kind and not r["won"])}
+    return out
+
+
+def _ko_zones(rows: list, L: float, W: float) -> dict:
+    """Per side: where the kickouts landed, by length from the KICKING goal (short under 45 m, mid 45-65 m, long over 65 m,
+    the usual GAA bands) and channel (thirds of the width as WE attack), with won/lost and our numbers near the landing.
+    Kicks over the sideline never landed: left out here (counted in totals)."""
+    out = {}
+    for kind in ("own", "opp"):
+        z = {}
+        for r in rows:
+            if r["kind"] != kind or r["outcome"] == "over the sideline" or r["landing_x"] is None:
+                continue
+            d = r["landing_x"] if kind == "own" else L - r["landing_x"]
+            length = "short (under 45 m)" if d < 45 else "mid (45-65 m)" if d <= 65 else "long (over 65 m)"
+            ch = "our left" if r["landing_y"] < W / 3 else "centre" if r["landing_y"] <= 2 * W / 3 else "our right"
+            c = z.setdefault(f"{length}|{ch}", {"length": length, "channel": ch, "n": 0, "won": 0, "near": []})
+            c["n"] += 1; c["won"] += bool(r["won"])
+            if r["ours_within_10m_of_landing"] is not None:
+                c["near"].append(r["ours_within_10m_of_landing"])
+        rows_out = []
+        for c in z.values():
+            near = c.pop("near")
+            rows_out.append({**c, "lost": c["n"] - c["won"], "mean_ours_within_10m_of_landing": r1(np.mean(near)) if near else None})
+        order = {"short (under 45 m)": 0, "mid (45-65 m)": 1, "long (over 65 m)": 2}
+        rows_out.sort(key=lambda c: (order[c["length"]], c["channel"]))
+        if rows_out:
+            out[kind] = rows_out
+    return out
 
 
 # ------------------------------------------------------------------ 5. intensity

@@ -465,7 +465,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                       <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={34} fill="url(#gpsDotOurs)" stroke={isCarrier ? '#ffffff' : 'rgba(255,255,255,0.75)'} strokeWidth={3} />
                       <text x={sc.x(d.x)} y={sc.y(d.y) + 12} textAnchor="middle" fontSize={34} fontWeight={800} fill="#fff" stroke="rgba(4,40,28,0.55)" strokeWidth={3} paintOrder="stroke" style={{ fontVariantNumeric: 'tabular-nums' }}>{n ?? ''}</text>
                       {(showNames || isCarrier) && (
-                        <text x={sc.x(d.x)} y={sc.y(d.y) + 78} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{name(d.pid).split(' ').slice(-1)[0]}</text>
+                        <text x={sc.x(d.x)} y={sc.y(d.y) + 78} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{name(d.pid).replace(/\s*\(c\)\s*$/i, '').split(' ').slice(-1)[0]}</text>
                       )}
                     </g>
                   )
@@ -475,7 +475,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                   const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half)
                   const age = Math.max(0, pitchMs - e.video_ms)
                   const ours = e.team === 'team_a'
-                  const label = `${humanEventType(e.event_type)}${ours && e.player_id ? ` · ${name(e.player_id).split(' ').slice(-1)[0]}` : !ours && e.opposition_player ? ` · ${e.opposition_player}` : ''}`
+                  const label = `${humanEventType(e.event_type)}${ours && e.player_id ? ` · ${name(e.player_id).replace(/\s*\(c\)\s*$/i, '').split(' ').slice(-1)[0]}` : !ours && e.opposition_player ? ` · ${e.opposition_player}` : ''}`
                   const fs = 32, h = 58, w = Math.round(label.length * fs * 0.56 + 48)
                   const cx = Math.min(Math.max(sc.x(p.x), sc.x(0) + w / 2 + 6), sc.x(L) - w / 2 - 6)
                   let cy = sc.y(p.y) - 92 - k * (h + 10)

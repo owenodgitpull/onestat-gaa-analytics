@@ -82,6 +82,15 @@ class _Grid:
         return out
 
 
+
+def unit_in_match(coverage: float, on_pitch_share: float, distance_m: float) -> bool:
+    """Was this unit worn in the match? Over half the match recorded, OR a unit that stopped part-way: what it did record
+    was mostly on this pitch with real running (a starter whose battery died at 38% still played). A unit worn elsewhere
+    (a morning session) records little on the pitch and stays out."""
+    if coverage > 0.5:
+        return True
+    return coverage >= 0.15 and on_pitch_share >= 0.8 * coverage and distance_m >= 1000
+
 def _prep(items: List[Tagged], grid: _Grid, half: Optional[int], cal: Optional[dict]):
     sel = [d for d in items if (half is None or d.half == half) and d.player_id in grid.pos]
     prow = np.array([grid.pos[d.player_id] for d in sel], dtype=np.int64)
@@ -263,6 +272,6 @@ def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged
             uu = grid.u[p, g0:g1]; vv = grid.v[p, g0:g1]
             inside += int(np.sum((np.abs(uu) <= pitch_length_m / 2 + 3) & (np.abs(vv) <= pitch_width_m / 2 + 3)))
         quality[pid] = {"coverage": round(cov / tot, 3) if tot else 0.0, "on_pitch_share": round(inside / tot, 3) if tot else 0.0,
-                        "in_match": bool(tot and cov / tot > 0.5), "match_distance_m": round(dist), "n_samples": t.n,
+                        "in_match": unit_in_match(cov / tot if tot else 0.0, inside / tot if tot else 0.0, dist), "match_distance_m": round(dist), "n_samples": t.n,
                         "bad_fix_share": round(float(np.mean((t.flags & FLAG_BAD_FIX) != 0)), 3), "interpolated_share": round(float(np.mean((t.flags & FLAG_INTERPOLATED) != 0)), 3)}
     return {"calibration": cal, "periods": periods, "tag_lag": tag_lag, "quality": quality}
