@@ -150,3 +150,15 @@ export function periodClock(ms: number, periods: { half: number; video_start_ms:
 
 export const COLOR_OURS = '#0d9f6e'     // validated pair (dataviz validator, dark surface): ours / in possession
 export const COLOR_THEIRS = '#e8620f'   // theirs / out of possession
+
+
+/** "Back behind the ball" headline: a count, never a bare median (a median of only the ones that got back hides the ones
+ *  that never did; when none got back there is no median at all). */
+export function backBehindBall(tr: { n_lost: number; already_back: number; caught_short: number; median_recovery_s: number | null; not_recovered_in_15s: number }) {
+  const caught = tr.caught_short ?? Math.max(0, tr.n_lost - tr.already_back)
+  const got = Math.max(0, caught - (tr.not_recovered_in_15s || 0))
+  if (!tr.n_lost) return { value: '–', sub: 'no turnovers lost with GPS' }
+  if (!caught) return { value: 'All back', sub: `already back on all ${tr.n_lost} turnovers lost` }
+  const med = tr.median_recovery_s != null && got ? ` · median ${tr.median_recovery_s.toFixed(0)} s for the ${got} that got back` : ''
+  return { value: `${got} of ${caught}`, sub: `caught short, back within 15 s${med} · ${tr.already_back} of ${tr.n_lost} already back` }
+}

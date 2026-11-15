@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Play } from 'lucide-react'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts'
 import {
-  gpsAnalysisApi, type GpsMatchAnalysis, type GpsShapeSeries, type GpsHeatmap, type GpsKickout, type GpsKoSpots, type GpsKoZone, type GpsReplayContext,
+  gpsAnalysisApi, type GpsMatchAnalysis, type GpsShapeSeries, type GpsHeatmap, backBehindBall, type GpsKickout, type GpsKoSpots, type GpsKoZone, type GpsReplayContext,
   periodClock, COLOR_OURS, COLOR_THEIRS,
 } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption } from './GpsPitch'
@@ -82,7 +82,7 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
         <Tile label="Team distance" value={n1(s.team_distance_m / 1000, ' km')} sub={`${s.players_tracked} players tracked`} />
         <Tile label="High-speed running" value={n1(s.team_hsr_m / 1000, ' km')} sub="over 5.5 m/s" />
         <Tile label="Compact without ball" value={n1(s.shape.out.compactness, ' m')} sub={`vs ${n1(s.shape.in.compactness, ' m')} with it · avg distance to team centre`} />
-        <Tile label="Back behind the ball" value={n1(s.transitions.median_recovery_s, ' s')} sub={`median when caught short (${s.transitions.caught_short} of ${s.transitions.n_lost} turnovers lost; ${s.transitions.already_back} already back)`} />
+        <Tile label="Back behind the ball" value={backBehindBall(s.transitions).value} sub={backBehindBall(s.transitions).sub} />
       </div>
       <Section title="By half">
         <Table head={['Period', 'Distance', 'High-speed', 'Compact (no ball)', 'Compact (ball)', 'Length (no ball)']} align={['l', 'r', 'r', 'r', 'r', 'r']}
@@ -197,7 +197,7 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Tile label="Turnovers lost" value={t.summary.n_lost} sub={`${t.summary.lost_led_to_score} led to a score against`} />
-        <Tile label="Back behind the ball" value={n1(t.summary.median_recovery_s, ' s')} sub={`median when caught short (${t.summary.caught_short}) · ${t.summary.already_back} already back · ${t.summary.not_recovered_in_15s} not back in 15 s`} />
+        <Tile label="Back behind the ball" value={backBehindBall(t.summary).value} sub={backBehindBall(t.summary).sub} />
         <Tile label="Retreat in 10 s" value={n1(t.summary.median_retreat_10s_m, ' m')} sub="team centre towards our goal" />
         <Tile label="Turnovers won" value={t.summary.n_won} sub={`median ${n1(t.summary.median_forward_runners)} broke forward · ${t.summary.won_led_to_score} led to a score`} />
       </div>

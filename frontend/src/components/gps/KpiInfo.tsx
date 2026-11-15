@@ -48,8 +48,8 @@ export const GPS_KPI_INFO: Record<string, KpiExplanation> = {
     how: 'Every second, the average distance from our own goal line of our six deepest outfielders, averaged over the seconds the opposition had the ball. Higher = a higher line.',
   },
   'Back behind ball': {
-    what: 'When we lose the ball, how quickly we get all but 3 of our players back behind it.',
-    how: 'We lose the ball in open play (not frees, sidelines or kickouts). Draw a line across the pitch at the ball, and count our players on our goal side of it. The clock stops when all but 3 are back. "Already back" = enough were there the moment we lost it. The time shown is the middle one of the rest: half quicker, half slower.',
+    what: 'When we lose the ball, whether we get all but 3 of our players back behind it within 15 seconds.',
+    how: 'We lose the ball in open play (not frees, sidelines or kickouts). Draw a line across the pitch at the ball, and count our players at least 2 m on our goal side of it. It counts as back when all but 3 (at most 11) are there and stay there for 5 s, or until the move ends. "Already back" = enough were there the moment we lost it. The big figure is how many of the rest got back within 15 s; the median time is only of the ones that did.',
     accuracy: 'Our players: GPS, to a couple of metres. The ball: from your tags, a few metres. Read one turnover with care; the middle time over many is the one to trust.',
   },
   'Back behind the ball': {

@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Play, Loader2 } from 'lucide-react'
 import { api } from '../../services/api'
-import { gpsAnalysisApi } from '../../services/gpsAnalysisApi'
+import { gpsAnalysisApi, backBehindBall } from '../../services/gpsAnalysisApi'
 
 const n1 = (v: number | null | undefined, unit = '') => (v == null ? '–' : `${Math.round(v * 10) / 10}${unit}`)
 
@@ -45,7 +45,7 @@ export default function GpsMatchCard({ matchId }: { matchId: string }) {
               ['Team distance', n1(s.team_distance_m / 1000, ' km'), `${s.players_tracked} tracked`],
               ['High-speed', n1(s.team_hsr_m / 1000, ' km'), 'over 5.5 m/s'],
               ['Compact without ball', n1(s.shape.out.compactness, ' m'), `${n1(s.shape.in.compactness, ' m')} with it`],
-              ['Back behind ball', n1(s.transitions.median_recovery_s, ' s'), `when caught short · ${s.transitions.already_back} of ${s.transitions.n_lost} already back`],
+              ['Back behind ball', backBehindBall(s.transitions).value, backBehindBall(s.transitions).sub],
             ].map(([l, v, sub]) => (
               <div key={l} className="relative rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 min-w-0">
                 <KpiInfoButton label={String(l)} />
