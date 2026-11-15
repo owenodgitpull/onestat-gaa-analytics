@@ -45,12 +45,74 @@ def half_at(bounds, video_ms: float) -> Optional[int]:
     return h if h is not None else (bounds[0][0] if bounds else None)
 
 
-def frame_point(x, y, half, arfh, L, W) -> Tuple[Optional[float], Optional[float]]:
-    """One raw point -> metres in our frame, or (None, None)."""
+# ---------------------------------------------------------------- artwork <-> real metres
+# The pitch artwork (frontend/public/pitch-svg.svg) is NOT to scale everywhere. Measured 2026-11-15 by rendering it at
+# 2332x1446 and reading the white lines on the centre row, as a share of the goal-to-goal length (145 m):
+#   13 m line 9.93 %, 20 m line 13.45 %, 40 m arc 30.69 % (a circle about the goal centre, ~44.5 m), 45 m line 34.97 %,
+#   65 m line 44.83 %, halfway 50 %.
+# The arc and 45 m line were drawn for a 130 m pitch. Tags are placed against these drawn lines, GPS is in true metres.
+# ART_WARP on: a tagged spot is turned into TRUE metres (art_to_real) before it meets GPS; the frontend draws true metres
+# back onto the artwork with the same table (GpsPitch). Off = the old straight 145 m scaling. The replay keeps the old
+# scaling either way (frame_point(..., real=False)).
+ART_WARP = True
+ART_FRACTIONS = {13: 0.0993, 20: 0.1345, 40: 0.3069, 45: 0.3497, 65: 0.4483}
+
+
+def _warp_table(L: float):
+    real = [0.0, 13.0, 20.0, 40.0, 45.0]
+    art = [0.0] + [ART_FRACTIONS[k] * L for k in (13, 20, 40, 45)]
+    if L / 2 > 66:
+        real.append(65.0); art.append(ART_FRACTIONS[65] * L)
+    real.append(L / 2); art.append(L / 2)
+    return real, art
+
+
+def _real_to_art_d(d: float, dy: float, L: float) -> float:
+    """Distance from the nearer goal line, true metres -> artwork metres, at dy metres off the goal's centre line.
+    Along the length the drawn lines are matched; near the arc the point keeps its place relative to the drawn arc
+    (same distance band around the goal centre, y unchanged)."""
+    real, art = _warp_table(L)
+    xa = float(np.interp(d, real, art))
+    r = float(np.hypot(d, dy))
+    ra = float(np.interp(r, real, art))
+    xr = float(np.sqrt(ra * ra - dy * dy)) if ra > abs(dy) else xa
+    w = min(1.0, max(0.0, (52.0 - r) / 8.0)) * min(1.0, max(0.0, (d - 12.0) / 6.0))
+    return w * xr + (1 - w) * xa
+
+
+def real_to_art(x: float, y: float, L: float, W: float) -> Tuple[float, float]:
+    near_ours = x <= L / 2
+    d = x if near_ours else L - x
+    da = _real_to_art_d(max(0.0, d), y - W / 2, L)
+    return (da if near_ours else L - da), y
+
+
+def art_to_real(x: float, y: float, L: float, W: float) -> Tuple[float, float]:
+    """Inverse of real_to_art (bisection; y is never changed)."""
+    near_ours = x <= L / 2
+    target = x if near_ours else L - x
+    dy = y - W / 2
+    lo, hi = 0.0, L / 2
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        if _real_to_art_d(mid, dy, L) < target:
+            lo = mid
+        else:
+            hi = mid
+    d = (lo + hi) / 2
+    return (d if near_ours else L - d), y
+
+
+def frame_point(x, y, half, arfh, L, W, real: bool = True) -> Tuple[Optional[float], Optional[float]]:
+    """One raw tagged point -> metres in our frame, or (None, None). real=True (and ART_WARP): true metres, so it can be
+    compared with GPS; real=False: straight scaling onto the artwork (the replay)."""
     if x is None or y is None:
         return None, None
     fx, fy = to_attack_frame(float(x), float(y), own_attacks_right(arfh, half if half is not None else 1))
-    return fx / 100.0 * L, fy / 100.0 * W
+    mx, my = fx / 100.0 * L, fy / 100.0 * W
+    if real and ART_WARP:
+        return art_to_real(mx, my, L, W)
+    return mx, my
 
 
 @dataclass
@@ -149,7 +211,7 @@ def align_carry_starts(inp: MatchInputs, t: np.ndarray, pids, X: np.ndarray, Y: 
     for k, c in enumerate(cs):
         if c.team != "own" or c.player_id not in row or not len(t):
             continue
-        sx, sy = frame_point(c.start_x, c.start_y, c.half, inp.attacking_right_first_half, L, W)
+        sx, sy = frame_point(c.start_x, c.start_y, c.half, inp.attacking_right_first_half, L, W, real=False)   # timing match: unchanged by ART_WARP
         if sx is None:
             continue
         a = int(np.searchsorted(t, c.video_ms - CARRY_SEARCH_BEFORE_MS))
@@ -241,7 +303,7 @@ def replay_times(inp: MatchInputs, t, half_arr, pids, X, Y, S, on, bounds) -> di
     row = {p: i for i, p in enumerate(pids)}
     L, W, arfh = inp.pitch_length_m, inp.pitch_width_m, inp.attacking_right_first_half
     step = float(np.median(np.diff(t))) if len(t) > 1 else 100.0
-    spots = [frame_point(c.start_x, c.start_y, c.half, arfh, L, W) for c in cs]
+    spots = [frame_point(c.start_x, c.start_y, c.half, arfh, L, W, real=False) for c in cs]   # replay: unchanged by ART_WARP
     # 1. clean own matches over a wide window: the floor of tau per period
     clean: Dict[int, list] = {}
     if len(t):

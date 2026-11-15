@@ -15,8 +15,26 @@ def test_frame_point_mirror():
     # second half flips relative to the first for the same raw point
     assert not np.allclose(frame_point(10, 20, 1, True, 145, 90), frame_point(10, 20, 2, True, 145, 90))
     # left stays left: a rotation, never a mirror of x alone
-    fx, fy = frame_point(10, 20, 2, True, 145, 90)
+    fx, fy = frame_point(10, 20, 2, True, 145, 90, real=False)
     assert np.isclose(fx, 0.9 * 145) and np.isclose(fy, 0.8 * 90)
+
+
+def test_art_warp_lines_and_round_trip():
+    # the artwork's drawn lines map to the real lines (centre row), the drawn arc to the real 40 m arc all round,
+    # and art -> real -> art returns the same spot; y never changes
+    import math
+    from app.services.gps_analysis.frame import real_to_art, art_to_real
+    L, W = 145.0, 90.0
+    for real_d, art_d in ((13, 14.4), (20, 19.5), (40, 44.5), (45, 50.7), (65, 65.0), (72.5, 72.5)):
+        assert abs(real_to_art(real_d, 45, L, W)[0] - art_d) < 0.1
+        assert abs(real_to_art(L - real_d, 45, L, W)[0] - (L - art_d)) < 0.1
+    for t in (0.0, 0.4, 0.8, 1.0):
+        x, y = real_to_art(40 * math.cos(t), 45 + 40 * math.sin(t), L, W)
+        assert abs(math.hypot(x, y - 45) - 44.5) < 0.2
+    for x, y in ((5, 85), (26.5, 75), (44, 45), (100, 10), (140, 60)):
+        ax, ay = real_to_art(x, y, L, W)
+        bx, by = art_to_real(ax, ay, L, W)
+        assert abs(bx - x) < 0.05 and ay == y == by
 
 
 def _grid(X, Y, poss):

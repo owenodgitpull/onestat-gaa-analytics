@@ -423,7 +423,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           </div>
         </div>
         <div className="rounded-xl overflow-hidden border border-white/10">
-          <GpsPitch lengthM={L} widthM={W} label="Player positions">
+          <GpsPitch lengthM={L} widthM={W} label="Player positions" warp={false} fit={false}>
             {(sc) => (
               <>
                 {/* look: one blurred halo layer under crisp dots (a single filter for all halos, cheap enough to animate on a tablet) */}
@@ -495,7 +495,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             )}
           </GpsPitch>
         </div>
-        <PitchFrameCaption raw={raw} team={team} ownRight={ctx.attacking_right_first_half == null ? undefined : ownAttacksRight(arfh, half)} />
+        <PitchFrameCaption fit={false} raw={raw} team={team} ownRight={ctx.attacking_right_first_half == null ? undefined : ownAttacksRight(arfh, half)} />
         <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
           {status.busy ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : status.error ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}
           <span>{status.text}</span>
