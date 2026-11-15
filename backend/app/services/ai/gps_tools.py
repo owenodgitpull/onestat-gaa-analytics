@@ -128,7 +128,8 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
         return {"totals": ko.get("totals"), "player_spots": spots, "zones": ko.get("zones"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
                 "how_to_read": "totals = kickouts with a GPS frame per side (own = ours, opp = theirs), won/lost from OUR side, over_the_sideline "
                                "included (our kick straight out = lost, theirs = won); quote these, never add groups up. team_mean_x = mean distance "
-                               "of our outfielders from our own goal line at the kick (higher = pushed up). ours_within_10m_of_landing = our "
+                               "of our outfielders from our own goal line at the kick, read 2.5 s before the tag (the tag is when the ball "
+                               "was won) (higher = pushed up). ours_within_10m_of_landing = our "
                                "outfielders within 10 m of the TAGGED landing spot at the tag (the spot is a few metres out, so a count, never a "
                                "distance); won_near_landing / lost_near_landing give its mean for kept v lost with how many landed. A group "
                                "under 5 kickouts is described, never compared. player_spots = each player's average spot at the kick on kickouts we won v "

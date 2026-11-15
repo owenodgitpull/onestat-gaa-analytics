@@ -227,7 +227,11 @@ KO_OUTCOME = {
     "OPP_KICKOUT_OPPOSITION_WON": ("opp", "lost clean"), "OPP_KICKOUT_OPPOSITION_WON_BREAK": ("opp", "lost break"),
 }
 KO_OUTCOMES = ("won clean", "won break", "lost clean", "lost break", "over the sideline")
-NEAR_LANDING_M = 10.0     # "near where it landed": the tagged spot is itself a few metres out, so a wide band
+NEAR_LANDING_M = 10.0
+# The kickout tag is tapped when the ball is WON (the catch / the break), ~2-3 s after the kick, by which time players are
+# already running in. Shape "at the kick" is read this long before the tag (checked 2026-11-15 on Down: defenders 39-41 m
+# from goal 3 s before the tag, 35-36 m at it).
+KICK_BEFORE_TAG_MS = 2500     # "near where it landed": the tagged spot is itself a few metres out, so a wide band
 
 
 def _ko_kind(e):
@@ -254,7 +258,8 @@ def kickouts(inp: MatchInputs, g: Grid) -> dict:
         over = outcome == "over the sideline"
         # won = we had the ball after it: our kickout over the sideline is lost, theirs is won
         won = outcome.startswith("won") or (over and kind == "opp")
-        j0 = g.idx(e.video_ms); j6 = g.idx(e.video_ms + 6000)
+        jt = g.idx(e.video_ms)                                   # the tag: ball won / landed
+        j0 = g.idx(e.video_ms - KICK_BEFORE_TAG_MS); j6 = g.idx(e.video_ms - KICK_BEFORE_TAG_MS + 6000)   # the kick, and 6 s after it
         n = int(V[:, j0].sum())
         if n < 8:
             continue
@@ -270,7 +275,7 @@ def kickouts(inp: MatchInputs, g: Grid) -> dict:
         # our outfielders within 10 m of the tagged landing spot at the tag (none for a kick over the sideline: it never landed)
         near = None
         if not over and land[0] is not None:
-            dl = np.hypot(g.X[V[:, j0], j0] - land[0], g.Y[V[:, j0], j0] - land[1])
+            dl = np.hypot(g.X[V[:, jt], jt] - land[0], g.Y[V[:, jt], jt] - land[1])
             near = int((dl <= NEAR_LANDING_M).sum())
         rows.append({
             "video_ms": e.video_ms, "half": e.half, "kind": kind, "outcome": outcome, "won": won,

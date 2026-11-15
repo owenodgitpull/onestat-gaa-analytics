@@ -406,7 +406,7 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
               <KickoutPitch k={k} L={a.pitch_length_m} W={a.pitch_width_m} />
             </div>
             <PitchFrameCaption team={team} />
-            <p className="text-xs text-white/50 mt-1">Dots: our players at the kick (ringed: who won it). Arrows: where they ran in the next 6 s. Dashed line and circle: the kick and where it landed (tagged). No goalkeeper or opposition GPS.</p>
+            <p className="text-xs text-white/50 mt-1">Dots: our players at the kick, 2.5 s before the tag (ringed: who won it). Arrows: where they ran in the next 6 s. Dashed line and circle: the kick and where it landed (tagged). No goalkeeper or opposition GPS.</p>
           </div>
           <div className="space-y-2 min-w-0">
             <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-sm space-y-1">
