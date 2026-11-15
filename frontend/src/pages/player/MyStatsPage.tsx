@@ -16,6 +16,7 @@ import {
   MoveHorizontal, Hand,
 } from 'lucide-react';
 import ChartZoomModal from '../../components/ChartZoomModal';
+import SelfKpiPanel from '../../components/player/SelfKpiPanel';
 import SleepTracker from '../../components/player/SleepTracker';
 import PlayerPhysicalTrend from '../../components/charts/PlayerPhysicalTrend';
 import PlayerFatigueSignature from '../../components/charts/PlayerFatigueSignature';
@@ -33,6 +34,7 @@ function getInitials(name?: string): string {
 }
 
 const TABS = [
+  { key: 'me', label: 'Me v my average', icon: Activity },
   { key: 'scoring', label: 'Scoring', icon: Crosshair },
   { key: 'goalkeeping', label: 'Goalkeeping', icon: Hand },
   { key: 'gps', label: 'GPS', icon: Activity },
@@ -48,7 +50,7 @@ const TOOLTIP_STYLE = {
 };
 
 export default function MyStatsPage() {
-  const [activeTab, setActiveTab] = useState('scoring');
+  const [activeTab, setActiveTab] = useState('me');
   const [showH2H, setShowH2H] = useState(false);
   const { club, logoUrl } = useClub();
 
@@ -126,6 +128,7 @@ export default function MyStatsPage() {
         })}
       </div>
 
+      {activeTab === 'me' && <MeVsMeTab />}
       {activeTab === 'scoring' && <ScoringTab />}
       {activeTab === 'goalkeeping' && isGoalkeeper && <GoalkeepingTab />}
       {activeTab === 'gps' && <GPSTab />}
@@ -1632,4 +1635,18 @@ function computeSeasonAverages(matchEntries: GPSEntry[]) {
     sprints: sprints.reduce((a, b) => a + b, 0) / sprints.length,
     speed: speeds.length > 0 ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0,
   };
+}
+
+
+/** My figures in one match against my own average over my other matches (never against team-mates). */
+function MeVsMeTab() {
+  const q = useQuery({ queryKey: ['my-self-kpis'], queryFn: playerPortalAPI.getMySelfKpis, staleTime: 10 * 60 * 1000 });
+  if (q.isLoading) return (
+    <div className="glass-card p-4 flex items-center gap-2 text-sm text-white/55">
+      <span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Loading your match-by-match figures…
+    </div>
+  );
+  if (q.isError) return <div className="glass-card p-4 text-sm text-amber-300">Could not load your match figures. Try again in a moment.</div>;
+  if (!q.data || !q.data.matches.length) return <div className="glass-card p-4 text-sm text-white/60">No matches with your figures yet.</div>;
+  return <SelfKpiPanel data={q.data} who="your" />;
 }

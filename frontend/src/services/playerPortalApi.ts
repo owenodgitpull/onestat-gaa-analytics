@@ -341,6 +341,8 @@ export const playerPortalAPI = {
     fetchAPI<PlayerDashboard>('/player-portal/my-dashboard'),
 
   // My Stats
+  getMySelfKpis: () =>
+    fetchAPI<import('../components/player/SelfKpiPanel').SelfKpis>('/player-portal/my-stats/self-kpis'),
   getMyMatchStats: () =>
     fetchAPI<{ matches: PlayerMatchStatRow[] }>('/player-portal/my-stats/matches'),
 

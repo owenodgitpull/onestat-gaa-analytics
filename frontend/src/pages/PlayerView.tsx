@@ -58,6 +58,7 @@ import PlayerFatigueSignature from '../components/charts/PlayerFatigueSignature'
 import PlayerSleepTrend from '../components/charts/PlayerSleepTrend'
 import PlayerDisciplineTrend from '../components/charts/PlayerDisciplineTrend'
 import PlayerPositionalBenchmark from '../components/charts/PlayerPositionalBenchmark'
+import SelfKpiPanel, { type SelfKpis } from '../components/player/SelfKpiPanel'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -1255,6 +1256,56 @@ export default function PlayerView() {
 // ============================================================================
 // Overview Tab — extracted so AI insight hooks run at top level
 // ============================================================================
+interface LeaderboardPosition { category: string; display_name: string; rank: number; total: number; value: number | string | null }
+
+/** Ranks on the club leaderboards (the same the player portal shows) + SelfKpiPanel (his match v his own average). */
+function PlayerSelfSection({ playerId }: { playerId: string }) {
+  const ranks = useQuery({
+    queryKey: ['player-leaderboard-positions', playerId],
+    queryFn: async (): Promise<{ positions: LeaderboardPosition[] }> => {
+      const res = await fetch(`${API_BASE}/analytics/player/${playerId}/leaderboard-positions`, { credentials: 'include' })
+      if (!res.ok) throw new Error('Could not load leaderboard positions')
+      return res.json()
+    },
+  })
+  const self = useQuery({
+    queryKey: ['player-self-kpis', playerId],
+    queryFn: async (): Promise<SelfKpis> => {
+      const res = await fetch(`${API_BASE}/analytics/player/${playerId}/self-kpis`, { credentials: 'include' })
+      if (!res.ok) throw new Error('Could not load his match figures')
+      return res.json()
+    },
+  })
+  const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] || 'th'}`
+  const pos = [...(ranks.data?.positions || [])].sort((a, b) => a.rank - b.rank)
+  return (
+    <div className="space-y-6">
+      <div className="glass-card p-4 md:p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+          <h3 className="text-xl font-bold text-white">Leaderboards</h3>
+          <span className="text-xs text-white/50">Where he ranks in the squad, as the player sees it in his portal</span>
+        </div>
+        {ranks.isLoading ? <p className="flex items-center gap-2 text-sm text-white/55"><span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Loading his leaderboard places…</p>
+          : ranks.isError ? <p className="text-sm text-amber-300">Could not load his leaderboard places.</p>
+          : pos.length === 0 ? <p className="text-sm text-white/55">Not on any leaderboard yet.</p>
+          : (
+            <div className="flex flex-wrap gap-2">
+              {pos.map(p => (
+                <div key={p.category} className={`rounded-xl px-3 py-2 border ${p.rank <= 3 ? 'border-amber-400/40 bg-amber-400/10' : 'border-white/10 bg-white/5'}`}>
+                  <div className="text-lg font-bold text-white leading-tight">{ordinal(p.rank)} <span className="text-xs font-normal text-white/50">of {p.total}</span></div>
+                  <div className="text-xs text-white/70">{p.display_name}</div>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+      {self.isLoading ? <div className="glass-card p-4 flex items-center gap-2 text-sm text-white/55"><span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Loading his match-by-match figures…</div>
+        : self.isError ? <div className="glass-card p-4 text-sm text-amber-300">Could not load his match-by-match figures.</div>
+        : <SelfKpiPanel data={self.data} who="his" />}
+    </div>
+  )
+}
+
 function OverviewTab({
   player, matchStats, attendanceStats, shotEvents,
   matchesPlayed, totalGoals, totalPoints, totalScore,
@@ -1323,6 +1374,9 @@ function OverviewTab({
           <KpiCard label="Attendance" value={`${attendanceStats?.attendance_rate || 0}%`} subtitle={`${attendanceStats?.present_count || 0} of ${attendanceStats?.total_sessions || 0} sessions`} icon={Calendar} gradient="from-pink-600 to-rose-600" />
         </div>
       )}
+
+      {/* Leaderboard ranks (v team-mates) and his figures against his own average */}
+      <PlayerSelfSection playerId={player.id} />
 
       {/* Performance DNA + Defensive Contribution Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

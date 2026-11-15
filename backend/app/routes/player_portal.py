@@ -434,6 +434,17 @@ async def get_my_dashboard(
 # My Stats Endpoints
 # ------------------------------------------------------------------
 
+@router.get("/my-stats/self-kpis")
+async def get_my_self_kpis(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """My KPIs per match, to compare a match with my own average."""
+    from app.services.player_self_kpis import player_self_kpis
+    player = await _get_player_for_user(db, user)
+    return await player_self_kpis(db, user.club_id, player.id)
+
+
 @router.get("/my-stats/matches")
 async def get_my_match_stats(
     user: AuthenticatedUser = Depends(require_club),

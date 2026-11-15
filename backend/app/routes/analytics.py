@@ -942,6 +942,46 @@ async def get_shot_locations(
     return locations
 
 
+@router.get("/player/{player_id}/self-kpis")
+async def get_player_self_kpis(
+    player_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """The player's KPIs per match, to compare a match with his OWN average (services/player_self_kpis)."""
+    from uuid import UUID
+    from app.services.player_self_kpis import player_self_kpis
+    try:
+        pid = UUID(player_id)
+    except ValueError:
+        return {"matches": [], "kpis": []}
+    owner = (await db.execute(select(Player.id).where(and_(Player.id == pid, Player.club_id == user.club_id)))).scalar_one_or_none()
+    if owner is None:
+        return {"matches": [], "kpis": []}
+    return await player_self_kpis(db, user.club_id, pid)
+
+
+@router.get("/player/{player_id}/leaderboard-positions")
+async def get_player_leaderboard_positions(
+    player_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Where the player sits on each club leaderboard (the same ranks the player portal shows him)."""
+    from uuid import UUID
+    from app.services.leaderboard_service import LeaderboardService
+    try:
+        pid = UUID(player_id)
+    except ValueError:
+        return {"positions": []}
+    owner = (await db.execute(select(Player.id).where(and_(Player.id == pid, Player.club_id == user.club_id)))).scalar_one_or_none()
+    if owner is None:
+        return {"positions": []}
+    boards = await LeaderboardService.get_all_leaderboards(db, user.club_id, pid)
+    return {"positions": [{"category": b["category"], "display_name": b["display_name"], "rank": b["my_rank"],
+                           "total": b["total_players"], "value": b["my_value"]} for b in boards if b["my_rank"] is not None]}
+
+
 @router.get("/player/{player_id}/matches", response_model=List[PlayerMatchStats])
 async def get_player_match_stats(
     player_id: str,
