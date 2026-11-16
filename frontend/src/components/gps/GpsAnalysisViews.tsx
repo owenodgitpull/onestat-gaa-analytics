@@ -61,10 +61,11 @@ export function Tile({ label, value, sub, cmp }: { label: string; value: ReactNo
       <div className={`text-2xl font-bold tabular-nums leading-tight mt-0.5 ${tone}`}>{value}</div>
       {sub && <div className="text-xs text-white/50 mt-0.5">{sub}</div>}
       {c && (
-        <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${c.good === true ? 'text-emerald-400' : c.good === false ? 'text-red-400' : 'text-white/60'}`}
+        <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm ${c.good === true ? 'text-emerald-400' : c.good === false ? 'text-red-400' : 'text-white/65'}`}
           title={`This match against our other ${c.n} GPS matches. Green = better than our season, red = worse, amber = about the same.`}>
-          {c.dir === 'up' ? <TrendingUp size={12} aria-hidden="true" /> : c.dir === 'down' ? <TrendingDown size={12} aria-hidden="true" /> : <Minus size={12} aria-hidden="true" />}
-          <span className="tabular-nums">{c.last3 != null ? `Prev 3: ${f(c.last3)} · ` : ''}Season: {f(c.season)}</span>
+          {c.dir === 'up' ? <TrendingUp size={14} aria-hidden="true" /> : c.dir === 'down' ? <TrendingDown size={14} aria-hidden="true" /> : <Minus size={14} aria-hidden="true" />}
+          {c.last3 != null && <span className="tabular-nums"><span className="text-white/50 font-normal">Prev 3</span> <b className="font-semibold">{f(c.last3)}</b></span>}
+          <span className="tabular-nums"><span className="text-white/50 font-normal">Season</span> <b className="font-semibold">{f(c.season)}</b></span>
         </div>
       )}
     </div>
@@ -754,7 +755,9 @@ const PRESSURE = [
   { key: 'some', label: 'Some pressure (3-6 m)', max: 6, color: '#facc15' },
   { key: 'free', label: 'Free (over 6 m)', max: Infinity, color: '#ef4444' },
 ] as const
-const pressureOf = (m: number | null | undefined) => PRESSURE.find(p => (m ?? Infinity) <= p.max) || PRESSURE[2]
+const SET_PIECE = { key: 'set', label: 'Free / 45 (we must stand off)', max: Infinity, color: '#9ca3af' } as const
+type PressureBand = typeof PRESSURE[number] | typeof SET_PIECE
+const pressureOf = (m: number | null | undefined, setPiece?: boolean): PressureBand => (setPiece ? SET_PIECE : PRESSURE.find(p => (m ?? Infinity) <= p.max) || PRESSURE[2])
 const isScore = (t: string) => /SCORED/.test(t)
 
 function Chips<T extends string | number>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: { v: T; label: ReactNode }[]; label: string }) {
@@ -771,29 +774,30 @@ function Chips<T extends string | number>({ value, onChange, options, label }: {
 export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; opponent: string }) {
   const mk = a.marking
   const [outcome, setOutcome] = useState<'all' | 'score' | 'miss'>('all')
-  const [pressure, setPressure] = useState<'all' | 'tight' | 'some' | 'free'>('all')
+  const [pressure, setPressure] = useState<'all' | 'tight' | 'some' | 'free' | 'set'>('all')
   const [half, setHalf] = useState<number>(0)
   const [sel, setSel] = useState<number | null>(null)          // index into mk.shots
   const halves = [...new Set(mk.shots.map(x => x.half).filter((h): h is number => h != null))].sort()
   const shown = mk.shots.map((x, i) => ({ x, i })).filter(({ x }) =>
     (outcome === 'all' || (outcome === 'score') === isScore(x.event_type)) &&
-    (pressure === 'all' || pressureOf(x.nearest_m).key === pressure) &&
+    (pressure === 'all' || pressureOf(x.nearest_m, x.set_piece).key === pressure) &&
     (!half || x.half === half))
   const picked = sel != null ? mk.shots[sel] : null
   const pickedVisible = picked && shown.some(r => r.i === sel)
-  const count = (k: string) => mk.shots.filter(x => pressureOf(x.nearest_m).key === k).length
+  const count = (k: string) => mk.shots.filter(x => pressureOf(x.nearest_m, x.set_piece).key === k).length
+  const nSet = mk.n_set_piece ?? mk.shots.filter(x => x.set_piece).length
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label={`${opponent} shots`} value={mk.n_shots} cmp={{ k: 'shots_against', v: mk.n_shots, hib: false, dec: 0 }} />
-        <Tile label="Nearest defender" value={n1(mk.median_nearest_m, ' m')} sub="median, at the shot" cmp={{ k: 'shots_against_nearest_m', v: mk.median_nearest_m, hib: false, unit: 'm' }} />
-        <Tile label="On their scores" value={n1(mk.median_nearest_m_scores, ' m')} sub="median nearest defender" cmp={{ k: 'nearest_on_scores_m', v: mk.median_nearest_m_scores, hib: false, unit: 'm' }} />
-        <Tile label="Nobody within 5 m" value={n1(mk.unpressured_share_pct, '%')} sub="of shots" cmp={{ k: 'unpressured_share_pct', v: mk.unpressured_share_pct, hib: false, unit: '%', dec: 0 }} />
+        <Tile label={`${opponent} shots`} value={mk.n_shots} sub={nSet ? `${mk.n_shots - nSet} from play · ${nSet} from frees / 45s` : undefined} cmp={{ k: 'shots_against', v: mk.n_shots, hib: false, dec: 0 }} />
+        <Tile label="Nearest defender" value={n1(mk.median_nearest_m, ' m')} sub="median, open-play shots" cmp={{ k: 'shots_against_nearest_m', v: mk.median_nearest_m, hib: false, unit: 'm' }} />
+        <Tile label="On their scores" value={n1(mk.median_nearest_m_scores, ' m')} sub="median nearest defender, open play" cmp={{ k: 'nearest_on_scores_m', v: mk.median_nearest_m_scores, hib: false, unit: 'm' }} />
+        <Tile label="Nobody within 5 m" value={n1(mk.unpressured_share_pct, '%')} sub="of open-play shots" cmp={{ k: 'unpressured_share_pct', v: mk.unpressured_share_pct, hib: false, unit: '%', dec: 0 }} />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Chips label="Outcome" value={outcome} onChange={setOutcome} options={[{ v: 'all', label: `All ${mk.n_shots}` }, { v: 'score', label: `Scores ${mk.shots.filter(x => isScore(x.event_type)).length}` }, { v: 'miss', label: `Misses ${mk.shots.filter(x => !isScore(x.event_type)).length}` }]} />
-        <Chips label="Pressure" value={pressure} onChange={setPressure} options={[{ v: 'all' as const, label: 'Any pressure' }, ...PRESSURE.map(p => ({ v: p.key, label: <><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: p.color }} aria-hidden="true" />{p.label} · {count(p.key)}</> }))]} />
+        <Chips label="Pressure" value={pressure} onChange={setPressure} options={[{ v: 'all' as const, label: 'Any pressure' }, ...[...PRESSURE, ...(nSet ? [SET_PIECE] : [])].map(p => ({ v: p.key, label: <><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: p.color }} aria-hidden="true" />{p.label} · {count(p.key)}</> }))]} />
         {halves.length > 1 && <Chips label="Half" value={half} onChange={setHalf} options={[{ v: 0, label: 'Whole match' }, ...halves.map(h => ({ v: h, label: PERIOD[String(h)] || String(h) }))]} />}
       </div>
 
@@ -817,7 +821,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
                   ))}
                   {/* a picked shot is shown on its own; "Show all shots" brings the rest back */}
                   {shown.filter(({ x, i }) => x.shot_x != null && x.shot_y != null && (!pickedVisible || i === sel)).map(({ x, i }) => {
-                    const pr = pressureOf(x.nearest_m), on = i === sel, score = isScore(x.event_type)
+                    const pr = pressureOf(x.nearest_m, x.set_piece), on = i === sel, score = isScore(x.event_type)
                     return (
                       <g key={i} onClick={() => setSel(on ? null : i)} style={{ cursor: 'pointer' }}>
                         {on && <circle cx={s.x(x.shot_x!, x.shot_y!)} cy={s.y(x.shot_y!)} r={44} fill="none" stroke="#fff" strokeWidth={5} />}
@@ -832,7 +836,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
           </div>
           <PitchFrameCaption team="We" />
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-white/65">
-            {PRESSURE.map(p => <span key={p.key} className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: p.color }} aria-hidden="true" />{p.label}</span>)}
+            {[...PRESSURE, ...(nSet ? [SET_PIECE] : [])].map(p => <span key={p.key} className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: p.color }} aria-hidden="true" />{p.label}</span>)}
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-white/70" aria-hidden="true" />filled = scored</span>
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-white/70" aria-hidden="true" />ring = missed</span>
           </div>
@@ -845,7 +849,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
                 <span className="font-semibold text-white capitalize">{picked.event_type.replace(/_/g, ' ').toLowerCase()}{picked.shooter ? ` · ${picked.shooter}` : ''}</span>
                 <PlayAt ms={picked.video_ms} lead={10000} periods={periods} onOpen={onOpen} />
               </div>
-              <div className="flex items-center gap-2"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: pressureOf(picked.nearest_m).color }} aria-hidden="true" /><span className="text-white/80">{pressureOf(picked.nearest_m).label}: nearest was {picked.nearest || '–'}, {n1(picked.nearest_m, ' m')} away</span></div>
+              <div className="flex items-center gap-2"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: pressureOf(picked.nearest_m, picked.set_piece).color }} aria-hidden="true" /><span className="text-white/80">{pressureOf(picked.nearest_m, picked.set_piece).label}: nearest was {picked.nearest || '–'}, {n1(picked.nearest_m, ' m')} away</span></div>
               <div className="text-white/65">{picked.within_5m} of ours within 5 m, {picked.within_10m} within 10 m{picked.assigned_marker ? ` · his assigned marker ${picked.assigned_marker.name} was ${n1(picked.assigned_marker.dist_m, ' m')} away` : ''}</div>
               <div className="text-xs text-white/45">White dots: where our players were at that moment. The video button opens the replay 10 s before, so you see the build-up.</div>
               <button onClick={() => setSel(null)} className="text-xs text-white/60 hover:text-white underline">Show all shots</button>
@@ -854,7 +858,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
           <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-[26rem] overflow-y-auto" role="listbox" aria-label="Shots">
             {shown.length === 0 && <p className="p-3 text-sm text-white/55">No shots match these filters.</p>}
             {shown.map(({ x, i }) => {
-              const pr = pressureOf(x.nearest_m)
+              const pr = pressureOf(x.nearest_m, x.set_piece)
               return (
                 <button key={i} role="option" aria-selected={i === sel} onClick={() => setSel(i === sel ? null : i)}
                   className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs ${i === sel ? 'bg-white/12 text-white' : 'text-white/80 hover:bg-white/5'}`}>
@@ -871,7 +875,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
           {!mk.has_assignments && <p className="text-xs text-white/45">No man-marking assignments in Match Prep for this match.</p>}
         </div>
       </div>
-      <p className="text-xs text-white/50">Their shots on our goal (left). Nearest = the closest any of ours got to the tagged shot spot in the 4 s up to the shot (a shot is often tapped a few seconds late, after our players have turned away). No opposition GPS: the spot is where the shot was tagged.</p>
+      <p className="text-xs text-white/50">Their shots on our goal (left). Nearest = the closest any of ours got to the tagged shot spot in the 4 s up to the shot (a shot is often tapped a few seconds late, after our players have turned away). No opposition GPS: the spot is where the shot was tagged. Frees and 45s (grey) are shown but left out of the pressure figures, as our players have to stand off.</p>
     </div>
   )
 }

@@ -163,7 +163,8 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
         mk = res["marking"]
         return {**{k: v for k, v in mk.items() if k != "shots"}, "shots": [{k: v for k, v in x.items() if k not in ("measured_s_before", "ours")} for x in mk["shots"][:limit * 3]],
                 "how_to_read": "nearest_m = the closest any of our tracked outfielders got to the tagged shot spot in the 4 s up to "
-                               "the shot (the tap moved back by the usual delay): the pressure on the shooter as he shot. "
+                               "the shot (the tap moved back by the usual delay): the pressure on the shooter as he shot. Shots from a free or a 45 "
+                               "(set_piece true) are listed but left out of the medians and unpressured share: our players stand off by rule. "
                                "No opposition GPS: the spot is where the shot was tagged."}
     if section == "moments":
         return res["moments"]

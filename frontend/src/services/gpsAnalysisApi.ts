@@ -70,7 +70,7 @@ export interface GpsIntensityPlayer {
 }
 export interface GpsBlock { half: number; block: number; label: string; team_distance_m: number; team_hsr_m: number; m_per_player_min: number | null; hsr_per_player_min: number | null; in_poss_share: number | null }
 export interface GpsTagFlag { kind: string; id: string; event_type: string; player_id: string; player: string | null; video_ms: number; half: number | null; dist_at_tap_m: number | null; nearest_m: number | null; nearest_lag_s: number | null; reason: string }
-export interface GpsShotAgainst { video_ms: number; half: number | null; event_type: string; shooter: string | null; shot_x: number | null; shot_y: number | null; nearest: string | null; nearest_m: number | null; within_5m: number; within_10m: number; assigned_marker: { name: string | null; dist_m: number | null; was_nearest: boolean } | null; ours?: { name: string | null; x: number | null; y: number | null; dist_m: number | null }[] }
+export interface GpsShotAgainst { video_ms: number; half: number | null; event_type: string; shooter: string | null; shot_x: number | null; shot_y: number | null; nearest: string | null; nearest_m: number | null; within_5m: number; within_10m: number; assigned_marker: { name: string | null; dist_m: number | null; was_nearest: boolean } | null; ours?: { name: string | null; x: number | null; y: number | null; dist_m: number | null }[]; source?: string | null; set_piece?: boolean }
 export interface GpsMoment { kind: string; video_ms: number; title: string; detail: string }
 
 export interface GpsMatchAnalysis {
@@ -96,7 +96,7 @@ export interface GpsMatchAnalysis {
   intensity: { players: GpsIntensityPlayer[]; blocks: GpsBlock[]; by_half: Record<string, { team_distance_m: number; team_hsr_m: number }>; thresholds: { hsr_ms: number; sprint_ms: number; accel_ms2: number } }
   tag_health: { checked: number; flagged: GpsTagFlag[]; n_flagged: number; untracked_player: number }
   support: { n_passes: number; mean_within_15m: number | null; isolated_share_pct: number | null; further_option_share_pct: number | null; players: { player_id: string; name: string | null; passes: number; isolated: number; further_option: number; mean_within_15m: number | null }[]; further_option_passes: { video_ms: number; half: number | null; passer: string | null; receiver: string | null; within_15m: number; nearest_ahead_m: number | null; gain_m: number | null; further_option: string | null; further_option_ahead_m: number | null }[] }
-  marking: { shots: GpsShotAgainst[]; n_shots: number; median_nearest_m: number | null; median_nearest_m_scores: number | null; unpressured_share_pct: number | null; has_assignments: boolean }
+  marking: { shots: GpsShotAgainst[]; n_shots: number; n_from_play?: number; n_set_piece?: number; median_nearest_m: number | null; median_nearest_m_scores: number | null; unpressured_share_pct: number | null; has_assignments: boolean }
   moments: GpsMoment[]
   computed_in_s: number
 }

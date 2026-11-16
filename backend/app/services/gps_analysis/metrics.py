@@ -660,14 +660,18 @@ def marking(inp: MatchInputs, g: Grid) -> dict:
                      "shot_x": r1(sx), "shot_y": r1(sy), "nearest": name_of(inp, g.pids[i]), "nearest_m": r1(d[i]),
                      "within_5m": int((d <= 5).sum()), "within_10m": int((d <= 10).sum()), "assigned_marker": marker,
                      "measured_s_before": r1((t - g.t[j]) / 1000),
+                     # a free / 45 / penalty: our players must stand off, so it says nothing about pressure (Owen 2026-11-16)
+                     "source": e.score_source, "set_piece": bool(e.score_source and e.score_source != "FROM_PLAY"),
                      # where every one of ours was at that moment (the Shots against pitch draws them when a shot is picked)
                      "ours": [{"name": name_of(inp, pid), "x": r1(g.X[k, j]), "y": r1(g.Y[k, j]), "dist_m": r1(d[k])}
                               for k, pid in enumerate(g.pids) if V[k, j]]})
-    scores = [r for r in rows if r["event_type"] in ("POINT_SCORED", "GOAL_SCORED")]
-    return {"shots": rows, "n_shots": len(rows),
-            "median_nearest_m": r1(np.median([r["nearest_m"] for r in rows])) if rows else None,
+    # pressure figures from open play only: on a free or a 45 our players stand back by rule
+    play = [r for r in rows if not r["set_piece"]]
+    scores = [r for r in play if r["event_type"] in ("POINT_SCORED", "GOAL_SCORED")]
+    return {"shots": rows, "n_shots": len(rows), "n_from_play": len(play), "n_set_piece": len(rows) - len(play),
+            "median_nearest_m": r1(np.median([r["nearest_m"] for r in play])) if play else None,
             "median_nearest_m_scores": r1(np.median([r["nearest_m"] for r in scores])) if scores else None,
-            "unpressured_share_pct": r1(100 * sum(r["nearest_m"] > 5 for r in rows) / len(rows)) if rows else None,
+            "unpressured_share_pct": r1(100 * sum(r["nearest_m"] > 5 for r in play) / len(play)) if play else None,
             "has_assignments": bool(inp.man_marking)}
 
 
