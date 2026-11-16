@@ -619,7 +619,7 @@ export default function PlayerView() {
     enabled: !!playerId
   })
 
-  const { data: matchStats } = useQuery({
+  const { data: matchStats, isLoading: matchStatsLoading } = useQuery({
     queryKey: ['player-matches', playerId],
     queryFn: () => fetchPlayerMatchStats(playerId!),
     enabled: !!playerId
@@ -881,6 +881,7 @@ export default function PlayerView() {
         <OverviewTab
           player={player}
           matchStats={matchStats || []}
+          statsLoading={matchStatsLoading}
           attendanceStats={attendanceStats ?? null}
           shotEvents={shotEvents || []}
           matchesPlayed={matchesPlayed}
@@ -1265,7 +1266,7 @@ function PlayerSelfSection({ playerId }: { playerId: string }) {
 }
 
 function OverviewTab({
-  player, matchStats, attendanceStats, shotEvents,
+  player, statsLoading = false, matchStats, attendanceStats, shotEvents,
   matchesPlayed, totalGoals, totalPoints, totalScore,
   clinicalRating, totalScores, totalShots,
   restartKing, totalKickoutsWon, totalFreesWon,
@@ -1274,6 +1275,7 @@ function OverviewTab({
   radarData, matchImpactData, donutData, defensiveTotal,
 }: {
   player: Player
+  statsLoading?: boolean
   matchStats: PlayerMatchStats[]
   attendanceStats: PlayerAttendanceStats | null
   shotEvents: ShotEvent[]
@@ -1317,16 +1319,20 @@ function OverviewTab({
       <PlayerKpiCards playerId={player.id} title="Season at a glance"
         keys={['score_points', 'conversion_pct', 'impact_rank', 'kickouts_won', 'turnovers_won', 'turnovers_lost', 'distance_km', 'back_10s_pct']} />
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Stats Grid (placeholders while his match figures load: zeros looked like real figures) */}
+      {statsLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4" aria-label="Loading his match figures">
+          {[0, 1, 2, 3].map(i => <div key={i} className="glass-card h-[120px] animate-pulse" />)}
+        </div>
+      ) : <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total Score" value={totalScore} subtext={`${totalGoals}G + ${totalPoints}P`} icon={Target} color="emerald" />
         <StatCard label="Matches Played" value={matchesPlayed} icon={Trophy} color="emerald" />
         <StatCard label="Avg per Match" value={matchesPlayed > 0 ? (totalScore / matchesPlayed).toFixed(1) : '0'} icon={TrendingUp} color="amber" />
         <StatCard label="Attendance Rate" value={`${attendanceStats?.attendance_rate || 0}%`} subtext={`${attendanceStats?.present_count || 0}/${attendanceStats?.total_sessions || 0} sessions`} icon={Calendar} color="emerald" />
-      </div>
+      </div>}
 
       {/* KPI Cards */}
-      {hasData && (
+      {hasData && !statsLoading && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <KpiCard label="Clinical Rating" value={`${clinicalRating}%`} subtitle={`${totalScores} scores from ${totalShots} shots`} icon={Target} gradient="from-emerald-600 to-teal-600" />
           <KpiCard label="Restart King" value={restartKing} subtitle={`${totalKickoutsWon} kickouts + ${totalFreesWon} frees won`} icon={Trophy} gradient="from-amber-600 to-orange-600" />

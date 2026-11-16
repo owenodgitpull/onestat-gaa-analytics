@@ -187,7 +187,13 @@ export default function SetPieceEditor({
   const [phases, setPhases] = useState<Phase[]>([{ players: [], arrows: [], labels: [] }])
   const [currentPhase, setCurrentPhase] = useState(0)
 
-  const [tool, setTool] = useState<ToolMode>('player')
+  const [tool, setTool] = useState<ToolMode>(() => (initialElements.some(el => el.type === 'player' || el.type === 'phase') ? 'select' : 'player'))
+  // Owen 2026-11-16: players must be draggable from anywhere (e.g. the opposition lined up on the touchline), in any
+  // mode; a click picks a player up and the next click on the pitch puts him there; removing needs a double-click or
+  // Delete (a single click used to delete him outright in the add-player modes)
+  const [picked, setPicked] = useState<string | null>(null)
+  const dragMeta = useRef<{ moved: boolean; down: { x: number; y: number } } | null>(null)
+  const suppressClick = useRef(false)
   const [isOpponent, setIsOpponent] = useState(false)
   const [drawingArrow, setDrawingArrow] = useState<{ points: { x: number; y: number }[] } | null>(null)
   const [history, setHistory] = useState<Phase[][]>([])
@@ -301,8 +307,16 @@ export default function SetPieceEditor({
   }
 
   const handleSVGClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (suppressClick.current) { suppressClick.current = false; return }
     if (dragging) return
     const pt = getSVGPoint(e)
+    if (picked) {
+      saveSnapshot()
+      updatePhase(p => ({ ...p, players: p.players.map(pl => (pl.id === picked ? { ...pl, x: pt.x, y: pt.y } : pl)) }))
+      setPicked(null)
+      setHasPlacedFirst(true)
+      return
+    }
 
     if (tool === 'player') {
       saveSnapshot()
@@ -383,11 +397,14 @@ export default function SetPieceEditor({
 
   // Unified drag handlers for players, arrows, labels
   const handleElementPointerDown = (e: React.PointerEvent, elType: 'player' | 'arrow' | 'label', id: string) => {
-    if (tool !== 'select') return
+    // players drag in every mode; arrows and labels in Move mode (the arrow and text tools click on the pitch)
+    if (tool !== 'select' && elType !== 'player') return
     e.stopPropagation()
     e.preventDefault()
     ;(e.target as Element).setPointerCapture(e.pointerId)
     const pt = getSVGPoint(e)
+    saveSnapshot()
+    dragMeta.current = { moved: false, down: pt }
     setDragging({ type: elType, id, startPt: pt })
   }
 
@@ -395,6 +412,11 @@ export default function SetPieceEditor({
     if (!dragging) return
     e.stopPropagation()
     const pt = getSVGPoint(e)
+    if (dragMeta.current && !dragMeta.current.moved) {
+      if (Math.hypot(pt.x - dragMeta.current.down.x, pt.y - dragMeta.current.down.y) < 0.6) return     // a click, not a drag yet
+      dragMeta.current.moved = true
+      setPicked(null)
+    }
     const dx = pt.x - (dragging.startPt?.x ?? pt.x)
     const dy = pt.y - (dragging.startPt?.y ?? pt.y)
 
@@ -429,8 +451,27 @@ export default function SetPieceEditor({
     if (!dragging) return
     e.stopPropagation()
     ;(e.target as Element).releasePointerCapture(e.pointerId)
+    // a press without movement on a player = pick him up (click the pitch to put him down; click him again to drop it)
+    if (dragging.type === 'player' && dragMeta.current && !dragMeta.current.moved) {
+      setPicked(prev => (prev === dragging.id ? null : dragging.id))
+    }
+    suppressClick.current = true          // the click that follows a press on an element must not add a player
+    dragMeta.current = null
     setDragging(null)
   }
+
+  // Delete / Backspace removes the picked-up player; Escape puts him back
+  useEffect(() => {
+    if (!picked) return
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removePlayer(picked); setPicked(null) }
+      if (e.key === 'Escape') setPicked(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   // Rotate a label by 15 degrees on right-click or double-click in select mode
   const rotateLabel = (id: string) => {
@@ -914,6 +955,9 @@ export default function SetPieceEditor({
 
         {/* Pitch Canvas */}
         <div className="flex-1 p-3 overflow-auto min-h-0">
+          <p className="text-center text-xs text-white/55 mb-2">
+            {picked ? 'Now click on the pitch to put him there (Delete removes him, Esc cancels).' : 'Drag any player to move him, or click him then click the pitch. Double-click a player to remove him.'}
+          </p>
           <div className="relative mx-auto" style={{ maxWidth: '1000px', aspectRatio: '2332/1446' }}>
             <svg
               ref={svgRef}
@@ -1064,15 +1108,13 @@ export default function SetPieceEditor({
                 return (
                   <g
                     key={p.id}
-                    className={tool === 'select' ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'}
+                    className={isDragging ? 'cursor-grabbing' : 'cursor-grab'}
                     onPointerDown={e => handleElementPointerDown(e, 'player', p.id)}
-                    onClick={e => {
-                      if (tool !== 'select') {
-                        e.stopPropagation()
-                        removePlayer(p.id)
-                      }
-                    }}
+                    onClick={e => e.stopPropagation()}
+                    onDoubleClick={e => { e.stopPropagation(); setPicked(null); removePlayer(p.id) }}
                   >
+                    <title>{`${p.playerName}: drag to move · click, then click the pitch to place · double-click to remove`}</title>
+                    {picked === p.id && <circle cx={cx} cy={cy} r="58" fill="none" stroke="#38bdf8" strokeWidth="6" strokeDasharray="14 10" style={{ pointerEvents: 'none' }} />}
                     {/* Circle with team colors */}
                     <circle
                       cx={cx} cy={cy} r="40"

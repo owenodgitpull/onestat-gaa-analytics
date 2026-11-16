@@ -111,6 +111,12 @@ export interface GpsSeasonRow {
   median_recovery_s: number | null; not_recovered_in_15s: number; turnovers_lost: number; median_forward_runners: number | null
   hsr_per_player_min: number | null; m_per_player_min: number | null; push_up_mean_x_m: number | null
   support_within_15m: number | null; shots_against_nearest_m: number | null; tag_flags: number
+  team_distance_km?: number | null; team_hsr_km?: number | null; players_tracked?: number | null
+  width_out_m?: number | null; deep6_out_m?: number | null; length_in_m?: number | null; width_in_m?: number | null
+  caught_short?: number | null; already_back?: number | null; back_in_15s_pct?: number | null
+  median_retreat_10s_m?: number | null; turnovers_won?: number | null; lost_led_to_score?: number | null; won_led_to_score?: number | null
+  passes_checked?: number | null; isolated_share_pct?: number | null; further_option_share_pct?: number | null
+  shots_against?: number | null; nearest_on_scores_m?: number | null; unpressured_share_pct?: number | null
 }
 export interface GpsLoadAlert { player_id: string; name: string | null; match_id: string; opponent: string | null; match_date: string | null; minutes: number | null; hsr_m: number; hsr_per_min: number | null; sprints: number; distance_m: number; own_avg_hsr_per_min: number; vs_own_avg_pct: number; direction: 'above' | 'below' }
 export interface GpsSeason { matches: GpsSeasonRow[]; load_alerts: GpsLoadAlert[]; players: Record<string, { name: string | null; matches: { match_id: string; opponent: string | null; match_date: string | null; minutes: number | null; hsr_m: number; hsr_per_min: number | null; sprints: number; distance_m: number }[] }>; note: string }

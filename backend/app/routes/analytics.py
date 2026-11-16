@@ -7,7 +7,7 @@ Aggregates data across all matches for dashboard visualizations.
 from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, and_
-from sqlalchemy.orm import lazyload
+from sqlalchemy.orm import lazyload, load_only
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -1042,7 +1042,8 @@ async def get_player_match_stats(
 
     # Get completed matches
     matches_result = await db.execute(
-        select(Match).where(
+        # only the columns used (the AI text columns made this ~1.3 s)
+        select(Match).options(load_only(Match.id, Match.opponent, Match.match_date, Match.club_id)).where(
             and_(
                 Match.counts_in_stats,
                 Match.is_deleted.is_(False),
@@ -1060,7 +1061,8 @@ async def get_player_match_stats(
 
     # Get all events for this player
     events_result = await db.execute(
-        select(MatchEvent).where(
+        # two columns only: whole event rows (JSON context columns) made this route ~5 s
+        select(MatchEvent.match_id, MatchEvent.event_type).where(
             and_(
                 MatchEvent.match_id.in_(match_ids),
                 MatchEvent.player_id == player_uuid,
@@ -1068,11 +1070,11 @@ async def get_player_match_stats(
             )
         )
     )
-    player_events = events_result.scalars().all()
+    player_events = events_result.all()
 
     # Also check for assists (events where this player is the assist_player)
     assists_result = await db.execute(
-        select(MatchEvent).where(
+        select(MatchEvent.match_id).where(
             and_(
                 MatchEvent.match_id.in_(match_ids),
                 MatchEvent.assist_player_id == player_uuid,
@@ -1080,7 +1082,7 @@ async def get_player_match_stats(
             )
         )
     )
-    assist_events = assists_result.scalars().all()
+    assist_events = assists_result.all()
 
     # Aggregate by match
     match_stats = {}

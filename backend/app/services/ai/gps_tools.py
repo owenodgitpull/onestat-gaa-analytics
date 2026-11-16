@@ -161,7 +161,10 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
                                "passer was at least 15 m further forward than the receiver (we cannot see whether he was marked)."}
     if section == "marking":
         mk = res["marking"]
-        return {**{k: v for k, v in mk.items() if k != "shots"}, "shots": mk["shots"][:limit * 3]}
+        return {**{k: v for k, v in mk.items() if k != "shots"}, "shots": [{k: v for k, v in x.items() if k != "measured_s_before"} for x in mk["shots"][:limit * 3]],
+                "how_to_read": "nearest_m = the closest any of our tracked outfielders got to the tagged shot spot in the 4 s up to "
+                               "the shot (the tap moved back by the usual delay): the pressure on the shooter as he shot. "
+                               "No opposition GPS: the spot is where the shot was tagged."}
     if section == "moments":
         return res["moments"]
     return None

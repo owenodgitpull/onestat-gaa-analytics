@@ -13,7 +13,7 @@ import GpsReplay from '../components/gps/GpsReplay'
 import GpsSyncCheck from '../components/gps/GpsSyncCheck'
 import { SyncBadge } from '../components/gps/GpsTracksModal'
 import {
-  OverviewView, ShapeView, TransitionsView, KickoutsView, IntensityView, HeatmapView, TagHealthView, SupportView, MarkingView, MomentsView, Loading, Failed,
+  GpsSeasonCtx, OverviewView, ShapeView, TransitionsView, KickoutsView, IntensityView, HeatmapView, TagHealthView, SupportView, MarkingView, MomentsView, Loading, Failed,
 } from '../components/gps/GpsAnalysisViews'
 
 const TABS = [
@@ -44,6 +44,10 @@ export default function GpsAnalysis() {
   const ctxQ = useQuery({ queryKey: ['gps-context', matchId], queryFn: () => gpsAnalysisApi.context(matchId), enabled: !!matchId, retry: false })
   const needsAnalysis = tab !== 'replay' && tab !== 'sync'
   const aQ = useQuery({ queryKey: ['gps-analysis', matchId], queryFn: () => gpsAnalysisApi.analysis(matchId), enabled: !!matchId && !!ctxQ.data && needsAnalysis, retry: false, staleTime: 5 * 60 * 1000 })
+
+  // every synced match's headline figures, so each tile can set this match against the 3 before it and the season
+  const seasonQ = useQuery({ queryKey: ['gps-season'], queryFn: () => gpsAnalysisApi.season(), enabled: needsAnalysis, staleTime: 5 * 60 * 1000, retry: false })
+  const seasonCtx = useMemo(() => (seasonQ.data ? { matchId, rows: seasonQ.data.matches } : null), [seasonQ.data, matchId])
 
   const setTab = (k: TabKey) => { const p = new URLSearchParams(window.location.search); p.set('tab', k); setParams(p, { replace: true }) }
   const openReplay = useCallback((ms: number) => {
@@ -104,7 +108,7 @@ export default function GpsAnalysis() {
             <GpsReplay matchId={matchId} ctx={ctx} initialMs={initialT} seekRequest={seekRequest} team={team} onTimeChange={onTime} active={tab === 'replay'} />
           </div>
           {/* full width; each pitch caps its own size to the screen height (GpsPitch fit) so it never needs scrolling */}
-          {tab !== 'replay' && <div className="space-y-4">
+          {tab !== 'replay' && <GpsSeasonCtx.Provider value={seasonCtx}><div className="space-y-4">
           {tab === 'sync' && <GpsSyncCheck matchId={matchId} ctx={ctx} canEdit={canEdit} onOpenReplay={openReplay} />}
           {needsAnalysis && (aQ.isLoading ? <Loading text="Working out the GPS numbers for this match (a few seconds the first time)…" /> : aQ.isError ? <Failed e={aQ.error} /> : aQ.data && (
             <>
@@ -121,7 +125,8 @@ export default function GpsAnalysis() {
             </>
           ))}
           {needsAnalysis && aQ.isFetching && !aQ.isLoading && <p className="flex items-center gap-2 text-xs text-white/50"><Loader2 size={12} className="animate-spin" /> Updating…</p>}
-          </div>}
+          {needsAnalysis && seasonQ.isLoading && aQ.data && <p className="flex items-center gap-2 text-xs text-white/50"><Loader2 size={12} className="animate-spin" aria-hidden="true" /> Loading our other GPS matches for the comparisons…</p>}
+          </div></GpsSeasonCtx.Provider>}
         </>
       )}
     </div>

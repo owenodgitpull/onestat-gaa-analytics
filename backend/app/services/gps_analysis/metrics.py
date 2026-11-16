@@ -612,6 +612,9 @@ def support(inp: MatchInputs, g: Grid) -> dict:
 
 # ------------------------------------------------------------------ 12. marking at their shots
 
+SHOT_WINDOW_MS = 4000
+
+
 def marking(inp: MatchInputs, g: Grid) -> dict:
     L, W = inp.pitch_length_m, inp.pitch_width_m
     V = g.valid()
@@ -627,10 +630,20 @@ def marking(inp: MatchInputs, g: Grid) -> dict:
         if sx is None:
             continue
         t = e.video_ms - lag_ms(inp, e.event_type)   # same tap-delay rule as everywhere else (incl. the user's sync shift)
-        j = g.idx(t)
-        if V[:, j].sum() < 8:
+        # The tap delay on a shot varies (1-6 s: a point is often tapped once it is over the bar), so one moment can land
+        # after the shot, with our players already running back out (Down 1H 8:28: 10.2 m "nearest" at the estimated
+        # moment, 1.7 m four seconds earlier, as the video shows). Take the closest any of ours got to the shot spot in
+        # the SHOT_WINDOW_MS up to that moment: the pressure on him as he shot.
+        best_j, best_d = None, None
+        for jj in range(g.idx(t - SHOT_WINDOW_MS), g.idx(t) + 1):
+            if V[:, jj].sum() < 8:
+                continue
+            dd = np.where(V[:, jj], np.hypot(g.X[:, jj] - sx, g.Y[:, jj] - sy), np.inf)
+            if best_d is None or dd.min() < best_d.min():
+                best_j, best_d = jj, dd
+        if best_j is None:
             continue
-        d = np.where(V[:, j], np.hypot(g.X[:, j] - sx, g.Y[:, j] - sy), np.inf)
+        j, d = best_j, best_d
         i = int(np.argmin(d))
         shooter = inp.opposition_names.get(e.opposition_player_id or "")
         marker_ids = []
@@ -645,7 +658,8 @@ def marking(inp: MatchInputs, g: Grid) -> dict:
                       "was_nearest": mid == g.pids[i]}
         rows.append({"video_ms": e.video_ms, "half": e.half, "event_type": e.event_type, "shooter": shooter,
                      "shot_x": r1(sx), "shot_y": r1(sy), "nearest": name_of(inp, g.pids[i]), "nearest_m": r1(d[i]),
-                     "within_5m": int((d <= 5).sum()), "within_10m": int((d <= 10).sum()), "assigned_marker": marker})
+                     "within_5m": int((d <= 5).sum()), "within_10m": int((d <= 10).sum()), "assigned_marker": marker,
+                     "measured_s_before": r1((t - g.t[j]) / 1000)})
     scores = [r for r in rows if r["event_type"] in ("POINT_SCORED", "GOAL_SCORED")]
     return {"shots": rows, "n_shots": len(rows),
             "median_nearest_m": r1(np.median([r["nearest_m"] for r in rows])) if rows else None,

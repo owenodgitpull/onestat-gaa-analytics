@@ -236,6 +236,20 @@ async def season(db: AsyncSession, club_id) -> dict:
             "their_receiver_nearest_m": (s.get("pressure_on_their_receiver") or {}).get("median_nearest_m"),
             "their_receptions_within_5m_pct": (s.get("pressure_on_their_receiver") or {}).get("pct_within_5m"),
             "tag_flags": s["tag_health"]["flagged"],
+            # every figure the match tabs' tiles show, so each tile can be set against the last 3 and the season
+            "team_distance_km": round(s["team_distance_m"] / 1000, 1), "team_hsr_km": round(s["team_hsr_m"] / 1000, 2),
+            "players_tracked": s["players_tracked"],
+            "width_out_m": s["shape"]["out"].get("width"), "deep6_out_m": s["shape"]["out"].get("deep6"),
+            "length_in_m": s["shape"]["in"].get("length"), "width_in_m": s["shape"]["in"].get("width"),
+            "caught_short": s["transitions"]["caught_short"], "already_back": s["transitions"]["already_back"],
+            "back_in_15s_pct": (round(100 * max(0, s["transitions"]["caught_short"] - s["transitions"]["not_recovered_in_15s"]) / s["transitions"]["caught_short"])
+                                if s["transitions"]["caught_short"] else None),
+            "median_retreat_10s_m": s["transitions"]["median_retreat_10s_m"], "turnovers_won": s["transitions"]["n_won"],
+            "lost_led_to_score": s["transitions"]["lost_led_to_score"], "won_led_to_score": s["transitions"]["won_led_to_score"],
+            "passes_checked": s["support"]["n_passes"], "isolated_share_pct": s["support"]["isolated_share_pct"],
+            "further_option_share_pct": s["support"]["further_option_share_pct"],
+            "shots_against": s["marking"]["n_shots"], "nearest_on_scores_m": s["marking"]["median_nearest_m_scores"],
+            "unpressured_share_pct": s["marking"]["unpressured_share_pct"],
         })
         for p in res["intensity"]["players"]:
             per_player.setdefault(p["player_id"], {"name": p["name"], "matches": []})["matches"].append(

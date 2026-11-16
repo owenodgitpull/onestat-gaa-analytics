@@ -4,13 +4,13 @@
  * Every row with a video time has a play button that opens the replay there.
  */
 import { GPS_KPI_INFO, KpiInfoButton } from './KpiInfo'
-import { useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, AlertCircle, Play } from 'lucide-react'
+import { Loader2, AlertCircle, Play, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts'
 import {
   gpsAnalysisApi, type GpsMatchAnalysis, type GpsShapeSeries, type GpsHeatmap, backBehindBall, type GpsKickout, type GpsKoSpots, type GpsKoZone, type GpsReplayContext,
-  periodClock, COLOR_OURS, COLOR_THEIRS,
+  periodClock, COLOR_OURS, COLOR_THEIRS, type GpsSeasonRow,
 } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption, pitchMaxWidth, artToRealX, ART_WARP } from './GpsPitch'
 import KickoutPlayOn from './KickoutPlayOn'
@@ -22,14 +22,51 @@ const n0 = (v: number | null | undefined, unit = '') => (v == null ? '–' : `${
 
 // ---------------------------------------------------------------- shared bits
 
-export function Tile({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
+/** Every synced match's headline figures (GET /gps-analysis/season) and which match this page is: lets a tile set this
+ * match against the 3 before it and the season (Owen 2026-11-16: "like the season dashboard"). Our team against itself only. */
+export const GpsSeasonCtx = createContext<{ matchId: string; rows: GpsSeasonRow[] } | null>(null)
+
+/** what a tile compares: a season-row field, this match's value of it, and which way is better (null = neither) */
+export interface TileCmp { k: keyof GpsSeasonRow; v: number | null | undefined; hib: boolean | null; unit?: string; dec?: number }
+
+function useCompare(c?: TileCmp) {
+  const ctx = useContext(GpsSeasonCtx)
+  if (!c || !ctx || c.v == null) return null
+  const rows = [...ctx.rows].sort((a, b) => (a.match_date || '').localeCompare(b.match_date || ''))
+  const me = rows.findIndex(r => r.match_id === ctx.matchId)
+  const val = (r: GpsSeasonRow) => { const x = r[c.k]; return typeof x === 'number' ? x : null }
+  const others = rows.filter((_, i) => i !== me).map(val).filter((x): x is number => x != null)
+  if (others.length < 2) return null
+  const before = (me >= 0 ? rows.slice(0, me) : rows).map(val).filter((x): x is number => x != null).slice(-3)
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length
+  const season = mean(others)
+  const last3 = before.length ? mean(before) : null
+  const d = c.v - season
+  const small = Math.abs(d) <= Math.max(Math.abs(season) * 0.05, c.unit === '%' ? 3 : 1e-9)
+  const dir: 'up' | 'down' | 'same' = small ? 'same' : d > 0 ? 'up' : 'down'
+  const good = dir === 'same' || c.hib == null ? null : (dir === 'up') === c.hib
+  return { season, last3, dir, good, n: others.length }
+}
+
+export function Tile({ label, value, sub, cmp }: { label: string; value: ReactNode; sub?: ReactNode; cmp?: TileCmp }) {
   const hasInfo = !!GPS_KPI_INFO[label]
+  const c = useCompare(cmp)
+  const dec = cmp?.dec ?? 1
+  const f = (x: number | null) => (x == null ? '–' : `${(Math.round(x * 10 ** dec) / 10 ** dec).toLocaleString()}${cmp?.unit ? (cmp.unit === '%' ? '%' : ` ${cmp.unit}`) : ''}`)
+  const tone = !c ? 'text-white' : c.dir === 'same' ? 'text-amber-300' : c.good === true ? 'text-emerald-400' : c.good === false ? 'text-red-400' : 'text-white'
   return (
     <div className="relative rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 min-w-0">
       <KpiInfoButton label={label} />
       <div className={`text-[11px] font-semibold uppercase tracking-wide text-white/50 ${hasInfo ? 'pr-6' : ''}`}>{label}</div>
-      <div className="text-2xl font-bold text-white tabular-nums leading-tight mt-0.5">{value}</div>
+      <div className={`text-2xl font-bold tabular-nums leading-tight mt-0.5 ${tone}`}>{value}</div>
       {sub && <div className="text-xs text-white/50 mt-0.5">{sub}</div>}
+      {c && (
+        <div className={`flex items-center gap-1 mt-1.5 text-xs font-medium ${c.good === true ? 'text-emerald-400' : c.good === false ? 'text-red-400' : 'text-white/60'}`}
+          title={`This match against our other ${c.n} GPS matches. Green = better than our season, red = worse, amber = about the same.`}>
+          {c.dir === 'up' ? <TrendingUp size={12} aria-hidden="true" /> : c.dir === 'down' ? <TrendingDown size={12} aria-hidden="true" /> : <Minus size={12} aria-hidden="true" />}
+          <span className="tabular-nums">{c.last3 != null ? `Prev 3: ${f(c.last3)} · ` : ''}Season: {f(c.season)}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -80,10 +117,11 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label="Team distance" value={n1(s.team_distance_m / 1000, ' km')} sub={`${s.players_tracked} players tracked`} />
-        <Tile label="High-speed running" value={n1(s.team_hsr_m / 1000, ' km')} sub="over 5.5 m/s" />
-        <Tile label="Compact without ball" value={n1(s.shape.out.compactness, ' m')} sub={`vs ${n1(s.shape.in.compactness, ' m')} with it · avg distance to team centre`} />
-        <Tile label="Back behind the ball" value={backBehindBall(s.transitions).value} sub={backBehindBall(s.transitions).sub} />
+        <Tile label="Team distance" value={n1(s.team_distance_m / 1000, ' km')} sub={`${s.players_tracked} players tracked`} cmp={{ k: 'team_distance_km', v: s.team_distance_m / 1000, hib: true, unit: 'km' }} />
+        <Tile label="High-speed running" value={n1(s.team_hsr_m / 1000, ' km')} sub="over 5.5 m/s" cmp={{ k: 'team_hsr_km', v: s.team_hsr_m / 1000, hib: true, unit: 'km' }} />
+        <Tile label="Compact without ball" value={n1(s.shape.out.compactness, ' m')} sub={`vs ${n1(s.shape.in.compactness, ' m')} with it · avg distance to team centre`} cmp={{ k: 'compactness_out_m', v: s.shape.out.compactness, hib: false, unit: 'm' }} />
+        <Tile label="Back behind the ball" value={backBehindBall(s.transitions).value} sub={backBehindBall(s.transitions).sub}
+          cmp={{ k: 'back_in_15s_pct', v: s.transitions.caught_short ? Math.round((100 * Math.max(0, s.transitions.caught_short - s.transitions.not_recovered_in_15s)) / s.transitions.caught_short) : null, hib: true, unit: '%', dec: 0 }} />
       </div>
       <Section title="By half">
         <Table head={['Period', 'Distance', 'High-speed', 'Compact (no ball)', 'Compact (ball)', 'Length (no ball)']} align={['l', 'r', 'r', 'r', 'r', 'r']}
@@ -96,7 +134,7 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
         </Section>
         <Section title="Biggest drop-off in high-speed running" note="High-speed metres per minute: first 10 minutes on the pitch vs last 10.">
           <Table head={['Player', 'Mins', 'First 10', 'Last 10', 'Change']} align={['l', 'r', 'r', 'r', 'r']}
-            rows={s.drop_off.map(p => [p.name || '–', n0(p.minutes), n1(p.hsr_per_min_first10), n1(p.hsr_per_min_last10), n0(p.drop_off_pct, '%')])} />
+            rows={s.drop_off.map(p => [p.name || '–', n0((p as { tracked_minutes?: number | null }).tracked_minutes ?? p.minutes), n1(p.hsr_per_min_first10), n1(p.hsr_per_min_last10), n0(p.drop_off_pct, '%')])} />
         </Section>
       </div>
       <p className="text-xs text-white/45">
@@ -138,10 +176,10 @@ export function ShapeView({ matchId, a, periods, onOpen }: { matchId: string; a:
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label="Compactness" value={n1(sh.out.compactness, ' m')} sub={`without the ball · ${n1(sh.in.compactness, ' m')} with it`} />
-        <Tile label="Length" value={n1(sh.out.length, ' m')} sub={`without the ball · ${n1(sh.in.length, ' m')} with it`} />
-        <Tile label="Width" value={n1(sh.out.width, ' m')} sub={`without the ball · ${n1(sh.in.width, ' m')} with it`} />
-        <Tile label="Deepest 6" value={n1(sh.out.deep6, ' m')} sub={`from our goal, without the ball`} />
+        <Tile label="Compactness" value={n1(sh.out.compactness, ' m')} sub={`without the ball · ${n1(sh.in.compactness, ' m')} with it`} cmp={{ k: 'compactness_out_m', v: sh.out.compactness, hib: false, unit: 'm' }} />
+        <Tile label="Length" value={n1(sh.out.length, ' m')} sub={`without the ball · ${n1(sh.in.length, ' m')} with it`} cmp={{ k: 'length_out_m', v: sh.out.length, hib: false, unit: 'm' }} />
+        <Tile label="Width" value={n1(sh.out.width, ' m')} sub={`without the ball · ${n1(sh.in.width, ' m')} with it`} cmp={{ k: 'width_out_m', v: sh.out.width, hib: null, unit: 'm' }} />
+        <Tile label="Deepest 6" value={n1(sh.out.deep6, ' m')} sub={`from our goal, without the ball`} cmp={{ k: 'deep6_out_m', v: sh.out.deep6, hib: null, unit: 'm' }} />
       </div>
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Shape measure">
         {SHAPE_METRICS.map(x => (
@@ -197,10 +235,11 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label="Turnovers lost" value={t.summary.n_lost} sub={`${t.summary.lost_led_to_score} led to a score against`} />
-        <Tile label="Back behind the ball" value={backBehindBall(t.summary).value} sub={backBehindBall(t.summary).sub} />
-        <Tile label="Retreat in 10 s" value={n1(t.summary.median_retreat_10s_m, ' m')} sub="team centre towards our goal" />
-        <Tile label="Turnovers won" value={t.summary.n_won} sub={`median ${n1(t.summary.median_forward_runners)} broke forward · ${t.summary.won_led_to_score} led to a score`} />
+        <Tile label="Turnovers lost" value={t.summary.n_lost} sub={`${t.summary.lost_led_to_score} led to a score against`} cmp={{ k: 'turnovers_lost', v: t.summary.n_lost, hib: false, dec: 0 }} />
+        <Tile label="Back behind the ball" value={backBehindBall(t.summary).value} sub={backBehindBall(t.summary).sub}
+          cmp={{ k: 'back_in_15s_pct', v: t.summary.caught_short ? Math.round((100 * Math.max(0, t.summary.caught_short - t.summary.not_recovered_in_15s)) / t.summary.caught_short) : null, hib: true, unit: '%', dec: 0 }} />
+        <Tile label="Retreat in 10 s" value={n1(t.summary.median_retreat_10s_m, ' m')} sub="team centre towards our goal" cmp={{ k: 'median_retreat_10s_m', v: t.summary.median_retreat_10s_m, hib: true, unit: 'm' }} />
+        <Tile label="Turnovers won" value={t.summary.n_won} sub={`median ${n1(t.summary.median_forward_runners)} broke forward · ${t.summary.won_led_to_score} led to a score`} cmp={{ k: 'turnovers_won', v: t.summary.n_won, hib: true, dec: 0 }} />
       </div>
       <Section title="After we lost the ball" note={`"Back in" (a team measure) = seconds until the target number of our tracked outfielders (all but three, at most 11) were at least 2 m goal-side of the ball and stayed there for 5 s, or until the move ended. "Already back" = that many were goal-side when it was lost.`}>
         <Table head={['When', 'Lost by', 'How', 'Goal-side at once', 'Back in', 'Retreat 10 s', 'Sprinted (>5.5 m/s)', 'Then']} align={['l', 'l', 'l', 'r', 'r', 'r', 'l', 'l']}
@@ -530,13 +569,18 @@ export function IntensityView({ a }: { a: GpsMatchAnalysis }) {
 // ---------------------------------------------------------------- 6. heat maps
 
 // One-hue sequential ramp (more time = brighter), transparent at the low end so the pitch shows through
+// Classic sports heat-map scale (Owen 2026-11-16: the greens vanished into the grass): blue -> cyan -> yellow -> orange
+// -> red, stepped into HEAT_BANDS levels so the areas read as clear zones, transparent where nobody was.
 const HEAT_RAMP: [number, number, number, number, number][] = [
-  [0.00, 13, 74, 55, 0.0], [0.12, 13, 106, 76, 0.35], [0.35, 16, 159, 110, 0.62], [0.65, 63, 209, 143, 0.8], [1.00, 214, 250, 228, 0.92],
+  [0.00, 30, 64, 175, 0.0], [0.08, 30, 64, 175, 0.55], [0.3, 0, 190, 230, 0.68], [0.5, 120, 220, 60, 0.75], [0.68, 250, 225, 40, 0.82], [0.84, 250, 140, 20, 0.88], [1.00, 220, 30, 30, 0.93],
 ]
+const HEAT_BANDS = 6
 const HEAT_SIGMA_M = 4          // smoothing: how far a 5 m square's time spreads (Gaussian sigma)
 const HEAT_RES_M = 0.5          // image resolution
 
-function heatRgba(f: number): [number, number, number, number] {
+function heatRgba(f0: number): [number, number, number, number] {
+  if (f0 < 0.06) return [0, 0, 0, 0]
+  const f = Math.min(1, (Math.floor(f0 * HEAT_BANDS) + 0.5) / HEAT_BANDS)     // banded
   const r = HEAT_RAMP
   for (let k = 1; k < r.length; k++) {
     if (f <= r[k][0]) {
@@ -587,7 +631,7 @@ function heatImage(seconds: number[][], cellM: number, L: number, W: number, war
   g.putImageData(img, 0, 0)
   return cv.toDataURL()
 }
-const HEAT_LEGEND = `linear-gradient(90deg, ${HEAT_RAMP.map(([f, r, g, b, a]) => `rgba(${r},${g},${b},${Math.max(a, 0.15)}) ${f * 100}%`).join(', ')})`
+const HEAT_LEGEND = `linear-gradient(90deg, ${Array.from({ length: HEAT_BANDS }, (_, i) => { const [r, g, b] = heatRgba((i + 0.5) / HEAT_BANDS); return `rgb(${r},${g},${b}) ${(i / HEAT_BANDS) * 100}%, rgb(${r},${g},${b}) ${((i + 1) / HEAT_BANDS) * 100}%` }).join(', ')})`
 
 export function HeatmapView({ matchId, ctx, team }: { matchId: string; ctx: GpsReplayContext; team: string }) {
   const [playerId, setPlayerId] = useState('')
@@ -677,15 +721,20 @@ export function SupportView({ a, periods, onOpen }: { a: GpsMatchAnalysis; perio
   const sp = a.support
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label="Passes checked" value={sp.n_passes} />
-        <Tile label="Support within 15 m" value={n1(sp.mean_within_15m)} sub="team-mates, on average, at the pass" />
-        <Tile label="No one within 15 m" value={n1(sp.isolated_share_pct, '%')} sub="of passes" />
-        <Tile label="Further option" value={n1(sp.further_option_share_pct, '%')} sub="someone 15 m+ further forward within 25 m" />
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/80 max-w-prose">
+        <b className="text-white">Does the man on the ball have help?</b> At every pass we measure where his team-mates were. Close support (within 15 m)
+        makes a short, safe pass possible; a passer with nobody near him has to kick long or carry into contact; and a team-mate further up the
+        pitch and in range is an attacking option that may have been missed. Use it to see who gets left isolated and whether we run off the ball to help.
       </div>
-      <Section title="By passer" note="Passes checked = the passes where his and his team-mates' GPS positions were usable at the moment of the pass, so it can be fewer than his tagged passes.">
-        <Table head={['Player', 'Passes checked', 'Avg within 15 m', 'Isolated', 'Further option']} align={['l', 'r', 'r', 'r', 'r']}
-          rows={sp.players.map(p => [p.name || '–', p.passes, n1(p.mean_within_15m), p.isolated, p.further_option])} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Tile label="Support within 15 m" value={n1(sp.mean_within_15m)} sub="team-mates close to the passer, on average" cmp={{ k: 'support_within_15m', v: sp.mean_within_15m, hib: true }} />
+        <Tile label="No one within 15 m" value={n1(sp.isolated_share_pct, '%')} sub="of passes: the passer was on his own" cmp={{ k: 'isolated_share_pct', v: sp.isolated_share_pct, hib: false, unit: '%', dec: 0 }} />
+        <Tile label="Further option" value={n1(sp.further_option_share_pct, '%')} sub="of passes: a team-mate 15 m+ further up, within 25 m" cmp={{ k: 'further_option_share_pct', v: sp.further_option_share_pct, hib: null, unit: '%', dec: 0 }} />
+        <Tile label="Passes measured" value={sp.n_passes} sub="every pass where all our GPS positions were usable" />
+      </div>
+      <Section title="By passer" note="Passes measured = his passes where his and his team-mates' GPS positions were usable at the moment of the pass, so it can be fewer than his tagged passes. Isolated = nobody within 15 m.">
+        <Table head={['Player', 'Passes measured', 'Avg within 15 m', 'Isolated', 'Further option']} align={['l', 'r', 'r', 'r', 'r']}
+          rows={sp.players.map(p => [p.name || '–', p.passes, n1(p.mean_within_15m), p.passes ? `${p.isolated} (${Math.round((100 * p.isolated) / p.passes)}%)` : p.isolated, p.further_option])} />
       </Section>
       <Section title="Passes where someone further forward was in range" note="We cannot see the opposition, so this says a team-mate was further forward and within 25 m, not that he was free. Watch the clip.">
         <Table head={['When', 'Passer', 'To', 'Gain', 'Further option', 'How much further']} align={['l', 'l', 'l', 'r', 'l', 'r']}
@@ -699,18 +748,16 @@ export function SupportView({ a, periods, onOpen }: { a: GpsMatchAnalysis; perio
 
 export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; opponent: string }) {
   const mk = a.marking
-  const allOurHalf = mk.shots.every(x => x.shot_x == null || x.shot_x <= a.pitch_length_m / 2 + 3)
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label={`${opponent} shots`} value={mk.n_shots} />
-        <Tile label="Nearest defender" value={n1(mk.median_nearest_m, ' m')} sub="median, at the shot" />
-        <Tile label="On their scores" value={n1(mk.median_nearest_m_scores, ' m')} sub="median nearest defender" />
-        <Tile label="Nobody within 5 m" value={n1(mk.unpressured_share_pct, '%')} sub="of shots" />
+        <Tile label={`${opponent} shots`} value={mk.n_shots} cmp={{ k: 'shots_against', v: mk.n_shots, hib: false, dec: 0 }} />
+        <Tile label="Nearest defender" value={n1(mk.median_nearest_m, ' m')} sub="median, at the shot" cmp={{ k: 'shots_against_nearest_m', v: mk.median_nearest_m, hib: false, unit: 'm' }} />
+        <Tile label="On their scores" value={n1(mk.median_nearest_m_scores, ' m')} sub="median nearest defender" cmp={{ k: 'nearest_on_scores_m', v: mk.median_nearest_m_scores, hib: false, unit: 'm' }} />
+        <Tile label="Nobody within 5 m" value={n1(mk.unpressured_share_pct, '%')} sub="of shots" cmp={{ k: 'unpressured_share_pct', v: mk.unpressured_share_pct, hib: false, unit: '%', dec: 0 }} />
       </div>
-      <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth(allOurHalf ? 'left' : undefined) }}>
-        <GpsPitch lengthM={a.pitch_length_m} widthM={a.pitch_width_m} label="Opposition shots"
-          half={allOurHalf ? 'left' : undefined}>
+      <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}>
+        <GpsPitch lengthM={a.pitch_length_m} widthM={a.pitch_width_m} label="Opposition shots">
           {(s) => mk.shots.filter(x => x.shot_x != null && x.shot_y != null).map((x, i) => (
             <circle key={i} cx={s.x(x.shot_x!, x.shot_y!)} cy={s.y(x.shot_y!)} r={18 + Math.min(40, (x.nearest_m ?? 0) * 3)} fill={/SCORED/.test(x.event_type) ? COLOR_THEIRS : 'none'} fillOpacity={0.55} stroke={COLOR_THEIRS} strokeWidth={5}>
               <title>{x.event_type.replace(/_/g, ' ').toLowerCase()} · nearest {x.nearest} {x.nearest_m} m</title>
@@ -718,7 +765,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
           ))}
         </GpsPitch>
       </div>
-      <p className="text-xs text-white/50">Their shots on our goal (left). Filled = scored; bigger circle = nearest defender further away. The moment of the shot is the tap moved back by the measured tagging delay for that event type.</p>
+      <p className="text-xs text-white/50">Their shots on our goal (left). Filled = scored; bigger circle = nearest defender further away. Nearest = the closest any of ours got to the tagged shot spot in the 4 s up to the shot (a shot is often tapped a few seconds late, after our players have turned away). No opposition GPS: the spot is where the shot was tagged.</p>
       <Table head={['When', 'Shot', 'Shooter', 'Nearest', 'Distance', 'Within 5 m', ...(mk.has_assignments ? ['Assigned marker'] : [])]} align={['l', 'l', 'l', 'l', 'r', 'r', 'l']}
         rows={mk.shots.map(x => [<PlayAt key="p" ms={x.video_ms} lead={10000} periods={periods} onOpen={onOpen} />, x.event_type.replace(/_/g, ' ').toLowerCase(), x.shooter || '–', x.nearest || '–', n1(x.nearest_m, ' m'), x.within_5m,
           ...(mk.has_assignments ? [x.assigned_marker ? `${x.assigned_marker.name} ${n1(x.assigned_marker.dist_m, ' m')}${x.assigned_marker.was_nearest ? ' (nearest)' : ''}` : '–'] : [])])} />

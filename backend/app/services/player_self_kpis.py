@@ -28,7 +28,7 @@ from app.models.match_event import EventType, MatchEvent, Team
 MIN_MINUTES = 20
 import time as _time
 _SQUAD_CACHE: Dict[str, tuple] = {}     # club -> (fingerprint, built_at, by_player, matches); one squad pass serves every player page
-_TTL_S = 600
+_TTL_S = 3600     # the fingerprint (events, GPS uploads, match edits) catches changes; this is a backstop
 PITCH_LENGTH_M = 145.0
 
 E = EventType
@@ -156,14 +156,18 @@ async def player_self_kpis(db: AsyncSession, club_id, player_id) -> dict:
     from app.services.attack_frame import load_direction_map, own_frame
 
     pid = str(player_id)
-    matches = (await db.execute(select(Match).where(and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id))
-                                .order_by(Match.match_date.asc()))).scalars().all()
+    # Only the columns needed: whole rows were the cost (2026-11-16: matches 1.3 s with their AI text columns, events
+    # 3.3 s, carries 2.1 s with their paths; ~10 s per cold load). Each row below is a plain tuple-like Row.
+    matches = (await db.execute(select(Match.id, Match.opponent, Match.match_date, Match.competition, Match.updated_at)
+                                .where(and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id))
+                                .order_by(Match.match_date.asc()))).all()
     if not matches:
         return {"matches": [], "kpis": [], "min_minutes": MIN_MINUTES, "squad": {"by_match": {}, "season": {}}}
     mids = [m.id for m in matches]
     from sqlalchemy import func
     fp = tuple((await db.execute(select(func.count(MatchEvent.id), func.max(MatchEvent.created_at)).where(MatchEvent.match_id.in_(mids)))).one())
-    fp = (fp, tuple(str(m) for m in mids), tuple(str(getattr(m, "updated_at", "")) for m in matches))
+    gfp = tuple((await db.execute(select(func.count(MatchGPSData.id), func.max(MatchGPSData.created_at)).where(MatchGPSData.match_id.in_(mids)))).one())
+    fp = (fp, gfp, tuple(str(m) for m in mids), tuple(str(m.updated_at) for m in matches))
     hit = _SQUAD_CACHE.get(str(club_id))
     if hit and hit[0] == fp and _time.time() - hit[1] < _TTL_S:
         return _assemble(pid, hit[2])
@@ -173,9 +177,12 @@ async def player_self_kpis(db: AsyncSession, club_id, player_id) -> dict:
     for mid, p in (await db.execute(select(MatchLineup.match_id, MatchLineup.player_id).where(and_(
             MatchLineup.match_id.in_(mids), MatchLineup.is_on_field.is_(True))))).all():
         on_field.setdefault(str(p), set()).add(mid)
-    events = (await db.execute(select(MatchEvent).where(and_(MatchEvent.match_id.in_(mids), MatchEvent.team == Team.OWN)))).scalars().all()
-    carries = (await db.execute(select(BallCarrierSegment).where(and_(
-        BallCarrierSegment.match_id.in_(mids), BallCarrierSegment.team == "own")))).scalars().all()
+    events = (await db.execute(select(MatchEvent.match_id, MatchEvent.player_id, MatchEvent.assist_player_id, MatchEvent.event_type,
+                                      MatchEvent.sub_type)
+                               .where(and_(MatchEvent.match_id.in_(mids), MatchEvent.team == Team.OWN)))).all()
+    B = BallCarrierSegment
+    carries = (await db.execute(select(B.match_id, B.player_id, B.half, B.minute, B.start_x, B.start_y, B.end_x, B.end_y, B.ended_by)
+                                .where(and_(B.match_id.in_(mids), B.team == "own")))).all()
     gps: Dict[tuple, object] = {(str(r.player_id), r.match_id): r for r in (await db.execute(
         select(MatchGPSData).where(MatchGPSData.match_id.in_(mids)))).scalars().all()}
     dmap = await load_direction_map(db, mids)
