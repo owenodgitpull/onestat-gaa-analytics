@@ -799,6 +799,10 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
 
       <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-4 items-start">
         <div>
+          <div className="flex items-center justify-between gap-2 mb-2 min-h-[2rem]">
+            <span className="text-xs text-white/55">{pickedVisible ? `Showing one shot: ${periodClock(picked!.video_ms, periods)}` : `Showing ${shown.length} shot${shown.length === 1 ? '' : 's'}`}</span>
+            {pickedVisible && <button onClick={() => setSel(null)} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white">Show all shots</button>}
+          </div>
           <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}>
             <GpsPitch lengthM={a.pitch_length_m} widthM={a.pitch_width_m} label="Opposition shots, coloured by how close our nearest player was">
               {(s) => (
@@ -811,10 +815,11 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
                       <text x={s.x(o.x, o.y)} y={s.y(o.y) + 50} textAnchor="middle" fontSize={24} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={6} paintOrder="stroke">{surname(o.name)}</text>
                     </g>
                   ))}
-                  {shown.filter(({ x }) => x.shot_x != null && x.shot_y != null).map(({ x, i }) => {
+                  {/* a picked shot is shown on its own; "Show all shots" brings the rest back */}
+                  {shown.filter(({ x, i }) => x.shot_x != null && x.shot_y != null && (!pickedVisible || i === sel)).map(({ x, i }) => {
                     const pr = pressureOf(x.nearest_m), on = i === sel, score = isScore(x.event_type)
                     return (
-                      <g key={i} onClick={() => setSel(on ? null : i)} style={{ cursor: 'pointer' }} opacity={pickedVisible && !on ? 0.35 : 1}>
+                      <g key={i} onClick={() => setSel(on ? null : i)} style={{ cursor: 'pointer' }}>
                         {on && <circle cx={s.x(x.shot_x!, x.shot_y!)} cy={s.y(x.shot_y!)} r={44} fill="none" stroke="#fff" strokeWidth={5} />}
                         <circle cx={s.x(x.shot_x!, x.shot_y!)} cy={s.y(x.shot_y!)} r={score ? 24 : 20} fill={score ? pr.color : 'rgba(11,18,38,0.55)'} stroke={score ? '#0b1226' : pr.color} strokeWidth={score ? 4 : 9} />
                         <title>{`${periodClock(x.video_ms, periods)} · ${x.event_type.replace(/_/g, ' ').toLowerCase()}${x.shooter ? ` · ${x.shooter}` : ''} · nearest ${x.nearest || '–'} ${n1(x.nearest_m, ' m')}. Click to see our players`}</title>
@@ -843,7 +848,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
               <div className="flex items-center gap-2"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: pressureOf(picked.nearest_m).color }} aria-hidden="true" /><span className="text-white/80">{pressureOf(picked.nearest_m).label}: nearest was {picked.nearest || '–'}, {n1(picked.nearest_m, ' m')} away</span></div>
               <div className="text-white/65">{picked.within_5m} of ours within 5 m, {picked.within_10m} within 10 m{picked.assigned_marker ? ` · his assigned marker ${picked.assigned_marker.name} was ${n1(picked.assigned_marker.dist_m, ' m')} away` : ''}</div>
               <div className="text-xs text-white/45">White dots: where our players were at that moment. The video button opens the replay 10 s before, so you see the build-up.</div>
-              <button onClick={() => setSel(null)} className="text-xs text-white/60 hover:text-white underline">Clear</button>
+              <button onClick={() => setSel(null)} className="text-xs text-white/60 hover:text-white underline">Show all shots</button>
             </div>
           ) : <p className="text-sm text-white/55">Click a shot on the pitch or in the list to see where our players were.</p>}
           <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-[26rem] overflow-y-auto" role="listbox" aria-label="Shots">
