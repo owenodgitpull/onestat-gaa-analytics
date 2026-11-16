@@ -13,6 +13,10 @@ interface LeaderboardCategoryViewProps {
   /** Shown under the ranking when the list is short for a data-quality reason
    * (e.g. Clinical's 10-shot minimum) — omit for categories with no such caveat. */
   qualificationNote?: string
+  /** what the highlighted row is called: "You" in the portal, "this player" on the coach page */
+  meLabel?: string
+  /** coach page: a row opens that player */
+  onSelect?: (playerId: string) => void
 }
 
 const MEDAL_GRADIENTS = [
@@ -29,7 +33,7 @@ const MEDAL_GRADIENTS = [
  * tab-switcher chrome that page also has.
  */
 export default function LeaderboardCategoryView({
-  board, ranking, isLoading, myPlayerId, categoryKey, icon: Icon, color, emptyMessage, qualificationNote,
+  board, ranking, isLoading, myPlayerId, categoryKey, icon: Icon, color, emptyMessage, qualificationNote, meLabel = 'You', onSelect,
 }: LeaderboardCategoryViewProps) {
   const prevRanks: Record<string, number | null> = (() => {
     try {
@@ -81,7 +85,12 @@ export default function LeaderboardCategoryView({
           return (
             <div
               key={entry.player_id}
-              className={`flex items-center gap-3 rounded-xl px-3.5 py-3 transition-all ${
+              role={onSelect ? 'button' : undefined}
+              tabIndex={onSelect ? 0 : undefined}
+              onClick={onSelect ? () => onSelect(entry.player_id) : undefined}
+              onKeyDown={onSelect ? (e) => { if (e.key === 'Enter') onSelect(entry.player_id) } : undefined}
+              title={onSelect ? `Open ${entry.player_name}` : undefined}
+              className={`flex items-center gap-3 rounded-xl px-3.5 py-3 transition-all ${onSelect ? 'cursor-pointer hover:brightness-125' : ''} ${
                 isMe ? 'ring-1 ring-emerald-500/40 shadow-lg shadow-emerald-500/10' : ''
               }`}
               style={{
@@ -104,7 +113,7 @@ export default function LeaderboardCategoryView({
               <div className="flex-1 min-w-0">
                 <div className={`text-sm font-medium truncate ${isMe ? 'text-white' : 'text-white/80'}`}>
                   {entry.player_name}
-                  {isMe && <span className="text-emerald-400 ml-1 text-xs">(You)</span>}
+                  {isMe && <span className="text-emerald-400 ml-1 text-xs">({meLabel})</span>}
                 </div>
                 {entry.detail && (
                   <div className="text-[11px] text-white/40 truncate">{entry.detail}</div>

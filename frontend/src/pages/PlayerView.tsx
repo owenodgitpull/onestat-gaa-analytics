@@ -1257,60 +1257,6 @@ export default function PlayerView() {
 // Overview Tab — extracted so AI insight hooks run at top level
 // ============================================================================
 interface LeaderboardPosition { category: string; display_name: string; rank: number; total: number; value: number | string | null; unit?: string | null }
-interface LeaderboardRow { rank: number; player_id: string; player_name: string; value: number | string; detail?: string | null }
-
-/** The full squad board behind one rank chip: every player, this one highlighted; tap a name to open that player. */
-function LeaderboardModal({ category, title, playerId, onClose }: { category: string; title: string; playerId: string; onClose: () => void }) {
-  const navigate = useNavigate()
-  const q = useQuery({
-    queryKey: ['coach-leaderboard', category],
-    queryFn: async (): Promise<{ display_name: string; unit: string | null; rankings: LeaderboardRow[] }> => {
-      const res = await fetch(`${API_BASE}/analytics/leaderboards/${category}`, { credentials: 'include' })
-      if (!res.ok) throw new Error('Could not load the leaderboard')
-      return res.json()
-    },
-  })
-  const fmtV = (v: number | string) => (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(1)) : v)
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={title}>
-      <div className="glass-card w-full max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-2 p-4 border-b border-white/10">
-          <div>
-            <h3 className="text-lg font-bold text-white">{title}</h3>
-            {q.data?.unit && <p className="text-xs text-white/50">Ranked by {q.data.unit} · whole squad, this season</p>}
-          </div>
-          <button onClick={onClose} className="text-white/60 hover:text-white text-sm px-2 py-1 rounded-lg hover:bg-white/10" aria-label="Close">✕</button>
-        </div>
-        <div className="overflow-y-auto p-2">
-          {q.isLoading ? <p className="flex items-center gap-2 p-3 text-sm text-white/55"><span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Loading the full board…</p>
-            : q.isError ? <p className="p-3 text-sm text-amber-300">Could not load this leaderboard.</p>
-            : !q.data?.rankings.length ? <p className="p-3 text-sm text-white/55">Nobody on this board yet.</p>
-            : (
-              <ol className="divide-y divide-white/5">
-                {q.data.rankings.map(r => {
-                  const me = r.player_id === playerId
-                  return (
-                    <li key={r.player_id}>
-                      <button onClick={() => { if (!me) { onClose(); navigate(`/players/${r.player_id}`) } }} disabled={me}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left ${me ? 'bg-emerald-500/15 ring-1 ring-emerald-400/40' : 'hover:bg-white/5'}`}>
-                        <span className={`w-8 text-right tabular-nums font-bold ${r.rank <= 3 ? 'text-amber-300' : 'text-white/60'}`}>{r.rank}</span>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm text-white truncate">{r.player_name}{me ? ' (this player)' : ''}</span>
-                          {r.detail && <span className="block text-[11px] text-white/45 truncate">{r.detail}</span>}
-                        </span>
-                        <span className="text-sm font-semibold text-white tabular-nums">{fmtV(r.value)}</span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ol>
-            )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /** Ranks on the club leaderboards (the same the player portal shows) + SelfKpiPanel (his match v his own average). */
 function PlayerSelfSection({ playerId }: { playerId: string }) {
   const ranks = useQuery({
@@ -1340,7 +1286,6 @@ function PlayerSelfSection({ playerId }: { playerId: string }) {
   })
   const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] || 'th'}`
   const pos = [...(ranks.data?.positions || [])].sort((a, b) => a.rank - b.rank)
-  const [open, setOpen] = useState<LeaderboardPosition | null>(null)
   return (
     <div className="space-y-6">
       <div className="glass-card p-4 md:p-6">
@@ -1354,11 +1299,11 @@ function PlayerSelfSection({ playerId }: { playerId: string }) {
           : (
             <div className="flex flex-wrap gap-2">
               {pos.map(p => (
-                <button key={p.category} onClick={() => setOpen(p)} title={`Open the full ${p.display_name} board`}
+                <Link key={p.category} to={`/leaderboards?category=${p.category}&player=${playerId}`} title={`Open the full ${p.display_name} board`}
                   className={`text-left rounded-xl px-3 py-2 border transition-colors hover:border-white/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${p.rank <= 3 ? 'border-amber-400/40 bg-amber-400/10' : 'border-white/10 bg-white/5'}`}>
                   <div className="text-lg font-bold text-white leading-tight">{ordinal(p.rank)} <span className="text-xs font-normal text-white/50">of {p.total}</span></div>
                   <div className="text-xs text-white/70 flex items-center gap-1">{p.display_name} <span aria-hidden="true" className="text-white/40">›</span></div>
-                </button>
+                </Link>
               ))}
             </div>
           )}
@@ -1366,7 +1311,6 @@ function PlayerSelfSection({ playerId }: { playerId: string }) {
       {self.isLoading ? <div className="glass-card p-4 flex items-center gap-2 text-sm text-white/55"><span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Loading his match-by-match figures…</div>
         : self.isError ? <div className="glass-card p-4 text-sm text-amber-300">Could not load his match-by-match figures.</div>
         : <SelfKpiPanel data={self.data} gps={selfGps.data} gpsState={selfGps.isLoading ? 'loading' : selfGps.isError ? 'error' : 'ok'} who="his" />}
-      {open && <LeaderboardModal category={open.category} title={open.display_name} playerId={playerId} onClose={() => setOpen(null)} />}
     </div>
   )
 }

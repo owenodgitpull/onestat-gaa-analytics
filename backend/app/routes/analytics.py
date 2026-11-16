@@ -983,6 +983,8 @@ async def get_player_self_gps_kpis(
 @router.get("/player/{player_id}/leaderboard-positions")
 async def get_player_leaderboard_positions(
     player_id: str,
+    competition: Optional[str] = None,
+    last_n: Optional[int] = Query(None, ge=1, le=50),
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
@@ -996,7 +998,7 @@ async def get_player_leaderboard_positions(
     owner = (await db.execute(select(Player.id).where(and_(Player.id == pid, Player.club_id == user.club_id)))).scalar_one_or_none()
     if owner is None:
         return {"positions": []}
-    boards = await LeaderboardService.get_all_leaderboards(db, user.club_id, pid)
+    boards = await LeaderboardService.get_all_leaderboards(db, user.club_id, pid, competition, last_n, viewer_is_admin=True)
     return {"positions": [{"category": b["category"], "display_name": b["display_name"], "rank": b["my_rank"],
                            "total": b["total_players"], "value": b["my_value"],
                            "unit": LeaderboardService.CATEGORIES.get(b["category"], {}).get("unit")}
@@ -1006,6 +1008,8 @@ async def get_player_leaderboard_positions(
 @router.get("/leaderboards/{category}")
 async def get_coach_leaderboard(
     category: str,
+    competition: Optional[str] = None,
+    last_n: Optional[int] = Query(None, ge=1, le=50),
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1014,7 +1018,7 @@ async def get_coach_leaderboard(
     meta = LeaderboardService.CATEGORIES.get(category)
     if meta is None:
         return {"category": category, "display_name": category, "unit": None, "rankings": []}
-    rows = await LeaderboardService.get_single_leaderboard(db, user.club_id, category, viewer_is_admin=True)
+    rows = await LeaderboardService.get_single_leaderboard(db, user.club_id, category, competition, last_n, viewer_is_admin=True)
     return {"category": category, "display_name": meta["display_name"], "unit": meta["unit"], "rankings": rows}
 
 

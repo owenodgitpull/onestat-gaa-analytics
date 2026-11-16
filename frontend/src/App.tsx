@@ -52,6 +52,7 @@ const MatchResult = lazyWithRetry(() => import('./pages/MatchResult'))
 const GpsAnalysis = lazyWithRetry(() => import('./pages/GpsAnalysis'))
 const GpsSeason = lazyWithRetry(() => import('./pages/GpsSeason'))
 const PlayerView = lazyWithRetry(() => import('./pages/PlayerView'))
+const Leaderboards = lazyWithRetry(() => import('./pages/Leaderboards'))
 const MatchRecordingRouter = lazyWithRetry(() => import('./pages/MatchRecordingRouter'))
 const VideoTagging = lazyWithRetry(() => import('./pages/VideoTagging'))
 const Attendance = lazyWithRetry(() => import('./pages/Attendance'))
@@ -181,6 +182,7 @@ function App() {
                           <Route path="/players" element={<Players />} />
                           <Route path="/players/compare" element={<PlayerComparison />} />
                           <Route path="/players/:playerId" element={<PlayerView />} />
+                          <Route path="/leaderboards" element={<Leaderboards />} />
                           <Route path="/training" element={<Attendance />} />
                           <Route path="/attendance" element={<Attendance />} />
                           <Route path="/reports/season" element={<SeasonReport />} />
