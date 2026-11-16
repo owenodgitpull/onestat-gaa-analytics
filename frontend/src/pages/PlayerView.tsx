@@ -611,7 +611,7 @@ function computeIntensityInsight(data: { intensity: number; workload: number }[]
 export default function PlayerView() {
   const { playerId } = useParams<{ playerId: string }>()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'training' | 'fitness' | 'attendance'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'training' | 'fitness' | 'attendance'>('overview')
 
   const { data: player, isLoading: loadingPlayer } = useQuery({
     queryKey: ['player', playerId],
@@ -857,7 +857,6 @@ export default function PlayerView() {
       <div className="flex gap-2 flex-wrap">
         {[
           { id: 'overview', label: 'Overview', icon: User },
-          { id: 'matches', label: 'Matches', icon: Trophy },
           { id: 'training', label: 'Performance', icon: Dumbbell },
           { id: 'fitness', label: 'Fitness', icon: Heart },
           { id: 'attendance', label: 'Attendance', icon: Calendar }
@@ -905,58 +904,6 @@ export default function PlayerView() {
           donutData={donutData}
           defensiveTotal={defensiveTotal}
         />
-      )}
-
-      {/* Matches Tab */}
-      {activeTab === 'matches' && (
-        <div className="glass-card p-6">
-          <h3 className="text-xl font-bold text-white mb-4">Match History</h3>
-          {matchStats && matchStats.length > 0 ? (
-            <div className="space-y-3">
-              {matchStats.map(match => (
-                <div key={match.match_id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                  <div>
-                    <div className="font-semibold text-white flex items-center gap-2">
-                      {match.opponent}
-                      {!match.started && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-normal">SUB</span>
-                      )}
-                    </div>
-                    <div className="text-sm text-white/60">
-                      {new Date(match.match_date).toLocaleDateString()}
-                      {match.minutes_played != null && ` · ${match.minutes_played} mins`}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    {match.total_score > 0 || match.turnovers_won > 0 || match.turnovers_lost > 0 ? (
-                      <>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-white">
-                            {match.goals}-{match.points}
-                            {match.two_pointers > 0 && ` (+${match.two_pointers}x2pt)`}
-                          </div>
-                          <div className="text-xs text-white/40">
-                            {match.total_score} total
-                          </div>
-                        </div>
-                        <div className="text-right text-sm">
-                          <div className="text-emerald-400">+{match.turnovers_won} TO won</div>
-                          <div className="text-red-400">-{match.turnovers_lost} TO lost</div>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-sm text-white/40 italic">No scoring/turnover involvement logged</div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center text-white/40 py-8">
-              No match data recorded yet
-            </div>
-          )}
-        </div>
       )}
 
       {/* Training/Performance Tab */}
