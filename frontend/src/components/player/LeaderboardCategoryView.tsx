@@ -17,6 +17,8 @@ interface LeaderboardCategoryViewProps {
   meLabel?: string
   /** coach page: a row opens that player */
   onSelect?: (playerId: string) => void
+  /** wide screens (coach page): podium on the left, full ranking on the right */
+  split?: boolean
 }
 
 const MEDAL_GRADIENTS = [
@@ -33,7 +35,7 @@ const MEDAL_GRADIENTS = [
  * tab-switcher chrome that page also has.
  */
 export default function LeaderboardCategoryView({
-  board, ranking, isLoading, myPlayerId, categoryKey, icon: Icon, color, emptyMessage, qualificationNote, meLabel = 'You', onSelect,
+  board, ranking, isLoading, myPlayerId, categoryKey, icon: Icon, color, emptyMessage, qualificationNote, meLabel = 'You', onSelect, split = false,
 }: LeaderboardCategoryViewProps) {
   const prevRanks: Record<string, number | null> = (() => {
     try {
@@ -63,10 +65,10 @@ export default function LeaderboardCategoryView({
   }
 
   return (
-    <>
+    <div className={split ? 'grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6 items-start' : ''}>
       {/* Podium — Top 3 */}
       {board && board.top_3.length >= 3 && (
-        <div className="flex items-end justify-center gap-3 pt-4 pb-2">
+        <div className={`flex items-end justify-center gap-3 pt-4 pb-2 ${split ? 'md:sticky md:top-20' : ''}`}>
           <PodiumCard entry={board.top_3[1]} medal={1} unit={board.unit} color={color} />
           <PodiumCard entry={board.top_3[0]} medal={0} unit={board.unit} color={color} featured />
           <PodiumCard entry={board.top_3[2]} medal={2} unit={board.unit} color={color} />
@@ -144,7 +146,7 @@ export default function LeaderboardCategoryView({
       {qualificationNote && ranking.length > 0 && ranking.length < 5 && (
         <p className="text-[11px] text-white/25 text-center mt-2">{qualificationNote}</p>
       )}
-    </>
+    </div>
   )
 }
 

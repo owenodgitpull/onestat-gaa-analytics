@@ -78,7 +78,7 @@ function VerdictLine({ vd, who }: { vd: ReturnType<typeof verdict>; who: 'his' |
 }
 
 /** Tagged-data KPIs + (when loaded) the GPS-tracking ones, merged by match. */
-function merge(data: SelfKpis, gps?: SelfGpsKpis): SelfKpis {
+export function mergeSelfKpis(data: SelfKpis, gps?: SelfGpsKpis): SelfKpis {
   if (!gps || !gps.kpis.length) return data
   const g = new Map(gps.matches.map(m => [m.match_id, m.values]))
   const byMatch = { ...(data.squad?.by_match || {}) }
@@ -94,7 +94,7 @@ function merge(data: SelfKpis, gps?: SelfGpsKpis): SelfKpis {
 export default function SelfKpiPanel({ data: raw, gps, gpsState, who = 'his' }: {
   data: SelfKpis | undefined; gps?: SelfGpsKpis; gpsState?: 'loading' | 'error' | 'ok'; who?: 'his' | 'your'
 }) {
-  const data = useMemo(() => (raw ? merge(raw, gps) : undefined), [raw, gps])
+  const data = useMemo(() => (raw ? mergeSelfKpis(raw, gps) : undefined), [raw, gps])
   const ms = data?.matches || []
   const defaultIdx = useMemo(() => {
     for (let i = ms.length - 1; i >= 0; i--) if (!ms[i].short) return i

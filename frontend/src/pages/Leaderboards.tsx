@@ -64,7 +64,7 @@ export default function Leaderboards() {
   } : undefined
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5 pb-8">
+    <div className="space-y-5 pb-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           {playerId && <Link to={`/players/${playerId}`} className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ChevronLeft size={16} aria-hidden="true" /> Back to {playerName || 'the player'}</Link>}
@@ -115,7 +115,7 @@ export default function Leaderboards() {
           <h2 className="text-xl font-bold text-white flex items-center gap-2"><meta.icon size={20} style={{ color: meta.color }} aria-hidden="true" />{board.data?.display_name || meta.label}</h2>
           <span className="text-xs text-white/45">{rows.length ? `${rows.length} players ranked` : ''}{board.data?.unit ? ` · by ${board.data.unit}` : ''}</span>
         </div>
-        <p className="text-sm text-white/60">{meta.description}</p>
+        <p className="text-sm text-white/60 max-w-prose">{meta.description}</p>
         {me && <p className="text-sm text-emerald-200">{me.player_name}: {ordinal(me.rank)} of {rows.length}{me.detail ? ` (${me.detail})` : ''}</p>}
         {playerId && board.data && !board.isFetching && !me && <p className="text-sm text-white/55">{playerName || 'He'} is not on this board{competition || lastN ? ' for this selection' : ''}.</p>}
         {category === 'the_wall' && (
@@ -127,7 +127,7 @@ export default function Leaderboards() {
           <LeaderboardCategoryView board={ctx} ranking={rows} isLoading={board.isLoading} myPlayerId={playerId} categoryKey={category}
             icon={meta.icon} color={meta.color} emptyMessage={emptyMessageFor(category, 'coach')} meLabel="this player"
             qualificationNote={category === 'clinical_rating' ? 'Minimum 10 shots required to qualify' : undefined}
-            onSelect={id => navigate(`/players/${id}`)} />
+            onSelect={id => navigate(`/players/${id}`)} split />
         )}
       </div>
     </div>

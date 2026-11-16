@@ -3,7 +3,7 @@
  * brief...) that were saved all along but only the player portal showed. Unread count badge, a dropdown list, tap to
  * open what it is about, mark all read. Checks every minute and when the tab comes back into focus.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bell, Loader2, Film, FileText, Activity, Sparkles, MonitorPlay, CheckCheck, AlertCircle } from 'lucide-react'
@@ -41,6 +41,17 @@ function target(n: AppNotification): string | null {
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false)
+  // Close on a click/tap anywhere outside, or Escape. (A full-screen "fixed" layer did not work: the nav bar's
+  // backdrop blur makes fixed children relative to the bar, so the layer only covered the bar.)
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open])
   const navigate = useNavigate()
   const qc = useQueryClient()
   const q = useQuery({
@@ -68,7 +79,7 @@ export default function NotificationBell() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
         onClick={() => setOpen(o => !o)}
         className="relative p-2 rounded-lg hover:bg-white/10 transition-colors"
@@ -85,7 +96,6 @@ export default function NotificationBell() {
 
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="fixed left-2 right-2 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 max-h-[70vh] flex flex-col bg-slate-800 border border-white/10 rounded-xl shadow-xl z-20 overflow-hidden" role="dialog" aria-label="Notifications">
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
               <div className="text-sm font-semibold text-white">Notifications</div>

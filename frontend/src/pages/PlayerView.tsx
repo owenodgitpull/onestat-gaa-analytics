@@ -58,6 +58,7 @@ import PlayerFatigueSignature from '../components/charts/PlayerFatigueSignature'
 import PlayerSleepTrend from '../components/charts/PlayerSleepTrend'
 import PlayerDisciplineTrend from '../components/charts/PlayerDisciplineTrend'
 import PlayerPositionalBenchmark from '../components/charts/PlayerPositionalBenchmark'
+import PlayerKpiCards from '../components/player/PlayerKpiCards'
 import SelfKpiPanel, { type SelfKpis, type SelfGpsKpis } from '../components/player/SelfKpiPanel'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
@@ -961,6 +962,7 @@ export default function PlayerView() {
       {/* Training/Performance Tab */}
       {activeTab === 'training' && (
         <PerformanceTab
+          playerId={player.id}
           gpsData={gpsData || []}
           matchGpsHistory={matchGpsHistory || []}
           intensityData={intensityData}
@@ -1364,6 +1366,10 @@ function OverviewTab({
 
   return (
     <div className="space-y-6">
+      {/* Season KPIs against himself (dashboard style): headline row here, more rows further down */}
+      <PlayerKpiCards playerId={player.id} title="Season at a glance"
+        keys={['score_points', 'conversion_pct', 'impact_rank', 'kickouts_won', 'turnovers_won', 'turnovers_lost', 'distance_km', 'back_10s_pct']} />
+
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total Score" value={totalScore} subtext={`${totalGoals}G + ${totalPoints}P`} icon={Target} color="emerald" />
@@ -1449,6 +1455,9 @@ function OverviewTab({
         </div>
       </div>
 
+      <PlayerKpiCards playerId={player.id} title="On the ball and defending"
+        keys={['carries', 'passes', 'metres_per_carry', 'assists', 'scores_from_play', 'stray_passes', 'frees_won', 'frees_conceded', 'blocks', 'interceptions', 'kickouts_won_clean', 'kickouts_won_break']} />
+
       {/* Match-by-Match Impact */}
       <div className="glass-card p-6">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -1481,6 +1490,9 @@ function OverviewTab({
         )}
         <ChartInsight insight={impactInsightText} />
       </div>
+
+      <PlayerKpiCards playerId={player.id} title="Running and tracking"
+        keys={['distance_km', 'm_per_min', 'hsr_per_min', 'sprints', 'top_speed', 'sprint_after_loss_pct', 'avg_x_m', 'avg_x_without_m']} />
 
       {/* Shot Map */}
       <div className="glass-card p-6">
@@ -1525,8 +1537,9 @@ function GpsHistoryPager({ page, totalPages, onChange }: { page: number; totalPa
 }
 
 function PerformanceTab({
-  gpsData, matchGpsHistory, intensityData, quarterProfile, sleepHistory, disciplineTrend, positionalBenchmark,
+  playerId, gpsData, matchGpsHistory, intensityData, quarterProfile, sleepHistory, disciplineTrend, positionalBenchmark,
 }: {
+  playerId: string
   gpsData: GPSDataPoint[]
   matchGpsHistory: any[]
   intensityData: { name: string; intensity: number; workload: number }[]
@@ -1577,6 +1590,9 @@ function PerformanceTab({
         )}
         <ChartInsight insight={intensityInsightText} />
       </div>
+
+      <PlayerKpiCards playerId={playerId} title="Running and tracking"
+        keys={['m_per_min', 'hsr_m', 'hsr_per_min', 'sprints', 'top_speed', 'accelerations', 'sprint_after_loss_pct', 'avg_x_m', 'avg_x_without_m', 'avg_hr', 'max_hr', 'red_zone_min']} />
 
       {/* Season Physical Trend + Fatigue Signature */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
