@@ -721,7 +721,7 @@ export function SupportView({ a, periods, onOpen }: { a: GpsMatchAnalysis; perio
   const sp = a.support
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/80 max-w-prose">
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/80 leading-relaxed">
         <b className="text-white">Does the man on the ball have help?</b> At every pass we measure where his team-mates were. Close support (within 15 m)
         makes a short, safe pass possible; a passer with nobody near him has to kick long or carry into contact; and a team-mate further up the
         pitch and in range is an attacking option that may have been missed. Use it to see who gets left isolated and whether we run off the ball to help.
