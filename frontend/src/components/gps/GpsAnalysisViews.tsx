@@ -151,7 +151,7 @@ const SHAPE_METRICS: { key: keyof GpsShapeSeries; label: string; help: string }[
   { key: 'length', label: 'Length', help: 'deepest to highest outfielder, along the pitch' },
   { key: 'width', label: 'Width', help: 'widest spread across the pitch' },
   { key: 'deep6', label: 'Deepest 6', help: 'average distance of our six deepest outfielders from our own goal line' },
-  { key: 'centroid_x', label: 'Team height', help: 'distance of the team centre from our own goal line' },
+  { key: 'centroid_x', label: 'Team height', help: 'where the middle of our team was standing, in metres from our own goal line. Low means we were sitting deep, high means we were pushed up' },
   { key: 'area', label: 'Area', help: 'area of the shape the outfielders make (m²)' },
 ]
 
