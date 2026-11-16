@@ -1398,6 +1398,8 @@ def get_cached_tools() -> list:
 
 from app.services.ai.gps_tools import TOOL_DEFS as _GPS_TOOL_DEFS  # noqa: E402
 TOOLS.extend(_GPS_TOOL_DEFS)
+from app.services.ai.player_kpi_tools import TOOL_DEFS as _PLAYER_KPI_TOOL_DEFS  # noqa: E402
+TOOLS.extend(_PLAYER_KPI_TOOL_DEFS)
 
 
 def get_tools_subset(tool_names: list[str]) -> list[dict]:
@@ -1478,6 +1480,11 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_turnover_analysis(db, tool_input.get("match_id"), club_id=club_id)
     elif tool_name == "get_player_gps_stats":
         return await get_player_gps_stats(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_player_kpi_profile":
+        from app.services.ai.player_kpi_tools import get_player_kpi_profile
+        if not tool_input.get("player_id"):
+            return safe_json({"error": "player_id is required (use search_players first)"})
+        return await get_player_kpi_profile(db, **tool_input, club_id=club_id)
     elif tool_name == "get_team_gps_averages":
         return await get_team_gps_summary(db, **tool_input, club_id=club_id)
     elif tool_name == "get_attendance_data":

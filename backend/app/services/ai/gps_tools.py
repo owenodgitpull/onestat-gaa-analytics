@@ -127,7 +127,7 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
         rows = [{k: v for k, v in r.items() if k not in ("at_kick", "after_6s", "moved")} for r in ko["kickouts"]]
         spots = {k: {**v, "players": [{kk: vv for kk, vv in p.items() if kk != "player_id"} for p in v["players"][:6]]}
                  for k, v in (ko.get("player_spots") or {}).items()}
-        return {"totals": ko.get("totals"), "player_spots": spots, "zones": ko.get("zones"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
+        return {"patterns": ko.get("patterns"), "totals": ko.get("totals"), "player_spots": spots, "zones": ko.get("zones"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
                 "how_to_read": "totals = kickouts with a GPS frame per side (own = ours, opp = theirs), won/lost from OUR side, over_the_sideline "
                                "included (our kick straight out = lost, theirs = won); quote these, never add groups up. team_mean_x = mean distance "
                                "of our outfielders from our own goal line at the kick, read 2.5 s before the tag (the tag is when the ball "
@@ -138,7 +138,11 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
                                "lost (only players with min_each in both), biggest shift_m first; dx_m + = further from our goal when we "
                                "lost, - = deeper; dy_m + = towards our right touchline. A shift under noise_m is not a pattern. zones = "
                                "where they landed by length from the KICKING goal (short / mid / long) and channel as WE attack, with won, "
-                               "lost and our numbers within 10 m of the landing; kicks over the sideline are not in zones."}
+                               "lost and our numbers within 10 m of the landing; kicks over the sideline are not in zones. patterns = the won-v-lost "
+                               "differences already worked out (team height, ours near the drop, zones that went one way, players whose "
+                               "spot moved past the noise), each with its n: use these to link causes to results, quote the 'reads' "
+                               "figures, and when comparable is false (under 5 won or lost) describe without concluding. Never invent "
+                               "a cause the patterns do not show."}
     if section == "intensity":
         it = res["intensity"]
         return {"thresholds": it["thresholds"], "by_half": it["by_half"],
@@ -165,6 +169,8 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
                 "how_to_read": "nearest_m = the closest any of our tracked outfielders got to the tagged shot spot in the 4 s up to "
                                "the shot (the tap moved back by the usual delay): the pressure on the shooter as he shot. Shots from a free or a 45 "
                                "(set_piece true) are listed but left out of the medians and unpressured share: our players stand off by rule. "
+                               "by_pressure_open_play = open-play shots in each pressure band with how many they scored: use it to say "
+                               "whether pressure stopped them (e.g. scored 2 of 9 under tight pressure v 5 of 6 when free). "
                                "No opposition GPS: the spot is where the shot was tagged."}
     if section == "moments":
         return res["moments"]
@@ -190,16 +196,27 @@ async def get_gps_match_analysis(db, match_id: str, sections=None, limit: int = 
 
 
 BASELINE_FIELDS = ("compactness_out_m", "compactness_in_m", "length_out_m", "median_recovery_s", "median_forward_runners",
-                   "hsr_per_player_min", "m_per_player_min", "push_up_mean_x_m", "support_within_15m", "their_receptions_within_5m_pct")
+                   "hsr_per_player_min", "m_per_player_min", "push_up_mean_x_m", "support_within_15m", "their_receptions_within_5m_pct",
+                   # the figures the GPS tabs' tiles set against "prev 3 / season" (2026-11-16): the agent sees the same comparison
+                   "team_distance_km", "team_hsr_km", "width_out_m", "deep6_out_m", "back_in_15s_pct", "median_retreat_10s_m",
+                   "turnovers_lost", "turnovers_won", "isolated_share_pct", "further_option_share_pct", "shots_against",
+                   "shots_against_nearest_m", "nearest_on_scores_m", "unpressured_share_pct")
 
 
 def _baseline(rows: list, exclude_match_id) -> dict:
     """The mean of each figure over the OTHER GPS matches, with its N, so the agent copies a baseline instead of working one out."""
-    others = [r for r in rows if str(r.get("match_id")) != str(exclude_match_id)]
-    out = {"n_matches": len(others), "matches": [f"{r['opponent']} ({r['match_date']})" for r in others]}
+    ordered = sorted(rows, key=lambda r: str(r.get("match_date") or ""))
+    idx = next((i for i, r in enumerate(ordered) if str(r.get("match_id")) == str(exclude_match_id)), None)
+    others = [r for r in ordered if str(r.get("match_id")) != str(exclude_match_id)]
+    before = (ordered[:idx] if idx is not None else ordered)[-3:]     # the 3 GPS matches before this one, as the tiles show
+    this = ordered[idx] if idx is not None else None
+    out = {"n_matches": len(others), "matches": [f"{r['opponent']} ({r['match_date']})" for r in others],
+           "prev_3_matches": [f"{r['opponent']} ({r['match_date']})" for r in before]}
     for f in BASELINE_FIELDS:
         v = [r[f] for r in others if r.get(f) is not None]
-        out[f] = {"mean": round(sum(v) / len(v), 1), "n": len(v)} if v else None
+        p3 = [r[f] for r in before if r.get(f) is not None]
+        out[f] = ({"this_match": this.get(f) if this else None, "mean": round(sum(v) / len(v), 1), "n": len(v),
+                   "prev_3_mean": round(sum(p3) / len(p3), 1) if p3 else None} if v else None)
     return out
 
 
@@ -211,7 +228,9 @@ async def get_gps_season_trends(db, club_id=None, exclude_match_id=None) -> str:
                                      "(lower = tighter). hsr = running above 5.5 m/s. load_alerts compare a player's high-speed metres per "
                                      "minute in one match with his own average in the other GPS matches (+-25% or more). "
                                      "baseline_other_matches (only with exclude_match_id) = the mean over our OTHER GPS matches, n = how many "
-                                     "had that figure: write 'over our other N GPS matches' with that n. Running figures are already per "
+                                     "had that figure: write 'over our other N GPS matches' with that n; prev_3_mean = the 3 GPS matches before this one "
+                                     "(the 'Prev 3' on the screens) and this_match = this match's own figure. Totals (team_distance_km, "
+                                     "team_hsr_km, shots_against) grow with extra time: say so when a match went to extra time. Running figures are already per "
                                      "player-minute, so matches of different length compare fairly."})
 
 

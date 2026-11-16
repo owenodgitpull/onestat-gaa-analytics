@@ -72,6 +72,7 @@ SEASON_TOOLS = [
     "get_season_phase_profile",
     "get_match_gps_positional_analysis",
     "get_gps_shape_trends_by_match",
+    "get_player_kpi_profile",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
@@ -79,6 +80,7 @@ PLAYER_TOOLS = [
     "search_players",
     "get_player_season_stats",
     "get_player_gps_stats",
+    "get_player_kpi_profile",
     "get_attendance_data",
     "get_match_event_log",
     "get_match_summary",
@@ -1448,7 +1450,7 @@ Use tools to gather additional data if needed.
 Write exactly 2-3 sentences of flowing prose as a GAA journalist.
 
 ## Instructions
-1. First use search_players to find the player, then use get_player_season_stats with their UUID to get scoring/defence stats.
+1. First use search_players to find the player, then use get_player_season_stats with their UUID to get scoring/defence stats, and get_player_kpi_profile for every KPI against his own season (last 3, best), the squad average and his leaderboard places.
 2. Use get_player_gps_stats to check for GPS trends.
 3. Use get_attendance_data with the player_id to check training attendance.
 4. This is shown to {first_name} themselves in their player portal — address them directly in SECOND PERSON ("You've been excellent...", "Your distance covered..."), never third person or their name as the subject (not "{first_name} has been...").
@@ -1468,7 +1470,7 @@ Return ONLY prose — no bullet points, no headers, no JSON, no quotation marks.
 Generate 3-5 personalized insight bullets for a player.
 
 ## Instructions
-1. Use get_player_season_stats with player_id '{player_id}' to get scoring/defence stats.
+1. Use get_player_season_stats with player_id '{player_id}' to get scoring/defence stats, and get_player_kpi_profile with the same player_id for every KPI against his own season (last 3, best), the squad average and his leaderboard places.
    - The response includes turnovers.unforced_errors and turnovers.unforced_errors_per_game — reference these if notable.
    - Unforced errors are possession losses through avoidable mistakes (not forced by the opposition).
 2. Use get_player_gps_stats to check GPS performance trends.
@@ -1491,7 +1493,7 @@ Return ONLY bullet points (each line starting with "- "). No headers, no JSON.
 Generate 2-3 personalized weekly challenges for a GAA player.
 
 ## Instructions
-1. Use get_player_season_stats with player_id '{player_id}' to get their current stats.
+1. Use get_player_season_stats with player_id '{player_id}' to get their current stats, and get_player_kpi_profile for his KPIs against his own season and the squad.
    - turnovers.unforced_errors shows total unforced errors this season.
    - turnovers.unforced_errors_per_game shows their average per match.
    - If this is >= 2 per game, a challenge to reduce it is highly appropriate:

@@ -317,8 +317,54 @@ def kickouts(inp: MatchInputs, g: Grid) -> dict:
         if rs:
             push[str(h)] = {"n": len(rs), "team_mean_x": r1(np.mean([r["team_mean_x"] for r in rs])),
                             "players_in_their_half": r1(np.mean([r["players_in_their_half"] for r in rs]))}
+    spots = _ko_player_spots(rows)
+    zones = _ko_zones(rows, L, W)
     return {"kickouts": rows, "groups": groups, "totals": totals, "push_up_on_their_kickouts": push,
-            "player_spots": _ko_player_spots(rows), "zones": _ko_zones(rows, L, W)}
+            "player_spots": spots, "zones": zones, "patterns": _ko_patterns(rows, spots, zones)}
+
+
+KO_PATTERN_MIN = 5       # a won or lost group smaller than this is described, never compared
+
+
+def _ko_patterns(rows: list, spots: dict, zones: dict) -> dict:
+    """Per side: the won-v-lost differences the figures support, worked out here so the agent links causes to results from
+    numbers rather than guessing (Owen 2026-11-16). Only differences that clear the noise, each with its n."""
+    out = {}
+    for kind in ("own", "opp"):
+        rs = [r for r in rows if r["kind"] == kind and r["outcome"] != "over the sideline"]
+        won, lost = [r for r in rs if r["won"]], [r for r in rs if not r["won"]]
+        if not rs:
+            continue
+        facts, enough = [], len(won) >= KO_PATTERN_MIN and len(lost) >= KO_PATTERN_MIN
+
+        def m(sub, key):
+            v = [r[key] for r in sub if r.get(key) is not None]
+            return (float(np.mean(v)), len(v)) if v else (None, 0)
+        if enough:
+            (hw, nw), (hl, nlo) = m(won, "team_mean_x"), m(lost, "team_mean_x")
+            if hw is not None and hl is not None and abs(hw - hl) >= 3:
+                facts.append({"what": "team height at the kick", "won": r1(hw), "lost": r1(hl), "n_won": nw, "n_lost": nlo,
+                              "reads": f"the team stood {abs(hw - hl):.0f} m {'higher' if hl > hw else 'deeper'} on the ones we lost"})
+            (aw, nw), (al, nlo) = m(won, "ours_within_10m_of_landing"), m(lost, "ours_within_10m_of_landing")
+            if aw is not None and al is not None and abs(aw - al) >= 0.5:
+                facts.append({"what": "ours near the drop (within 10 m of the landing)", "won": r1(aw), "lost": r1(al), "n_won": nw, "n_lost": nlo,
+                              "reads": f"{abs(aw - al):.1f} {'fewer' if al < aw else 'more'} of ours around the drop on the ones we lost"})
+        for z in zones.get(kind, []):
+            if z["n"] >= 3 and (z["lost"] / z["n"] >= 0.6 or z["won"] / z["n"] >= 0.85):
+                facts.append({"what": f"landing zone {z['length'].split(' ')[0]} · {z['channel']}", "n": z["n"], "won": z["won"], "lost": z["lost"],
+                              "ours_near_the_drop": z.get("mean_ours_within_10m_of_landing"),
+                              "reads": f"won {z['won']} of {z['n']} landing {z['length'].split(' ')[0]} on {z['channel']}"})
+        sp = spots.get(kind) or {}
+        for p in (sp.get("players") or [])[:6]:
+            if p["shift_m"] >= sp.get("noise_m", KO_SHIFT_NOTE_M):
+                parts = []
+                if abs(p["dx_m"]) >= 2: parts.append(f"{abs(p['dx_m']):.0f} m {'further up' if p['dx_m'] > 0 else 'deeper'}")
+                if abs(p["dy_m"]) >= 2: parts.append(f"{abs(p['dy_m']):.0f} m nearer our {'right' if p['dy_m'] > 0 else 'left'}")
+                where = ", ".join(parts) or "{:.0f} m away".format(p["shift_m"])
+                facts.append({"what": f"{p['name']}'s spot at the kick", "shift_m": p["shift_m"], "n_won": p["won"]["n"], "n_lost": p["lost"]["n"],
+                              "reads": f"{p['name']} stood {where} on the ones we lost"})
+        out[kind] = {"n_won": len(won), "n_lost": len(lost), "comparable": enough, "facts": facts}
+    return out
 
 
 KO_SPOT_MIN = 3          # a player's average spot needs at least this many kickouts in BOTH groups
@@ -668,7 +714,14 @@ def marking(inp: MatchInputs, g: Grid) -> dict:
     # pressure figures from open play only: on a free or a 45 our players stand back by rule
     play = [r for r in rows if not r["set_piece"]]
     scores = [r for r in play if r["event_type"] in ("POINT_SCORED", "GOAL_SCORED")]
+    # open-play shots by how close our nearest player was, with how many they scored: is pressure what stops them?
+    bands = []
+    for name, lo, hi in (("tight (within 3 m)", -1, 3), ("some pressure (3-6 m)", 3, 6), ("free (over 6 m)", 6, 1e9)):
+        b = [r for r in play if lo < r["nearest_m"] <= hi]
+        sc = sum(r["event_type"] in ("POINT_SCORED", "GOAL_SCORED") for r in b)
+        bands.append({"pressure": name, "shots": len(b), "scored": sc, "scored_pct": r1(100 * sc / len(b)) if b else None})
     return {"shots": rows, "n_shots": len(rows), "n_from_play": len(play), "n_set_piece": len(rows) - len(play),
+            "by_pressure_open_play": bands,
             "median_nearest_m": r1(np.median([r["nearest_m"] for r in play])) if play else None,
             "median_nearest_m_scores": r1(np.median([r["nearest_m"] for r in scores])) if scores else None,
             "unpressured_share_pct": r1(100 * sum(r["nearest_m"] > 5 for r in play) / len(play)) if play else None,

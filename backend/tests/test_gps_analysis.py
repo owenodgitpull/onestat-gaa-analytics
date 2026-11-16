@@ -56,3 +56,20 @@ def test_shape_needs_ten_players():
     X = np.full((9, 2), 30.0); Y = np.arange(9)[:, None] * np.ones((1, 2)) * 5
     sh = M.shape_series(_grid(X, Y, [1, 1]))
     assert np.isnan(sh["length"]).all()
+
+
+def test_ko_patterns_only_states_supported_differences():
+    """Won-v-lost kickout facts: a clear team-height and ours-near difference is stated with its n; small groups are flagged
+    as not comparable; nothing is stated for a difference inside the noise."""
+    from app.services.gps_analysis.metrics import _ko_patterns
+    def row(won, x, near):
+        return {"kind": "own", "outcome": "won clean" if won else "lost clean", "won": won, "team_mean_x": x, "ours_within_10m_of_landing": near}
+    rows = [row(True, 40, 3) for _ in range(6)] + [row(False, 48, 1) for _ in range(5)]
+    p = _ko_patterns(rows, {}, {})["own"]
+    assert p["comparable"] is True and p["n_won"] == 6 and p["n_lost"] == 5
+    whats = {f["what"] for f in p["facts"]}
+    assert "team height at the kick" in whats and any("ours near the drop" in w for w in whats)
+    height = next(f for f in p["facts"] if f["what"] == "team height at the kick")
+    assert "8 m higher on the ones we lost" in height["reads"]
+    small = _ko_patterns([row(True, 40, 3)] * 6 + [row(False, 41, 3)] * 2, {}, {})["own"]
+    assert small["comparable"] is False and small["facts"] == []
