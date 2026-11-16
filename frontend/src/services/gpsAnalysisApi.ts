@@ -70,7 +70,7 @@ export interface GpsIntensityPlayer {
 }
 export interface GpsBlock { half: number; block: number; label: string; team_distance_m: number; team_hsr_m: number; m_per_player_min: number | null; hsr_per_player_min: number | null; in_poss_share: number | null }
 export interface GpsTagFlag { kind: string; id: string; event_type: string; player_id: string; player: string | null; video_ms: number; half: number | null; dist_at_tap_m: number | null; nearest_m: number | null; nearest_lag_s: number | null; reason: string }
-export interface GpsShotAgainst { video_ms: number; half: number | null; event_type: string; shooter: string | null; shot_x: number | null; shot_y: number | null; nearest: string | null; nearest_m: number | null; within_5m: number; within_10m: number; assigned_marker: { name: string | null; dist_m: number | null; was_nearest: boolean } | null }
+export interface GpsShotAgainst { video_ms: number; half: number | null; event_type: string; shooter: string | null; shot_x: number | null; shot_y: number | null; nearest: string | null; nearest_m: number | null; within_5m: number; within_10m: number; assigned_marker: { name: string | null; dist_m: number | null; was_nearest: boolean } | null; ours?: { name: string | null; x: number | null; y: number | null; dist_m: number | null }[] }
 export interface GpsMoment { kind: string; video_ms: number; title: string; detail: string }
 
 export interface GpsMatchAnalysis {

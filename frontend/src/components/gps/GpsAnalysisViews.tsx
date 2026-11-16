@@ -746,8 +746,41 @@ export function SupportView({ a, periods, onOpen }: { a: GpsMatchAnalysis; perio
 
 // ---------------------------------------------------------------- 12. marking
 
+// Pressure on the shooter (Owen 2026-11-16: "normal colours", and a list a coach can filter and see on the pitch).
+// Colours chosen to stand out on the grass: blue = tight (one of ours within 3 m), amber = 3-6 m, red = free (over 6 m).
+const PRESSURE = [
+  { key: 'tight', label: 'Tight (within 3 m)', max: 3, color: '#3b82f6' },
+  { key: 'some', label: 'Some pressure (3-6 m)', max: 6, color: '#f59e0b' },
+  { key: 'free', label: 'Free (over 6 m)', max: Infinity, color: '#ef4444' },
+] as const
+const pressureOf = (m: number | null | undefined) => PRESSURE.find(p => (m ?? Infinity) <= p.max) || PRESSURE[2]
+const isScore = (t: string) => /SCORED/.test(t)
+
+function Chips<T extends string | number>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: { v: T; label: ReactNode }[]; label: string }) {
+  return (
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+      {options.map(o => (
+        <button key={String(o.v)} onClick={() => onChange(o.v)} aria-pressed={value === o.v}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border ${value === o.v ? 'bg-white/15 border-white/30 text-white' : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10'}`}>{o.label}</button>
+      ))}
+    </div>
+  )
+}
+
 export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; opponent: string }) {
   const mk = a.marking
+  const [outcome, setOutcome] = useState<'all' | 'score' | 'miss'>('all')
+  const [pressure, setPressure] = useState<'all' | 'tight' | 'some' | 'free'>('all')
+  const [half, setHalf] = useState<number>(0)
+  const [sel, setSel] = useState<number | null>(null)          // index into mk.shots
+  const halves = [...new Set(mk.shots.map(x => x.half).filter((h): h is number => h != null))].sort()
+  const shown = mk.shots.map((x, i) => ({ x, i })).filter(({ x }) =>
+    (outcome === 'all' || (outcome === 'score') === isScore(x.event_type)) &&
+    (pressure === 'all' || pressureOf(x.nearest_m).key === pressure) &&
+    (!half || x.half === half))
+  const picked = sel != null ? mk.shots[sel] : null
+  const pickedVisible = picked && shown.some(r => r.i === sel)
+  const count = (k: string) => mk.shots.filter(x => pressureOf(x.nearest_m).key === k).length
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -756,20 +789,83 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
         <Tile label="On their scores" value={n1(mk.median_nearest_m_scores, ' m')} sub="median nearest defender" cmp={{ k: 'nearest_on_scores_m', v: mk.median_nearest_m_scores, hib: false, unit: 'm' }} />
         <Tile label="Nobody within 5 m" value={n1(mk.unpressured_share_pct, '%')} sub="of shots" cmp={{ k: 'unpressured_share_pct', v: mk.unpressured_share_pct, hib: false, unit: '%', dec: 0 }} />
       </div>
-      <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}>
-        <GpsPitch lengthM={a.pitch_length_m} widthM={a.pitch_width_m} label="Opposition shots">
-          {(s) => mk.shots.filter(x => x.shot_x != null && x.shot_y != null).map((x, i) => (
-            <circle key={i} cx={s.x(x.shot_x!, x.shot_y!)} cy={s.y(x.shot_y!)} r={18 + Math.min(40, (x.nearest_m ?? 0) * 3)} fill={/SCORED/.test(x.event_type) ? COLOR_THEIRS : 'none'} fillOpacity={0.55} stroke={COLOR_THEIRS} strokeWidth={5}>
-              <title>{x.event_type.replace(/_/g, ' ').toLowerCase()} · nearest {x.nearest} {x.nearest_m} m</title>
-            </circle>
-          ))}
-        </GpsPitch>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <Chips label="Outcome" value={outcome} onChange={setOutcome} options={[{ v: 'all', label: `All ${mk.n_shots}` }, { v: 'score', label: `Scores ${mk.shots.filter(x => isScore(x.event_type)).length}` }, { v: 'miss', label: `Misses ${mk.shots.filter(x => !isScore(x.event_type)).length}` }]} />
+        <Chips label="Pressure" value={pressure} onChange={setPressure} options={[{ v: 'all' as const, label: 'Any pressure' }, ...PRESSURE.map(p => ({ v: p.key, label: <><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: p.color }} aria-hidden="true" />{p.label} · {count(p.key)}</> }))]} />
+        {halves.length > 1 && <Chips label="Half" value={half} onChange={setHalf} options={[{ v: 0, label: 'Whole match' }, ...halves.map(h => ({ v: h, label: PERIOD[String(h)] || String(h) }))]} />}
       </div>
-      <p className="text-xs text-white/50">Their shots on our goal (left). Filled = scored; bigger circle = nearest defender further away. Nearest = the closest any of ours got to the tagged shot spot in the 4 s up to the shot (a shot is often tapped a few seconds late, after our players have turned away). No opposition GPS: the spot is where the shot was tagged.</p>
-      <Table head={['When', 'Shot', 'Shooter', 'Nearest', 'Distance', 'Within 5 m', ...(mk.has_assignments ? ['Assigned marker'] : [])]} align={['l', 'l', 'l', 'l', 'r', 'r', 'l']}
-        rows={mk.shots.map(x => [<PlayAt key="p" ms={x.video_ms} lead={10000} periods={periods} onOpen={onOpen} />, x.event_type.replace(/_/g, ' ').toLowerCase(), x.shooter || '–', x.nearest || '–', n1(x.nearest_m, ' m'), x.within_5m,
-          ...(mk.has_assignments ? [x.assigned_marker ? `${x.assigned_marker.name} ${n1(x.assigned_marker.dist_m, ' m')}${x.assigned_marker.was_nearest ? ' (nearest)' : ''}` : '–'] : [])])} />
-      {!mk.has_assignments && <p className="text-xs text-white/45">No man-marking assignments in Match Prep for this match, so the assigned-marker column is hidden.</p>}
+
+      <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-4 items-start">
+        <div>
+          <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}>
+            <GpsPitch lengthM={a.pitch_length_m} widthM={a.pitch_width_m} label="Opposition shots, coloured by how close our nearest player was">
+              {(s) => (
+                <>
+                  {/* the picked shot: where every one of ours was, and a line to the nearest */}
+                  {pickedVisible && picked!.shot_x != null && picked!.shot_y != null && (picked!.ours || []).map((o, k) => o.x != null && o.y != null && (
+                    <g key={`o-${k}`}>
+                      {o.name === picked!.nearest && <line x1={s.x(picked!.shot_x!, picked!.shot_y!)} y1={s.y(picked!.shot_y!)} x2={s.x(o.x, o.y)} y2={s.y(o.y)} stroke="#fff" strokeWidth={5} strokeDasharray="14 10" />}
+                      <circle cx={s.x(o.x, o.y)} cy={s.y(o.y)} r={20} fill={COLOR_OURS} stroke="#0b1226" strokeWidth={4} />
+                      <text x={s.x(o.x, o.y)} y={s.y(o.y) + 50} textAnchor="middle" fontSize={24} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={6} paintOrder="stroke">{surname(o.name)}</text>
+                    </g>
+                  ))}
+                  {shown.filter(({ x }) => x.shot_x != null && x.shot_y != null).map(({ x, i }) => {
+                    const pr = pressureOf(x.nearest_m), on = i === sel, score = isScore(x.event_type)
+                    return (
+                      <g key={i} onClick={() => setSel(on ? null : i)} style={{ cursor: 'pointer' }} opacity={pickedVisible && !on ? 0.35 : 1}>
+                        {on && <circle cx={s.x(x.shot_x!, x.shot_y!)} cy={s.y(x.shot_y!)} r={44} fill="none" stroke="#fff" strokeWidth={5} />}
+                        <circle cx={s.x(x.shot_x!, x.shot_y!)} cy={s.y(x.shot_y!)} r={score ? 24 : 20} fill={score ? pr.color : 'rgba(11,18,38,0.55)'} stroke={score ? '#0b1226' : pr.color} strokeWidth={score ? 4 : 9} />
+                        <title>{`${periodClock(x.video_ms, periods)} · ${x.event_type.replace(/_/g, ' ').toLowerCase()}${x.shooter ? ` · ${x.shooter}` : ''} · nearest ${x.nearest || '–'} ${n1(x.nearest_m, ' m')}. Click to see our players`}</title>
+                      </g>
+                    )
+                  })}
+                </>
+              )}
+            </GpsPitch>
+          </div>
+          <PitchFrameCaption team="We" />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-white/65">
+            {PRESSURE.map(p => <span key={p.key} className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: p.color }} aria-hidden="true" />{p.label}</span>)}
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-white/70" aria-hidden="true" />filled = scored</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-white/70" aria-hidden="true" />ring = missed</span>
+          </div>
+        </div>
+
+        <div className="space-y-3 min-w-0">
+          {picked && pickedVisible ? (
+            <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-sm space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-white capitalize">{picked.event_type.replace(/_/g, ' ').toLowerCase()}{picked.shooter ? ` · ${picked.shooter}` : ''}</span>
+                <PlayAt ms={picked.video_ms} lead={10000} periods={periods} onOpen={onOpen} />
+              </div>
+              <div className="flex items-center gap-2"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: pressureOf(picked.nearest_m).color }} aria-hidden="true" /><span className="text-white/80">{pressureOf(picked.nearest_m).label}: nearest was {picked.nearest || '–'}, {n1(picked.nearest_m, ' m')} away</span></div>
+              <div className="text-white/65">{picked.within_5m} of ours within 5 m, {picked.within_10m} within 10 m{picked.assigned_marker ? ` · his assigned marker ${picked.assigned_marker.name} was ${n1(picked.assigned_marker.dist_m, ' m')} away` : ''}</div>
+              <div className="text-xs text-white/45">Green dots: where our players were at that moment. The video button opens the replay 10 s before, so you see the build-up.</div>
+              <button onClick={() => setSel(null)} className="text-xs text-white/60 hover:text-white underline">Clear</button>
+            </div>
+          ) : <p className="text-sm text-white/55">Click a shot on the pitch or in the list to see where our players were.</p>}
+          <div className="rounded-xl border border-white/10 divide-y divide-white/5 max-h-[26rem] overflow-y-auto" role="listbox" aria-label="Shots">
+            {shown.length === 0 && <p className="p-3 text-sm text-white/55">No shots match these filters.</p>}
+            {shown.map(({ x, i }) => {
+              const pr = pressureOf(x.nearest_m)
+              return (
+                <button key={i} role="option" aria-selected={i === sel} onClick={() => setSel(i === sel ? null : i)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs ${i === sel ? 'bg-white/12 text-white' : 'text-white/80 hover:bg-white/5'}`}>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={isScore(x.event_type) ? { background: pr.color } : { border: `2px solid ${pr.color}` }} aria-hidden="true" />
+                  <span className="tabular-nums w-16 shrink-0">{periodClock(x.video_ms, periods)}</span>
+                  <span className="capitalize w-24 shrink-0 truncate">{x.event_type.replace(/_/g, ' ').toLowerCase()}</span>
+                  <span className="truncate flex-1">{x.shooter || '–'}</span>
+                  <span className="truncate w-24 shrink-0 text-white/60">{surname(x.nearest)}</span>
+                  <span className="tabular-nums w-14 text-right shrink-0">{n1(x.nearest_m, ' m')}</span>
+                </button>
+              )
+            })}
+          </div>
+          {!mk.has_assignments && <p className="text-xs text-white/45">No man-marking assignments in Match Prep for this match.</p>}
+        </div>
+      </div>
+      <p className="text-xs text-white/50">Their shots on our goal (left). Nearest = the closest any of ours got to the tagged shot spot in the 4 s up to the shot (a shot is often tapped a few seconds late, after our players have turned away). No opposition GPS: the spot is where the shot was tagged.</p>
     </div>
   )
 }

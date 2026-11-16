@@ -659,7 +659,10 @@ def marking(inp: MatchInputs, g: Grid) -> dict:
         rows.append({"video_ms": e.video_ms, "half": e.half, "event_type": e.event_type, "shooter": shooter,
                      "shot_x": r1(sx), "shot_y": r1(sy), "nearest": name_of(inp, g.pids[i]), "nearest_m": r1(d[i]),
                      "within_5m": int((d <= 5).sum()), "within_10m": int((d <= 10).sum()), "assigned_marker": marker,
-                     "measured_s_before": r1((t - g.t[j]) / 1000)})
+                     "measured_s_before": r1((t - g.t[j]) / 1000),
+                     # where every one of ours was at that moment (the Shots against pitch draws them when a shot is picked)
+                     "ours": [{"name": name_of(inp, pid), "x": r1(g.X[k, j]), "y": r1(g.Y[k, j]), "dist_m": r1(d[k])}
+                              for k, pid in enumerate(g.pids) if V[k, j]]})
     scores = [r for r in rows if r["event_type"] in ("POINT_SCORED", "GOAL_SCORED")]
     return {"shots": rows, "n_shots": len(rows),
             "median_nearest_m": r1(np.median([r["nearest_m"] for r in rows])) if rows else None,
