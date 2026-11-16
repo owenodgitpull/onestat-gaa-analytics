@@ -111,7 +111,7 @@ export default function GpsAnalysis() {
               {tab === 'overview' && <OverviewView a={aQ.data} periods={periods} onOpen={openReplay} />}
               {tab === 'shape' && <ShapeView matchId={matchId} a={aQ.data} periods={periods} onOpen={openReplay} />}
               {tab === 'transitions' && <TransitionsView a={aQ.data} periods={periods} onOpen={openReplay} team={team} />}
-              {tab === 'kickouts' && <KickoutsView a={aQ.data} periods={periods} onOpen={openReplay} team={team} />}
+              {tab === 'kickouts' && <KickoutsView a={aQ.data} periods={periods} onOpen={openReplay} team={team} matchId={matchId} sessionId={ctx.session.id} />}
               {tab === 'running' && <IntensityView a={aQ.data} />}
               {tab === 'heat' && <HeatmapView matchId={matchId} ctx={ctx} team={team} />}
               {tab === 'support' && <SupportView a={aQ.data} periods={periods} onOpen={openReplay} />}

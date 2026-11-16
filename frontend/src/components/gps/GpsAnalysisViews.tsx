@@ -13,6 +13,7 @@ import {
   periodClock, COLOR_OURS, COLOR_THEIRS,
 } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption, pitchMaxWidth, artToRealX, ART_WARP } from './GpsPitch'
+import KickoutPlayOn from './KickoutPlayOn'
 
 type Periods = GpsReplayContext['periods']
 const PERIOD: Record<string, string> = { '1': '1st half', '2': '2nd half', '3': 'Extra time 1', '4': 'Extra time 2', all: 'Whole match' }
@@ -349,13 +350,15 @@ function KickoutLandingPitch({ list, kind, L, W }: { list: GpsKickout[]; kind: '
   )
 }
 
-export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string }) {
+export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string; matchId: string; sessionId?: string }) {
+  const [mode, setMode] = useState<'picture' | 'play'>('picture')
   const [kind, setKind] = useState<'own' | 'opp'>('own')
   const [outcome, setOutcome] = useState<string>('all')
   const all = a.kickouts.kickouts.filter(k => k.kind === kind)
   const list = all.filter(k => outcome === 'all' || k.outcome === outcome)
   const [sel, setSel] = useState(0)
-  const k = list[Math.min(sel, list.length - 1)]
+  const selIdx = Math.min(sel, list.length - 1)
+  const k = list[selIdx]
   const groups = Object.entries(a.kickouts.groups).filter(([key]) => key.startsWith(kind + '|'))
   const counts = Object.fromEntries(KO_OUTCOMES.map(o => [o, all.filter(x => x.outcome === o).length]))
   const nWon = all.filter(x => x.won).length
@@ -402,11 +405,25 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
       {k ? (
         <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
           <div>
-            <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}>
-              <KickoutPitch k={k} L={a.pitch_length_m} W={a.pitch_width_m} />
+            <div className="flex gap-1.5 mb-2" role="group" aria-label="How to show this kickout">
+              {([['picture', 'Picture'], ['play', 'Play on from the kick']] as const).map(([m, lab]) => (
+                <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m}
+                  className={`px-3 py-1.5 rounded-lg text-sm ${mode === m ? 'bg-white/15 text-white' : 'bg-white/5 text-white/65 hover:bg-white/10'}`}>{lab}</button>
+              ))}
             </div>
+            {mode === 'play' ? (
+              <KickoutPlayOn matchId={matchId} k={k} L={a.pitch_length_m} W={a.pitch_width_m} periods={periods} sessionId={sessionId}
+                onPrev={selIdx > 0 ? () => setSel(selIdx - 1) : undefined} onNext={selIdx < list.length - 1 ? () => setSel(selIdx + 1) : undefined}
+                prevLabel={`Previous${outcome === 'all' ? '' : ` ${outcome}`}`} nextLabel={`Next${outcome === 'all' ? '' : ` ${outcome}`}`} />
+            ) : (
+              <>
+                <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}>
+                  <KickoutPitch k={k} L={a.pitch_length_m} W={a.pitch_width_m} />
+                </div>
+                <p className="text-xs text-white/50 mt-1">Dots: our players at the kick, 2.5 s before the tag (ringed: who won it). Arrows: where they ran in the next 6 s. Dashed line and circle: the kick and where it landed (tagged). No goalkeeper or opposition GPS. "Play on from the kick" shows what happened next.</p>
+              </>
+            )}
             <PitchFrameCaption team={team} />
-            <p className="text-xs text-white/50 mt-1">Dots: our players at the kick, 2.5 s before the tag (ringed: who won it). Arrows: where they ran in the next 6 s. Dashed line and circle: the kick and where it landed (tagged). No goalkeeper or opposition GPS.</p>
           </div>
           <div className="space-y-2 min-w-0">
             <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-sm space-y-1">

@@ -75,6 +75,18 @@ async def heatmap(match_id: UUID, player_id: Optional[str] = None, half: Optiona
     return metrics.heatmap(inp, g1, player_id, half, state)
 
 
+@router.get("/{match_id}/gps/analysis/play")
+async def play_window(match_id: UUID, from_ms: int = Query(..., ge=0), to_ms: int = Query(..., ge=0),
+                      user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db)):
+    """Our players moving from one moment (e.g. a kickout) for up to a minute, plus the ball, tags and their lineup."""
+    if to_ms <= from_ms:
+        raise HTTPException(status_code=400, detail="to_ms must be after from_ms")
+    try:
+        return await service.play_window(db, await _match(db, match_id, user), from_ms, to_ms)
+    except NotReady as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
 @season_router.get("/season")
 async def season(user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db)):
     """One row per synced match (shape, transition, intensity, kickout push-up) + per-player running-load alerts."""

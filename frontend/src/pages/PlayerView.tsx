@@ -58,7 +58,7 @@ import PlayerFatigueSignature from '../components/charts/PlayerFatigueSignature'
 import PlayerSleepTrend from '../components/charts/PlayerSleepTrend'
 import PlayerDisciplineTrend from '../components/charts/PlayerDisciplineTrend'
 import PlayerPositionalBenchmark from '../components/charts/PlayerPositionalBenchmark'
-import SelfKpiPanel, { type SelfKpis } from '../components/player/SelfKpiPanel'
+import SelfKpiPanel, { type SelfKpis, type SelfGpsKpis } from '../components/player/SelfKpiPanel'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -1329,6 +1329,15 @@ function PlayerSelfSection({ playerId }: { playerId: string }) {
       return res.json()
     },
   })
+  const selfGps = useQuery({
+    queryKey: ['player-self-gps-kpis', playerId],
+    queryFn: async (): Promise<SelfGpsKpis> => {
+      const res = await fetch(`${API_BASE}/analytics/player/${playerId}/self-kpis/gps`, { credentials: 'include' })
+      if (!res.ok) throw new Error('Could not load his GPS tracking figures')
+      return res.json()
+    },
+    staleTime: 10 * 60 * 1000,
+  })
   const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] || 'th'}`
   const pos = [...(ranks.data?.positions || [])].sort((a, b) => a.rank - b.rank)
   const [open, setOpen] = useState<LeaderboardPosition | null>(null)
@@ -1356,7 +1365,7 @@ function PlayerSelfSection({ playerId }: { playerId: string }) {
       </div>
       {self.isLoading ? <div className="glass-card p-4 flex items-center gap-2 text-sm text-white/55"><span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Loading his match-by-match figures…</div>
         : self.isError ? <div className="glass-card p-4 text-sm text-amber-300">Could not load his match-by-match figures.</div>
-        : <SelfKpiPanel data={self.data} who="his" />}
+        : <SelfKpiPanel data={self.data} gps={selfGps.data} gpsState={selfGps.isLoading ? 'loading' : selfGps.isError ? 'error' : 'ok'} who="his" />}
       {open && <LeaderboardModal category={open.category} title={open.display_name} playerId={playerId} onClose={() => setOpen(null)} />}
     </div>
   )

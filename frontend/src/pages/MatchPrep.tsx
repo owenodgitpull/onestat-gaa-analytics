@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Users,
@@ -150,6 +150,8 @@ const getAcwrColor = (acwr: number | null) => {
 
 export default function MatchPrep() {
   const { matchId } = useParams<{ matchId: string }>()
+  const [searchParams] = useSearchParams()
+  const openRoutineId = searchParams.get('routine')
   const navigate = useNavigate()
   const { club } = useClub()
   const { canEdit } = useAuth()
@@ -274,6 +276,9 @@ export default function MatchPrep() {
         setTacticalNotes(notesData.tactical_notes || '')
         setMarkingAssignments(markingsData)
         setSetPieces(setPiecesData)
+        // ?routine=<id> (e.g. from a GPS kickout "Send to board"): open that routine in the editor straight away
+        const toOpen = openRoutineId ? (setPiecesData as SetPieceRoutine[]).find(sp => sp.id === openRoutineId) : undefined
+        if (toOpen) { setEditingSetPiece(toOpen); setShowSetPieceEditor(true) }
         if (rosterData.players?.length) {
           setOppositionRoster(rosterData.players)
           setOppositionInput(rosterData.players.join('\n'))

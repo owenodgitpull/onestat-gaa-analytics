@@ -1641,6 +1641,7 @@ function computeSeasonAverages(matchEntries: GPSEntry[]) {
 /** My figures in one match against my own average over my other matches (never against team-mates). */
 function MeVsMeTab() {
   const q = useQuery({ queryKey: ['my-self-kpis'], queryFn: playerPortalAPI.getMySelfKpis, staleTime: 10 * 60 * 1000 });
+  const gq = useQuery({ queryKey: ['my-self-gps-kpis'], queryFn: playerPortalAPI.getMySelfGpsKpis, staleTime: 10 * 60 * 1000 });
   if (q.isLoading) return (
     <div className="glass-card p-4 flex items-center gap-2 text-sm text-white/55">
       <span className="inline-block w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Loading your match-by-match figures…
@@ -1648,5 +1649,5 @@ function MeVsMeTab() {
   );
   if (q.isError) return <div className="glass-card p-4 text-sm text-amber-300">Could not load your match figures. Try again in a moment.</div>;
   if (!q.data || !q.data.matches.length) return <div className="glass-card p-4 text-sm text-white/60">No matches with your figures yet.</div>;
-  return <SelfKpiPanel data={q.data} who="your" />;
+  return <SelfKpiPanel data={q.data} gps={gq.data} gpsState={gq.isLoading ? 'loading' : gq.isError ? 'error' : 'ok'} who="your" />;
 }

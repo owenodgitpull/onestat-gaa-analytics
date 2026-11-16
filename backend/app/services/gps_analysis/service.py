@@ -155,6 +155,60 @@ async def replay_context(db: AsyncSession, match) -> dict:
     }
 
 
+# ------------------------------------------------------------------ play on (kickouts tab, "send to board")
+
+PLAY_MAX_MS = 60000
+
+
+async def play_window(db: AsyncSession, match, from_ms: int, to_ms: int) -> dict:
+    """Our players' positions from `from_ms` to `to_ms` (video ms, at most a minute) in OUR attack frame, true metres, from
+    the same 1 Hz analysis grid as every other GPS tab (the frontend eases between seconds); the ball where the tagged
+    carries put it; the tagged events in the window; and their lineup (no opposition GPS: the board lets the coach place
+    them). Read-only."""
+    from sqlalchemy import select as _select
+    from app.models.opposition import OppositionLineup, OppositionPlayer
+    from .frame import frame_point
+    from .metrics import name_of
+    res, g, inp = await analyse(db, match)
+    to_ms = min(to_ms, from_ms + PLAY_MAX_MS)
+    j0 = max(0, int(np.searchsorted(g.t, from_ms)) - 1)
+    j1 = min(len(g.t), int(np.searchsorted(g.t, to_ms)) + 1)
+    V = g.valid()
+    r = lambda v: None if v is None or not np.isfinite(v) else round(float(v), 1)
+    players = []
+    for i, pid in enumerate(g.pids):
+        if not V[i, j0:j1].any():
+            continue
+        players.append({"player_id": pid, "name": name_of(inp, pid), "number": (inp.players.get(pid) or {}).get("jersey"),
+                        "x": [r(g.X[i, j]) if V[i, j] else None for j in range(j0, j1)],
+                        "y": [r(g.Y[i, j]) if V[i, j] else None for j in range(j0, j1)]})
+    L, W = inp.pitch_length_m, inp.pitch_width_m
+    evs = []
+    for e in inp.events:
+        if not (from_ms - 1000 <= e.video_ms <= to_ms) or e.event_type in ("PASS_HAND",):
+            continue
+        x, y = frame_point(e.pitch_x, e.pitch_y, e.half, inp.attacking_right_first_half, L, W) if e.pitch_x is not None else (None, None)
+        evs.append({"video_ms": e.video_ms, "event_type": e.event_type, "team": "own" if e.team == "team_a" else "opp",
+                    "player": name_of(inp, e.player_id) if e.team == "team_a" else inp.opposition_names.get(e.opposition_player_id or ""),
+                    "x": r(x) if x is not None else None, "y": r(y) if y is not None else None})
+    opp = []
+    try:
+        rows = (await db.execute(_select(OppositionLineup.jersey_number, OppositionLineup.position_id, OppositionLineup.is_substitute,
+                                         OppositionPlayer.surname, OppositionPlayer.id)
+                                 .join(OppositionPlayer, OppositionPlayer.id == OppositionLineup.opposition_player_id)
+                                 .where(OppositionLineup.match_id == match.id))).all()
+        opp = sorted([{"id": str(pid), "name": sn, "number": num, "position_id": pos, "substitute": bool(sub)} for num, pos, sub, sn, pid in rows],
+                     key=lambda o: (o["substitute"], o["number"] if o["number"] is not None else 99))
+    except Exception:
+        opp = []
+    return {"match_id": inp.match_id, "opponent": inp.opponent, "pitch_length_m": L, "pitch_width_m": W,
+            "t": [int(v) for v in g.t[j0:j1]], "players": players,
+            "ball": {"x": [r(v) for v in g.ballX[j0:j1]], "y": [r(v) for v in g.ballY[j0:j1]]},
+            "poss": [int(v) for v in g.poss[j0:j1]], "events": evs, "opposition": opp,
+            "how_to_read": "Positions once a second from the synced GPS, in our attack frame (x = metres from our goal line). "
+                           "Ball = where the tagged carries put it (approximate). No goalkeeper or opposition GPS."}
+
+
 # ------------------------------------------------------------------ 9 + 15. season
 
 async def season(db: AsyncSession, club_id) -> dict:

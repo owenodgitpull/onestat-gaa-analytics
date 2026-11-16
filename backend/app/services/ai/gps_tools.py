@@ -47,6 +47,7 @@ def _opp_moment(r: dict, full_positions: bool) -> dict:
 def _trim_transitions(tr: dict, limit: int) -> dict:
     def t(x):
         x = dict(x)
+        x.pop("on_ids", None); x.pop("back_10s_ids", None)     # per-player ids for the player KPI page, not for the agent
         for k in ("sprinted", "did_not_sprint", "forward_runners"):
             if k in x:
                 x[f"n_{k}"] = len(x[k])
@@ -101,7 +102,8 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
             "Distances in every section are from OUR goal line (x = 0) - write 'from our goal' every time.")
         return out
     if section == "positions":
-        return res.get("positions")
+        pos = res.get("positions") or {}
+        return {**pos, "players": [{k: v for k, v in p.items() if k != "player_id"} for p in pos.get("players", [])]}
     if section == "pressure":
         pr = res.get("pressure") or {}
         def clean(x):     # the tagged reception spot is a few metres out: no 3 m share, median as a band

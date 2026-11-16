@@ -1,16 +1,19 @@
 /**
- * TrackingKeyframeEditor — manually keyframe a single tracking ring over a
- * clip slide (Phase 11, 10b). No automatic player-tracking data exists for
- * opposition players, so this is coach-placed: scrub the clip, click where
- * the player is, repeat a few times — Present mode linearly interpolates
- * between keyframes so the ring appears to follow the player.
+ * TrackingKeyframeEditor: put a ring on one player in a clip slide and have it follow him.
+ *
+ * Owen (2026-11-16): the old version (click the player at a few moments, straight lines between) never followed
+ * anyone - players change direction and the camera pans between clicks. Now: pause on the player, click him, press
+ * Track. The editor steps through the clip 80 ms at a time and utils/videoTracker follows him, writing a keyframe at
+ * each step. If the ring slips (or the tracker says it lost him) it pauses: click him again and press Track to carry on
+ * from there (everything after that moment is redone). Saved as the slide's tracking_keyframes (0-100 of the frame).
  */
-
-import { useState, useRef, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Crosshair, Trash2, Check } from 'lucide-react'
+import { Crosshair, Check, Loader2, Pause, Play, RotateCcw, Trash2, AlertCircle } from 'lucide-react'
 import { presentationsAPI, type PresentationSlide, type TrackingKeyframe } from '@/services/presentationsApi'
 import { videoSessionsAPI } from '@/services/videoApi'
+import { PatchTracker, WORK_W, smoothPath } from '@/utils/videoTracker'
+import TrackingRing from './TrackingRing'
 
 interface TrackingKeyframeEditorProps {
   presentationId: string
@@ -18,117 +21,187 @@ interface TrackingKeyframeEditorProps {
   onClose: () => void
 }
 
-function msToClock(ms: number): string {
-  const totalSec = Math.floor(ms / 1000)
-  return `${Math.floor(totalSec / 60)}:${(totalSec % 60).toString().padStart(2, '0')}`
-}
+const STEP_MS = 80
+const clock = (ms: number) => { const s = Math.max(0, ms) / 1000; return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}` }
 
 export default function TrackingKeyframeEditor({ presentationId, slide, onClose }: TrackingKeyframeEditorProps) {
   const queryClient = useQueryClient()
-  const [keyframes, setKeyframes] = useState<TrackingKeyframe[]>(
-    [...(slide.tracking_keyframes || [])].sort((a, b) => a.video_timestamp_ms - b.video_timestamp_ms)
-  )
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [kfs, setKfs] = useState<TrackingKeyframe[]>([...(slide.tracking_keyframes || [])].sort((a, b) => a.video_timestamp_ms - b.video_timestamp_ms))
+  const kfRef = useRef(kfs); kfRef.current = kfs
   const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const trackerRef = useRef<PatchTracker | null>(null)
+  const [seed, setSeed] = useState<{ x: number; y: number; t: number } | null>(null)
+  const [tracking, setTracking] = useState(false)
+  const [nowMs, setNowMs] = useState(slide.clip_start_ms ?? 0)
+  const [msg, setMsg] = useState<{ kind: 'info' | 'warn' | 'error'; text: string }>({ kind: 'info', text: 'Pause where you can see the player clearly, then click on him.' })
+  const startMs = slide.clip_start_ms ?? 0, endMs = slide.clip_end_ms ?? startMs + 15000
 
   const { data: session } = useQuery({
     queryKey: ['video-session-for-tracking', slide.video_session_id],
     queryFn: () => videoSessionsAPI.get(slide.video_session_id!),
     enabled: !!slide.video_session_id,
   })
-
   const saveMutation = useMutation({
     mutationFn: (kf: TrackingKeyframe[]) => presentationsAPI.updateSlide(presentationId, slide.id, { tracking_keyframes: kf }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['presentation', presentationId] }); onClose() },
   })
 
-  const placeKeyframe = useCallback((e: React.MouseEvent) => {
-    if (!containerRef.current || !videoRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
-    const x = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
-    const y = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100))
-    const t = Math.round(videoRef.current.currentTime * 1000)
-
-    setKeyframes((prev) => {
-      const withoutSameTime = prev.filter((k) => Math.abs(k.video_timestamp_ms - t) > 150)
-      return [...withoutSameTime, { video_timestamp_ms: t, x, y }].sort((a, b) => a.video_timestamp_ms - b.video_timestamp_ms)
-    })
+  /** the current frame, 640 px wide, as pixels (null + a message if the video cannot be read) */
+  const grab = useCallback((): ImageData | null => {
+    const v = videoRef.current
+    if (!v || !v.videoWidth) return null
+    const c = canvasRef.current || (canvasRef.current = document.createElement('canvas'))
+    c.width = WORK_W; c.height = Math.round(WORK_W * v.videoHeight / v.videoWidth)
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    ctx.drawImage(v, 0, 0, c.width, c.height)
+    try { return ctx.getImageData(0, 0, c.width, c.height) } catch {
+      setMsg({ kind: 'error', text: 'This video cannot be read for tracking (the browser blocked it). Reload the page and try again.' })
+      return null
+    }
   }, [])
 
-  const removeKeyframe = (t: number) => setKeyframes((prev) => prev.filter((k) => k.video_timestamp_ms !== t))
+  // keep the clip inside its range; time readout
+  const clamp = useCallback(() => {
+    const v = videoRef.current
+    if (!v) return
+    const ms = v.currentTime * 1000
+    if (ms < startMs - 50) v.currentTime = startMs / 1000
+    else if (ms > endMs + 50) { v.pause(); v.currentTime = endMs / 1000 }
+    setNowMs(Math.min(endMs, Math.max(startMs, ms)))
+  }, [startMs, endMs])
 
-  // Native <video controls> has no concept of a sub-range — its scrub bar
-  // spans the WHOLE source match by default, so dragging it (or just
-  // playing past the clip's own end) walks straight out of this clip into
-  // the rest of the game. Clamp on every timeupdate so the bar still looks
-  // and feels native, but visually "hits a wall" at the clip's own
-  // start/end exactly like a locked trim range would.
-  const clampToClipRange = useCallback(() => {
-    const video = videoRef.current
-    if (!video || slide.clip_start_ms == null || slide.clip_end_ms == null) return
-    const startSec = slide.clip_start_ms / 1000
-    const endSec = slide.clip_end_ms / 1000
-    if (video.currentTime < startSec) video.currentTime = startSec
-    else if (video.currentTime > endSec) video.currentTime = endSec
-  }, [slide.clip_start_ms, slide.clip_end_ms])
+  // The tracking loop: steps the clip STEP_MS at a time (seek, read the frame, search), not "play and read each frame".
+  // Playing relied on the browser handing over every frame; a background or partly hidden window gets about one a
+  // second, and a player moves out of the search area in that time (tested 2026-11-16). Stepping gives the tracker
+  // the same small steps on any machine, and the ring is drawn on each step so the coach watches it follow.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!tracking || !v) return
+    let stopped = false, misses = 0
+    v.pause()
+    const seekTo = (sec: number) => new Promise<void>(res => {
+      const done = () => { clearTimeout(to); res() }
+      const to = setTimeout(done, 4000)
+      v.addEventListener('seeked', done, { once: true })
+      v.currentTime = sec
+    })
+    ;(async () => {
+      while (!stopped) {
+        const next = v.currentTime * 1000 + STEP_MS
+        if (next > endMs) {
+          setTracking(false)
+          setMsg({ kind: 'info', text: 'Reached the end of the clip. Play it back with the slider, then Save (or click him somewhere to redo from there).' })
+          return
+        }
+        await seekTo(next / 1000)
+        if (stopped) return
+        const f = grab()
+        const tr = trackerRef.current
+        if (!f || !tr) { setTracking(false); return }
+        const r = tr.update(f)
+        const t = Math.round(v.currentTime * 1000)
+        if (r.edge) {
+          setTracking(false)
+          setMsg({ kind: 'warn', text: `He went out of the picture at ${clock(t - startMs)}. When he is back in shot, click on him and press Track.` })
+          return
+        }
+        // brief misses (a tackle, someone running across him) are carried through for up to ~0.5 s on his last spot
+        misses = r.lost ? misses + 1 : 0
+        if (misses >= 6) {
+          setTracking(false)
+          setMsg({ kind: 'warn', text: `Lost him at ${clock(t - startMs)} into the clip (a camera cut, or he was hidden). Click on him and press Track to carry on.` })
+          return
+        }
+        if (r.lost) continue
+        const kf = { video_timestamp_ms: t, x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100 }
+        setKfs(prev => [...prev.filter(k => k.video_timestamp_ms < t - 40), kf])
+      }
+    })()
+    return () => { stopped = true }
+  }, [tracking, grab, startMs, endMs])
+
+  const onClickVideo = (e: React.MouseEvent<HTMLDivElement>) => {
+    const v = videoRef.current
+    if (!v || tracking) return
+    v.pause()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = ((e.clientX - rect.left) / rect.width) * 100, y = ((e.clientY - rect.top) / rect.height) * 100
+    const f = grab()
+    if (!f) return
+    const t = Math.round(v.currentTime * 1000)
+    trackerRef.current = new PatchTracker(f, x, y)
+    setSeed({ x, y, t })
+    // this click replaces everything from here on
+    setKfs(prev => [...prev.filter(k => k.video_timestamp_ms < t - 40), { video_timestamp_ms: t, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }])
+    setMsg({ kind: 'info', text: 'Got him. Press Track: it steps through the clip and the ring follows him. Pause and click him again if it slips.' })
+  }
+
+  const track = () => {
+    if (!videoRef.current || !trackerRef.current) { setMsg({ kind: 'warn', text: 'Click on the player first.' }); return }
+    setTracking(true)
+    setMsg({ kind: 'info', text: 'Tracking: stepping through the clip. Press Pause if the ring slips off him.' })
+  }
+  const pause = () => { videoRef.current?.pause(); setTracking(false); trackerRef.current = null; setSeed(null); setMsg({ kind: 'info', text: 'Paused. Click on him to carry on from here (or Save).' }) }
+  const restart = () => { const v = videoRef.current; if (v) { v.pause(); v.currentTime = startMs / 1000 } setTracking(false); setKfs([]); trackerRef.current = null; setSeed(null); setMsg({ kind: 'info', text: 'Cleared. Pause where you can see the player clearly, then click on him.' }) }
+
+  const covered = kfs.length ? Math.max(0, kfs[kfs.length - 1].video_timestamp_ms - kfs[0].video_timestamp_ms) : 0
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-        <div className="flex items-center gap-2 text-white/70 text-sm">
-          <Crosshair size={16} className="text-amber-400" />
-          Click on the player at a few points as the clip plays — each click drops a keyframe at that moment.
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-white/10">
+        <div className="flex items-center gap-2 text-white/80 text-sm"><Crosshair size={16} className="text-amber-400" aria-hidden="true" /> Tracking ring: click the player, press Track, it follows him.</div>
         <div className="flex items-center gap-2">
           <button onClick={onClose} className="btn-glass px-3 py-1.5 text-sm">Cancel</button>
-          <button onClick={() => saveMutation.mutate(keyframes)} disabled={saveMutation.isPending} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-sm">
-            <Check size={14} /> Save
+          {kfs.length > 0 && (
+            <button onClick={() => saveMutation.mutate([])} disabled={saveMutation.isPending} className="btn-glass px-3 py-1.5 text-sm flex items-center gap-1.5" title="Save the slide with no ring"><Trash2 size={14} aria-hidden="true" /> Remove ring</button>
+          )}
+          <button onClick={() => saveMutation.mutate(smoothPath(kfs))} disabled={saveMutation.isPending || tracking || kfs.length < 2} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-sm">
+            {saveMutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />} Save
           </button>
         </div>
       </div>
 
       <div className="flex-1 flex items-center justify-center overflow-hidden p-4">
-        <div ref={containerRef} className="relative max-w-full max-h-full cursor-crosshair" onClick={placeKeyframe}>
-          {session?.download_url ? (
+        {session?.download_url ? (
+          <div className="relative cursor-crosshair" onClick={onClickVideo}>
             <video
               ref={videoRef}
               src={session.download_url}
-              className="max-w-full max-h-[70vh] block"
-              controls
+              crossOrigin="anonymous"
+              className="max-w-full max-h-[68vh] block"
               playsInline
-              onLoadedMetadata={() => {
-                if (videoRef.current && slide.clip_start_ms != null) videoRef.current.currentTime = slide.clip_start_ms / 1000
-              }}
-              onTimeUpdate={clampToClipRange}
-              onSeeking={clampToClipRange}
+              muted
+              onLoadedMetadata={() => { if (videoRef.current) videoRef.current.currentTime = startMs / 1000 }}
+              onTimeUpdate={clamp}
+              onSeeked={clamp}
             />
-          ) : (
-            <div className="w-[70vw] h-[40vh] flex items-center justify-center text-white/40 text-sm">Loading…</div>
-          )}
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none">
-            {keyframes.map((k, i) => (
-              <g key={k.video_timestamp_ms}>
-                <circle cx={k.x} cy={k.y} r={2} fill="none" stroke="#FBBF24" strokeWidth={0.5} vectorEffect="non-scaling-stroke" />
-                <text x={k.x} y={k.y - 3} fill="#FBBF24" fontSize="3" textAnchor="middle">{i + 1}</text>
-              </g>
-            ))}
-          </svg>
-        </div>
+            <TrackingRing videoRef={videoRef} keyframes={kfs} live={seed && !tracking && Math.abs(nowMs - seed.t) < 120 ? seed : null} />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-white/50 text-sm"><Loader2 size={16} className="animate-spin" aria-hidden="true" /> Loading the clip…</div>
+        )}
       </div>
 
-      <div className="border-t border-white/10 p-3 flex items-center gap-2 overflow-x-auto">
-        {keyframes.length === 0 ? (
-          <p className="text-white/40 text-xs px-1">No keyframes yet — click the player on the video above.</p>
-        ) : (
-          keyframes.map((k) => (
-            <div key={k.video_timestamp_ms} className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2 py-1 flex-shrink-0">
-              <span className="text-xs text-white/60 tabular-nums">{msToClock(k.video_timestamp_ms)}</span>
-              <button onClick={() => removeKeyframe(k.video_timestamp_ms)} className="text-white/30 hover:text-red-400">
-                <Trash2 size={11} />
-              </button>
-            </div>
-          ))
-        )}
+      <div className="border-t border-white/10 p-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {tracking ? (
+            <button onClick={pause} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-semibold"><Pause size={15} aria-hidden="true" /> Pause</button>
+          ) : (
+            <button onClick={track} disabled={!seed} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-semibold"><Play size={15} aria-hidden="true" /> Track</button>
+          )}
+          <button onClick={restart} disabled={tracking} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 text-sm"><RotateCcw size={14} aria-hidden="true" /> Start again</button>
+          <input type="range" min={startMs} max={endMs} step={40} value={nowMs} disabled={tracking}
+            onChange={e => { const v = videoRef.current; if (v) { v.pause(); v.currentTime = Number(e.target.value) / 1000 } setSeed(null); trackerRef.current = null }}
+            className="flex-1 min-w-[10rem] accent-amber-400" aria-label="Position in the clip" />
+          <span className="text-xs text-white/60 tabular-nums">{clock(nowMs - startMs)} / {clock(endMs - startMs)}</span>
+        </div>
+        <p className={`text-sm flex items-center gap-2 ${msg.kind === 'error' ? 'text-red-300' : msg.kind === 'warn' ? 'text-amber-300' : 'text-white/70'}`} role="status">
+          {tracking ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : msg.kind !== 'info' ? <AlertCircle size={14} aria-hidden="true" /> : null}
+          {msg.text}
+          {kfs.length > 1 && !tracking && <span className="text-white/45">· ring covers {(covered / 1000).toFixed(1)} s of the clip</span>}
+        </p>
       </div>
     </div>
   )

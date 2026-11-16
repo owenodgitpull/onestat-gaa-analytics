@@ -179,7 +179,12 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
             last = live[-1]
             rec = next((s for s in live if all(goal_side[q] >= target for q in range(s, min(s + RECOVERY_HOLD_S, last + 1)))
                         and (s + RECOVERY_HOLD_S <= last + 1 or last < len(js) - 1)), None)
+            # who was on, and who was goal-side 10 s after (the player KPI page: "goal-side 10 s after we lost it")
+            bx10, _ = _ball_at(g, j10, spot)
+            on_ids = [pid for i, pid in enumerate(g.pids) if V[i, j0]]
+            back_ids = [pid for i, pid in enumerate(g.pids) if V[i, j0] and V[i, j10] and g.X[i, j10] < bx10 - GOAL_SIDE_MARGIN_M]
             lost.append({
+                "on_ids": on_ids, "back_10s_ids": back_ids,
                 "video_ms": t0, "half": b.half, "lost_by": name_of(inp, a.player_id), "spot_x": r1(spot[0]), "spot_y": r1(spot[1]),
                 "how": (tev.event_type.replace("_", " ").lower() if tev is not None else "pass intercepted / lost" if a.ended_by == "pass" else "turnover"),
                 "players_on": n_on, "target": target, "goal_side_at_0": goal_side[0], "goal_side": goal_side, "recovery_s": rec,

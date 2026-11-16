@@ -445,6 +445,17 @@ async def get_my_self_kpis(
     return await player_self_kpis(db, user.club_id, player.id)
 
 
+@router.get("/my-stats/self-kpis/gps")
+async def get_my_self_gps_kpis(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """My GPS-tracking KPIs per synced match, with the squad average."""
+    from app.services.player_self_kpis import player_self_gps_kpis
+    player = await _get_player_for_user(db, user)
+    return await player_self_gps_kpis(db, user.club_id, player.id)
+
+
 @router.get("/my-stats/matches")
 async def get_my_match_stats(
     user: AuthenticatedUser = Depends(require_club),

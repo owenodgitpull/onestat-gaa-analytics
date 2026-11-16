@@ -4,8 +4,9 @@ import { X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { PlaybackEngine, elementsToPhases } from '@/components/playbook'
 import { api } from '@/services/api'
 import { presentationsAPI } from '@/services/presentationsApi'
+import TrackingRing from './TrackingRing'
 import { videoSessionsAPI } from '@/services/videoApi'
-import type { PresentationSlide, TrackingKeyframe } from '@/services/presentationsApi'
+import type { PresentationSlide } from '@/services/presentationsApi'
 import AnnotationOverlay from './AnnotationOverlay'
 
 interface PresentModeProps {
@@ -14,22 +15,6 @@ interface PresentModeProps {
   slides: PresentationSlide[]
   startIndex?: number
   onClose: () => void
-}
-
-function interpolateTracking(keyframes: TrackingKeyframe[], t: number): { x: number; y: number } | null {
-  if (!keyframes.length) return null
-  const sorted = keyframes
-  if (t <= sorted[0].video_timestamp_ms) return sorted[0]
-  const last = sorted[sorted.length - 1]
-  if (t >= last.video_timestamp_ms) return last
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i], b = sorted[i + 1]
-    if (t >= a.video_timestamp_ms && t <= b.video_timestamp_ms) {
-      const frac = (t - a.video_timestamp_ms) / (b.video_timestamp_ms - a.video_timestamp_ms || 1)
-      return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac }
-    }
-  }
-  return null
 }
 
 /** Autoplays a slide's voiceover narration once, resets per slide. Used for
@@ -48,7 +33,6 @@ function SlideVoiceoverAudio({ presentationId, slide }: { presentationId: string
 function ClipSlide({ slide }: { slide: PresentationSlide }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [hasEnded, setHasEnded] = useState(false)
-  const [ringPos, setRingPos] = useState<{ x: number; y: number } | null>(null)
 
   const { data: session } = useQuery({
     queryKey: ['video-session-for-slide', slide.video_session_id],
@@ -76,14 +60,11 @@ function ClipSlide({ slide }: { slide: PresentationSlide }) {
     const video = videoRef.current
     if (!video) return
     const ms = video.currentTime * 1000
-    if (slide.tracking_keyframes && slide.tracking_keyframes.length > 0) {
-      setRingPos(interpolateTracking(slide.tracking_keyframes, ms))
-    }
     if (slide.clip_end_ms != null && !hasEnded && ms >= slide.clip_end_ms) {
       video.pause()
       setHasEnded(true)
     }
-  }, [slide.clip_end_ms, slide.tracking_keyframes, hasEnded])
+  }, [slide.clip_end_ms, hasEnded])
 
   return (
     <div className="w-full h-full flex flex-col items-center justify-center bg-black">
@@ -98,13 +79,7 @@ function ClipSlide({ slide }: { slide: PresentationSlide }) {
             onTimeUpdate={handleTimeUpdate}
             playsInline
           />
-          {ringPos && (
-            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none">
-              <circle cx={ringPos.x} cy={ringPos.y} r={4} fill="none" stroke="#FBBF24" strokeWidth={0.8} vectorEffect="non-scaling-stroke">
-                <animate attributeName="opacity" values="1;0.5;1" dur="1.2s" repeatCount="indefinite" />
-              </circle>
-            </svg>
-          )}
+          <TrackingRing videoRef={videoRef} keyframes={slide.tracking_keyframes} />
         </div>
       )}
       {slide.clip_label && (

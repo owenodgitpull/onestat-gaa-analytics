@@ -961,6 +961,25 @@ async def get_player_self_kpis(
     return await player_self_kpis(db, user.club_id, pid)
 
 
+@router.get("/player/{player_id}/self-kpis/gps")
+async def get_player_self_gps_kpis(
+    player_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """His GPS-tracking KPIs per synced match (goal-side after losing the ball, average position...) + squad averages."""
+    from uuid import UUID
+    from app.services.player_self_kpis import player_self_gps_kpis
+    try:
+        pid = UUID(player_id)
+    except ValueError:
+        return {"matches": [], "kpis": []}
+    owner = (await db.execute(select(Player.id).where(and_(Player.id == pid, Player.club_id == user.club_id)))).scalar_one_or_none()
+    if owner is None:
+        return {"matches": [], "kpis": []}
+    return await player_self_gps_kpis(db, user.club_id, pid)
+
+
 @router.get("/player/{player_id}/leaderboard-positions")
 async def get_player_leaderboard_positions(
     player_id: str,

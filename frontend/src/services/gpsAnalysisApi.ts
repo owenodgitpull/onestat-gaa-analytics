@@ -129,6 +129,20 @@ export const gpsAnalysisApi = {
     return fetchAPI<GpsHeatmap>(`/matches/${matchId}/gps/analysis/heatmap?${q.toString()}`, { timeoutMs: 60000 })
   },
   season: () => fetchAPI<GpsSeason>(`/gps-analysis/season`, { timeoutMs: 120000 }),
+  /** our players moving from one moment for up to a minute (kickouts "play on", "send to board") */
+  play: (matchId: string, fromMs: number, toMs: number) =>
+    fetchAPI<GpsPlayWindow>(`/matches/${matchId}/gps/analysis/play?from_ms=${Math.round(fromMs)}&to_ms=${Math.round(toMs)}`, { timeoutMs: 60000 }),
+}
+
+export interface GpsPlayWindow {
+  match_id: string; opponent: string | null; pitch_length_m: number; pitch_width_m: number
+  t: number[]
+  players: { player_id: string; name: string | null; number: number | null; x: (number | null)[]; y: (number | null)[] }[]
+  ball: { x: (number | null)[]; y: (number | null)[] }
+  poss: number[]
+  events: { video_ms: number; event_type: string; team: 'own' | 'opp'; player: string | null; x: number | null; y: number | null }[]
+  opposition: { id: string; name: string; number: number | null; position_id: string; substitute: boolean }[]
+  how_to_read: string
 }
 
 /** Video ms -> "23:14" (minutes into the video, not the match clock). */
