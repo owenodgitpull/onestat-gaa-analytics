@@ -979,7 +979,24 @@ async def get_player_leaderboard_positions(
         return {"positions": []}
     boards = await LeaderboardService.get_all_leaderboards(db, user.club_id, pid)
     return {"positions": [{"category": b["category"], "display_name": b["display_name"], "rank": b["my_rank"],
-                           "total": b["total_players"], "value": b["my_value"]} for b in boards if b["my_rank"] is not None]}
+                           "total": b["total_players"], "value": b["my_value"],
+                           "unit": LeaderboardService.CATEGORIES.get(b["category"], {}).get("unit")}
+                          for b in boards if b["my_rank"] is not None]}
+
+
+@router.get("/leaderboards/{category}")
+async def get_coach_leaderboard(
+    category: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """One full squad leaderboard for the coach (opened from a player's page)."""
+    from app.services.leaderboard_service import LeaderboardService
+    meta = LeaderboardService.CATEGORIES.get(category)
+    if meta is None:
+        return {"category": category, "display_name": category, "unit": None, "rankings": []}
+    rows = await LeaderboardService.get_single_leaderboard(db, user.club_id, category, viewer_is_admin=True)
+    return {"category": category, "display_name": meta["display_name"], "unit": meta["unit"], "rankings": rows}
 
 
 @router.get("/player/{player_id}/matches", response_model=List[PlayerMatchStats])

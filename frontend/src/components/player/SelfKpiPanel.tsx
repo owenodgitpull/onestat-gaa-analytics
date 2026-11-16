@@ -25,7 +25,7 @@ function verdict(v: number | null, avg: number | null, hib: boolean, unit: strin
   if (v == null || avg == null) return null
   const diff = v - avg
   const small = Math.abs(diff) < Math.max(unit === '' || unit === 'pts' ? 0.75 : 0.05 * Math.abs(avg), 1e-9) || (avg !== 0 && Math.abs(diff / avg) < 0.08)
-  if (small) return { kind: 'same' as const, text: 'about his usual' }
+  if (small) return { kind: 'same' as const, text: 'about his average' }
   const up = diff > 0
   return { kind: (up === hib ? 'good' : 'bad') as 'good' | 'bad', up, text: `${fmt(Math.abs(diff), unit)} ${up ? 'above' : 'below'} his average` }
 }
@@ -89,7 +89,9 @@ export default function SelfKpiPanel({ data, who = 'his' }: { data: SelfKpis | u
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {Object.entries(groups).map(([g, ks]) => (
             <div key={g} className="rounded-xl border border-white/10 bg-white/[0.03]">
-              <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-white/50">{g}</div>
+              <div className="px-3 pt-3 pb-1 flex items-baseline justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                <span>{g}</span><span className="normal-case font-normal tracking-normal text-right pr-[124px]">v {m.opponent}</span>
+              </div>
               <div className="divide-y divide-white/5">
                 {ks.map(k => {
                   const v = m.values[k.key] ?? null
