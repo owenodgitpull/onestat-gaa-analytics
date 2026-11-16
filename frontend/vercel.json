@@ -5,6 +5,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/report-pdf",
+      "destination": "/api/report-pdf"
+    },
+    {
       "source": "/api/:path(.*)",
       "destination": "https://onestat-api.fly.dev/api/:path"
     },
@@ -35,5 +39,11 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/report-pdf.ts": {
+      "maxDuration": 60,
+      "includeFiles": "node_modules/@sparticuz/chromium/bin/**"
+    }
+  }
 }

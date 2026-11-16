@@ -48,7 +48,7 @@ import ScoringTimeline from '../components/charts/ScoringTimeline'
 import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
 import PathsTakenChart from '../components/charts/PathsTakenChart'
 import MatchKickoutZones from '../components/charts/MatchKickoutZones'
-import { pointInSideFrame } from '../utils/attackDirection'
+import { buildShotLocations } from '../utils/shotLocations'
 import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
 import KickoutSequence from '../components/charts/KickoutSequence'
 import ScoringZoneMap from '../components/charts/ScoringZoneMap'
@@ -406,39 +406,8 @@ export default function MatchResult() {
     }
   }
 
-  const shotLocations = useMemo(() => {
-    const shotTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'wide', 'short', 'saved', 'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed', 'penalty_miss'])
-    const scoreTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'])
-    // ShootingEfficiencyHeatmap's zone math (close/long/2-point, the 40m arc)
-    // assumes x=100 always means "the goal this shot is aimed at" — but
-    // pitch_x is stored raw, relative to a fixed physical end of the pitch,
-    // and which end a team's shooting AT flips every half. Without
-    // normalizing here, every second-half shot's true distance-from-goal
-    // reads backwards: a shot taken right under the posts can come out as
-    // raw_x=13 (a value the heatmap's own zone boundaries then read as
-    // "outside the 65% mark", i.e. long range, or drop it entirely below the
-    // x<35 cutoff) purely because the team was defending that end in the
-    // first half. Same normalizeX convention as getPitchArea/PathsTakenChart.
-    const halfDuration = match?.half_duration_mins || 30
-    const attackingRightFirstHalf = match?.attacking_right_first_half ?? true
-    // Rotate (x AND y) into the shooting team's attack frame — mirroring x alone swaps left and right
-    const frameShot = (rawX: number, rawY: number, isOwn: boolean, minute: number | null | undefined, half: number | null | undefined) =>
-      pointInSideFrame(rawX, rawY, isOwn ? 'own' : 'opponent', attackingRightFirstHalf, half, minute, halfDuration)
-    return (eventsData?.events || [])
-      .filter((e: any) => shotTypes.has(e.event_type) && e.pitch_x != null)
-      .map((e: any) => {
-        const isOwn = e.team === 'own' || e.is_home_team
-        const fp = frameShot(e.pitch_x as number, e.pitch_y ?? 50, isOwn, e.minute, e.half)
-        return {
-          x: fp.x,
-          y: fp.y,
-          event_type: e.event_type,
-          is_score: scoreTypes.has(e.event_type),
-          team: e.team || (e.is_home_team ? 'own' : 'opponent'),
-          match_id: e.match_id,
-        }
-      })
-  }, [eventsData, match?.half_duration_mins, match?.attacking_right_first_half])
+  // every shot in the shooting team's attack frame (shared with the match report: utils/shotLocations)
+  const shotLocations = useMemo(() => buildShotLocations(eventsData?.events || [], match), [eventsData, match?.half_duration_mins, match?.attacking_right_first_half])
 
   // Extract Man of the Match — prefer AI pick, fall back to formula.
   // The AI report fetch is slower than the plain events/players queries it
@@ -2182,7 +2151,7 @@ function GPSInsightsPanel({ insights, isLoading, onRegenerate, isRegenerating }:
 // flat count of events. Falls back to the old raw-event-count redistribution
 // only while volumeData hasn't loaded yet (or for a match with neither GPS
 // nor carrier data at all).
-function TeamVolumeChart({ gpsData, events, volumeData }: { gpsData: GPSData[]; events: any[]; volumeData?: TeamVolumeData }) {
+export function TeamVolumeChart({ gpsData, events, volumeData }: { gpsData: GPSData[]; events: any[]; volumeData?: TeamVolumeData }) {
   const chartData = useMemo(() => {
     if (volumeData?.intervals?.length) {
       return volumeData.intervals.map(iv => ({
@@ -2332,7 +2301,7 @@ function TeamVolumeChart({ gpsData, events, volumeData }: { gpsData: GPSData[]; 
 }
 
 // Team Intensity Gauge - Shows HMLD per minute with color zones
-function TeamIntensityGauge({ gpsData }: { gpsData: GPSData[] }) {
+export function TeamIntensityGauge({ gpsData }: { gpsData: GPSData[] }) {
   const { intensity, totalHMLD, status, statusColor } = useMemo(() => {
     // Sum all players' HMLD and playing minutes
     let totalHMLD = 0
@@ -2507,7 +2476,7 @@ function buildFeaturedPlayerSet(
 }
 
 // Player Distance Chart - Bar chart showing distance covered per player
-function PlayerDistanceChart({ gpsData, lineupData }: { gpsData: GPSData[]; lineupData?: { player_id: string; is_substitute: boolean; is_on_field: boolean }[] }) {
+export function PlayerDistanceChart({ gpsData, lineupData }: { gpsData: GPSData[]; lineupData?: { player_id: string; is_substitute: boolean; is_on_field: boolean }[] }) {
   const featuredSet = useMemo(() => buildFeaturedPlayerSet(lineupData), [lineupData])
 
   const { chartData, benchData } = useMemo(() => {
@@ -2601,7 +2570,7 @@ function PlayerDistanceChart({ gpsData, lineupData }: { gpsData: GPSData[]; line
 const GPS_SPIKE_THRESHOLD_MS = 10.6
 
 // Player Workload Chart - Shows player load / sprint count comparison
-function PlayerWorkloadChart({ gpsData, lineupData }: { gpsData: GPSData[]; lineupData?: { player_id: string; is_substitute: boolean; is_on_field: boolean }[] }) {
+export function PlayerWorkloadChart({ gpsData, lineupData }: { gpsData: GPSData[]; lineupData?: { player_id: string; is_substitute: boolean; is_on_field: boolean }[] }) {
   const [spikeTooltip, setSpikeTooltip] = useState<number | null>(null)
   const featuredSet = useMemo(() => buildFeaturedPlayerSet(lineupData), [lineupData])
 

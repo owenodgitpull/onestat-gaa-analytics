@@ -14,6 +14,7 @@ import {
 } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption, pitchMaxWidth, artToRealX, ART_WARP } from './GpsPitch'
 import KickoutPlayOn from './KickoutPlayOn'
+import { useReportMode } from '../../contexts/ReportModeContext'
 
 type Periods = GpsReplayContext['periods']
 const PERIOD: Record<string, string> = { '1': '1st half', '2': '2nd half', '3': 'Extra time 1', '4': 'Extra time 2', all: 'Whole match' }
@@ -75,7 +76,7 @@ export function Tile({ label, value, sub, cmp }: { label: string; value: ReactNo
 /** Label = the match clock of the moment itself; the replay opens `lead` ms earlier so the build-up is on screen. */
 export function PlayAt({ ms, periods, onOpen, lead = 0 }: { ms: number; periods: Periods; onOpen: (ms: number) => void; lead?: number }) {
   return (
-    <button onClick={() => onOpen(Math.max(0, ms - lead))} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/12 border border-white/10 text-xs text-white/85 tabular-nums whitespace-nowrap"
+    <button data-print-hide onClick={() => onOpen(Math.max(0, ms - lead))} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/12 border border-white/10 text-xs text-white/85 tabular-nums whitespace-nowrap"
       title={lead ? `Match clock ${periodClock(ms, periods)}. Opens the replay ${Math.round(lead / 1000)} s earlier so you see the build-up` : `Match clock ${periodClock(ms, periods)}. Open the replay here`}>
       <Play size={11} /> {periodClock(ms, periods)}
     </button>
@@ -428,12 +429,13 @@ function KickoutLandingPitch({ list, kind, L, W, zone }: { list: GpsKickout[]; k
   )
 }
 
-export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string; matchId: string; sessionId?: string }) {
+export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId, initialKind = 'own' }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string; matchId: string; sessionId?: string; initialKind?: 'own' | 'opp' }) {
+  const { print } = useReportMode()
   const [mode, setMode] = useState<'picture' | 'play'>('picture')
   const [spotFocus, setSpotFocus] = useState<string | null>(null)
   const listTop = useRef<HTMLDivElement>(null)
   const [zone, setZone] = useState<string | null>(null)
-  const [kind, setKind] = useState<'own' | 'opp'>('own')
+  const [kind, setKind] = useState<'own' | 'opp'>(initialKind)
   const [outcome, setOutcome] = useState<string>('all')
   const all = a.kickouts.kickouts.filter(k => k.kind === kind)
   const list = all.filter(k => outcome === 'all' || k.outcome === outcome)
@@ -483,7 +485,7 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: {
         {finding && <p className="text-sm text-white/80">{finding}</p>}
       </div>
 
-      {k ? (
+      {print ? null : k ? (
         <div ref={listTop} className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 scroll-mt-20">
           <div>
             <div className="flex gap-1.5 mb-2" role="group" aria-label="How to show this kickout">

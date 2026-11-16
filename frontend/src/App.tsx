@@ -53,6 +53,7 @@ const GpsAnalysis = lazyWithRetry(() => import('./pages/GpsAnalysis'))
 const GpsSeason = lazyWithRetry(() => import('./pages/GpsSeason'))
 const PlayerView = lazyWithRetry(() => import('./pages/PlayerView'))
 const Leaderboards = lazyWithRetry(() => import('./pages/Leaderboards'))
+const ReportPrint = lazyWithRetry(() => import('./pages/ReportPrint'))
 const MatchRecordingRouter = lazyWithRetry(() => import('./pages/MatchRecordingRouter'))
 const VideoTagging = lazyWithRetry(() => import('./pages/VideoTagging'))
 const Attendance = lazyWithRetry(() => import('./pages/Attendance'))
@@ -154,6 +155,17 @@ function App() {
                       </Suspense>
                     </main>
                     <PlayerNavigation />
+                  </ClubProvider>
+                </RequireAuth>
+              } />
+
+              {/* Report laid out for A4 (PDF): no nav, same auth as the admin app */}
+              <Route path="/reports/print" element={
+                <RequireAuth requiredRole="club_admin">
+                  <ClubProvider>
+                    <Suspense fallback={<PlayerLoading />}>
+                      <ReportPrint />
+                    </Suspense>
                   </ClubProvider>
                 </RequireAuth>
               } />
