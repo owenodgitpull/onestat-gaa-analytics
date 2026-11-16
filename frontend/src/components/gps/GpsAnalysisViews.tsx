@@ -4,7 +4,7 @@
  * Every row with a video time has a play button that opens the replay there.
  */
 import { GPS_KPI_INFO, KpiInfoButton } from './KpiInfo'
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Play, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts'
@@ -355,6 +355,10 @@ function shiftWords(p: GpsKoSpots['players'][number]): string {
   return parts.join(', ') || `${p.shift_m.toFixed(0)} m away`
 }
 
+function spotSentence(p: GpsKoSpots['players'][number]): string {
+  return `${p.name}: on the ${p.lost.n} we lost he stood ${shiftWords(p)} than on the ${p.won.n} we won (${n0(p.lost.x)} m v ${n0(p.won.x)} m from our goal)`
+}
+
 /** Each player's average spot at the kick: green = kickouts we won, red = ones we lost, an arrow from one to the other.
  * Players whose spot barely changed (under the noise level) are faded so the real pattern stands out. */
 function KickoutSpotsPitch({ sp, L, W, focus, onFocus }: { sp: GpsKoSpots; L: number; W: number; focus: string | null; onFocus: (id: string | null) => void }) {
@@ -374,7 +378,7 @@ function KickoutSpotsPitch({ sp, L, W, focus, onFocus }: { sp: GpsKoSpots; L: nu
             const wx = s.x(p.won.x, p.won.y), wy = s.y(p.won.y), lx = s.x(p.lost.x, p.lost.y), ly = s.y(p.lost.y)
             return (
               <g key={p.player_id} opacity={dim ? 0.3 : 1} style={{ cursor: 'pointer' }} onClick={() => onFocus(focus === p.player_id ? null : p.player_id)}>
-                <title>{`${p.name}: on the ${p.lost.n} we lost he stood ${shiftWords(p)} than on the ${p.won.n} we won (${n0(p.won.x)} m v ${n0(p.lost.x)} m from our goal)`}</title>
+                <title>{spotSentence(p)}</title>
                 {Math.hypot(lx - wx, ly - wy) > 30 && <line x1={wx} y1={wy} x2={lx} y2={ly} stroke="#fff" strokeWidth={big ? 6 : 4} markerEnd="url(#spotArrow)" />}
                 <circle cx={wx} cy={wy} r={20} fill={SPOT_WON} stroke="#0b1226" strokeWidth={4} />
                 <circle cx={lx} cy={ly} r={20} fill={SPOT_LOST} stroke="#0b1226" strokeWidth={4} />
@@ -391,7 +395,16 @@ function KickoutSpotsPitch({ sp, L, W, focus, onFocus }: { sp: GpsKoSpots; L: nu
 }
 
 /** Every landing spot coloured by outcome, with the 45 m / 65 m bands from the kicking goal and the channel thirds. */
-function KickoutLandingPitch({ list, kind, L, W }: { list: GpsKickout[]; kind: 'own' | 'opp'; L: number; W: number }) {
+/** "short (under 45 m)|centre": the same zone rule as the backend (gps_analysis.metrics._ko_zones) */
+function zoneOf(k: GpsKickout, kind: 'own' | 'opp', L: number, W: number): string | null {
+  if (k.outcome === 'over the sideline' || k.landing_x == null || k.landing_y == null) return null
+  const d = kind === 'own' ? k.landing_x : L - k.landing_x
+  const length = d < 45 ? 'short (under 45 m)' : d <= 65 ? 'mid (45-65 m)' : 'long (over 65 m)'
+  const ch = k.landing_y < W / 3 ? 'our left' : k.landing_y <= (2 * W) / 3 ? 'centre' : 'our right'
+  return `${length}|${ch}`
+}
+
+function KickoutLandingPitch({ list, kind, L, W, zone }: { list: GpsKickout[]; kind: 'own' | 'opp'; L: number; W: number; zone?: string | null }) {
   const fromKick = (d: number) => (kind === 'own' ? d : L - d)
   return (
     <GpsPitch lengthM={L} widthM={W} label="Where the kickouts landed, by outcome">
@@ -404,7 +417,7 @@ function KickoutLandingPitch({ list, kind, L, W }: { list: GpsKickout[]; kind: '
             </g>
           ))}
           {[W / 3, (2 * W) / 3].map(y => <line key={y} x1={s.x(0)} y1={s.y(y)} x2={s.x(L)} y2={s.y(y)} stroke="rgba(255,255,255,0.25)" strokeWidth={3} strokeDasharray="10 14" />)}
-          {list.filter(k => k.outcome !== 'over the sideline' && k.landing_x != null && k.landing_y != null).map((k, i) => (
+          {list.filter(k => k.outcome !== 'over the sideline' && k.landing_x != null && k.landing_y != null && (!zone || zoneOf(k, kind, L, W) === zone)).map((k, i) => (
             <circle key={i} cx={s.x(k.landing_x!, k.landing_y!)} cy={s.y(k.landing_y!)} r={20} fill={KO_COLOR[k.outcome] || '#fff'} stroke="#0b1226" strokeWidth={4}>
               <title>{`${k.outcome}${k.player ? ` · ${k.player}` : ''}${k.ours_within_10m_of_landing != null ? ` · ${k.ours_within_10m_of_landing} of ours within 10 m` : ''}`}</title>
             </circle>
@@ -418,6 +431,8 @@ function KickoutLandingPitch({ list, kind, L, W }: { list: GpsKickout[]; kind: '
 export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string; matchId: string; sessionId?: string }) {
   const [mode, setMode] = useState<'picture' | 'play'>('picture')
   const [spotFocus, setSpotFocus] = useState<string | null>(null)
+  const listTop = useRef<HTMLDivElement>(null)
+  const [zone, setZone] = useState<string | null>(null)
   const [kind, setKind] = useState<'own' | 'opp'>('own')
   const [outcome, setOutcome] = useState<string>('all')
   const all = a.kickouts.kickouts.filter(k => k.kind === kind)
@@ -436,7 +451,7 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: {
     <div className="space-y-5">
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Whose kickouts">
         {(['own', 'opp'] as const).map(x => (
-          <button key={x} onClick={() => { setKind(x); setSel(0); setOutcome('all') }} aria-pressed={kind === x}
+          <button key={x} onClick={() => { setKind(x); setSel(0); setOutcome('all'); setZone(null); setSpotFocus(null) }} aria-pressed={kind === x}
             className={`px-3 py-1.5 rounded-lg text-sm ${kind === x ? 'bg-white/15 text-white' : 'bg-white/5 text-white/65 hover:bg-white/10'}`}>
             {x === 'own' ? `${team} kickouts` : 'Their kickouts'}
           </button>
@@ -469,10 +484,10 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: {
       </div>
 
       {k ? (
-        <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
+        <div ref={listTop} className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 scroll-mt-20">
           <div>
             <div className="flex gap-1.5 mb-2" role="group" aria-label="How to show this kickout">
-              {([['picture', 'Picture'], ['play', 'Play on from the kick']] as const).map(([m, lab]) => (
+              {([['picture', 'Snapshot at the kick'], ['play', 'Play on from the kick']] as const).map(([m, lab]) => (
                 <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m}
                   className={`px-3 py-1.5 rounded-lg text-sm ${mode === m ? 'bg-white/15 text-white' : 'bg-white/5 text-white/65 hover:bg-white/10'}`}>{lab}</button>
               ))}
@@ -529,11 +544,25 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: {
               </div>
               <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}><KickoutSpotsPitch sp={spots} L={a.pitch_length_m} W={a.pitch_width_m} focus={spotFocus} onFocus={setSpotFocus} /></div>
               <PitchFrameCaption team={team} />
+              <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-white/65">
+                <span>Watch the ones we lost:</span>
+                {(['lost clean', 'lost break'] as const).filter(o => counts[o] > 0).map(o => (
+                  <button key={o} onClick={() => { setOutcome(o); setSel(0); setMode('play'); listTop.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/15 bg-white/5 hover:bg-white/10 text-white/85">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: KO_COLOR[o] }} aria-hidden="true" />{o} · {counts[o]}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="space-y-2 min-w-0">
               <div className="text-sm font-semibold text-white">What changed on the ones we lost</div>
               <p className="text-xs text-white/55">Biggest change first. Click a name to show him on his own.</p>
               <div className="rounded-xl border border-white/10 divide-y divide-white/5">
+                <div className="flex items-center gap-3 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                  <span className="w-28 shrink-0">Player</span>
+                  <span className="flex-1">On the ones we lost, he stood…</span>
+                  <span className="shrink-0" title="How far his average spot moved between the kickouts we won and the ones we lost">Moved</span>
+                </div>
                 {[...spots.players].sort((x, y) => y.shift_m - x.shift_m).map(p => {
                   const big = p.shift_m >= spots.noise_m
                   return (
@@ -546,6 +575,10 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: {
                   )
                 })}
               </div>
+              {spotFocus && (() => {
+                const fp = spots.players.find(p => p.player_id === spotFocus)
+                return fp ? <p className="text-sm text-white/85 rounded-lg bg-white/5 border border-white/10 px-3 py-2">{spotSentence(fp)}.</p> : null
+              })()}
               {spotFocus && <button onClick={() => setSpotFocus(null)} className="text-xs text-white/60 hover:text-white underline">Show everyone</button>}
             </div>
           </div>
@@ -553,20 +586,58 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: {
       )}
 
       {zones.length > 0 && (
-        <Section title="Where they landed" note="Length is measured from the kicking goal: short under 45 m, mid 45-65 m, long over 65 m (the usual bands). Channels are thirds of the width as we attack. Ours near = our outfielders within 10 m of the tagged landing spot at the tag: our numbers at the break. Zones under 5 kickouts say little. Kicks over the sideline are not drawn.">
+        <Section title="Where they landed" note="Length is measured from the kicking goal: short under 45 m, mid 45-65 m, long over 65 m (the usual bands). Channels are thirds of the width as we attack. Zones under 5 kickouts say little. Kicks over the sideline are not drawn.">
           <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-4 items-start">
             <div>
-              <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}><KickoutLandingPitch list={all} kind={kind} L={a.pitch_length_m} W={a.pitch_width_m} /></div>
+              <div className="flex items-center justify-between gap-2 mb-2 min-h-[2rem]">
+                <span className="text-xs text-white/55">{zone ? `Showing ${zone.split('|')[0].split(' ')[0]} · ${zone.split('|')[1]} only` : 'Click a zone in the table to show only its kickouts'}</span>
+                {zone && <button onClick={() => setZone(null)} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white">Show all zones</button>}
+              </div>
+              <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}><KickoutLandingPitch list={all} kind={kind} L={a.pitch_length_m} W={a.pitch_width_m} zone={zone} /></div>
               <PitchFrameCaption team={team} />
             </div>
-            <Table head={['Landed', 'Kicks', 'Won', 'Lost', 'Ours near']} align={['l', 'r', 'r', 'r', 'r']}
-              rows={zones.map(z => [`${z.length.split(' ')[0]} · ${z.channel}`, z.n, z.won, z.lost, z.mean_ours_within_10m_of_landing != null ? n1(z.mean_ours_within_10m_of_landing) : '–'])} />
+            <div className="space-y-3 min-w-0">
+              <p className="text-xs text-white/65 rounded-lg bg-white/5 border border-white/10 px-3 py-2">
+                <b className="text-white">Ours near the drop</b> = how many of our players were within 10 m of where the ball came down, on average, when it arrived.
+                More of ours around the drop means more chance of winning the break.
+              </p>
+              <div className="rounded-xl border border-white/10 divide-y divide-white/5">
+                <div className="flex items-center gap-2 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+                  <span className="flex-1">Landed</span><span className="w-12 text-right">Kicks</span><span className="w-12 text-right">Won</span><span className="w-12 text-right">Lost</span>
+                  <span className="w-24 text-right" title="Average number of our players within 10 m of the landing spot when the ball arrived">Ours near the drop</span>
+                </div>
+                {zones.map(z => {
+                  const key = `${z.length}|${z.channel}`, on = zone === key
+                  return (
+                    <button key={key} onClick={() => setZone(on ? null : key)} aria-pressed={on}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm tabular-nums ${on ? 'bg-white/12 text-white' : 'text-white/85 hover:bg-white/5'}`}>
+                      <span className="flex-1 truncate">{z.length.split(' ')[0]} · {z.channel}</span>
+                      <span className="w-12 text-right">{z.n}</span><span className="w-12 text-right text-emerald-300">{z.won}</span><span className="w-12 text-right text-red-300">{z.lost}</span>
+                      <span className="w-24 text-right">{z.mean_ours_within_10m_of_landing != null ? n1(z.mean_ours_within_10m_of_landing) : '–'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {zone && (
+                <div className="rounded-xl border border-white/10 divide-y divide-white/5">
+                  <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">The kickouts in this zone</div>
+                  {all.filter(x => zoneOf(x, kind, a.pitch_length_m, a.pitch_width_m) === zone).map((x, i) => (
+                    <div key={`${x.video_ms}-${i}`} className="flex items-center gap-2 px-3 py-2 text-xs text-white/85">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{ background: KO_COLOR[x.outcome] }} aria-hidden="true" />
+                      <span className="capitalize w-20 shrink-0">{x.outcome}</span>
+                      <span className="truncate flex-1">{x.player ? surname(x.player) : ''}{x.ours_within_10m_of_landing != null ? ` · ${x.ours_within_10m_of_landing} of ours near` : ''}</span>
+                      <PlayAt ms={x.video_ms} lead={4000} periods={periods} onOpen={onOpen} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </Section>
       )}
 
-      <Section title="Team height at the kick, by outcome" note="Team height = average distance of our tracked outfielders from our own goal line at the moment of the kick (higher = pushed up). Near landing = our players within 10 m of the tagged landing spot (the spot is a few metres out). Small groups (under 5) say little.">
-        <Table head={['Outcome', 'Kickouts', 'Team height', 'In their half', 'Ours near landing']} align={['l', 'r', 'r', 'r', 'r']}
+      <Section title="Team height at the kick, by outcome" note="Team height = where the middle of our team was standing at the kick, in metres from our own goal (low = sitting deep, high = pushed up). In their half = how many of ours were past halfway. Ours near the drop = how many of our players were within 10 m of where the ball came down, on average, when it arrived (more of ours around the drop = more chance of winning the break). Small groups (under 5) say little.">
+        <Table head={['Outcome', 'Kickouts', 'Team height', 'In their half', 'Ours near the drop']} align={['l', 'r', 'r', 'r', 'r']}
           rows={KO_OUTCOMES.map(o => groups.find(([key]) => key.split('|')[1] === o)).filter((g): g is [string, any] => !!g).map(([key, g]) => [
             <span key="o" className="flex items-center gap-2 capitalize"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: KO_COLOR[key.split('|')[1]] }} aria-hidden="true" />{key.split('|')[1]}</span>,
             g.n, n1(g.team_mean_x, ' m'), n1(g.players_in_their_half), g.mean_ours_within_10m_of_landing != null ? n1(g.mean_ours_within_10m_of_landing) : '–'])} />
