@@ -455,7 +455,10 @@ export default function SetPieceEditor({
     if (dragging.type === 'player' && dragMeta.current && !dragMeta.current.moved) {
       setPicked(prev => (prev === dragging.id ? null : dragging.id))
     }
-    suppressClick.current = true          // the click that follows a press on an element must not add a player
+    // the click that follows a press on an element must not add a player; cleared straight after (the element's own
+    // click may stop it reaching the pitch, and a stale flag swallowed the next real click on the pitch)
+    suppressClick.current = true
+    setTimeout(() => { suppressClick.current = false }, 0)
     dragMeta.current = null
     setDragging(null)
   }
