@@ -5,7 +5,7 @@
 import { useEffect, useState, type RefObject } from 'react'
 import type { TrackingKeyframe } from '@/services/presentationsApi'
 
-export function ringAt(kf: TrackingKeyframe[], t: number): { x: number; y: number } | null {
+export function ringAt(kf: TrackingKeyframe[], t: number): { x: number; y: number; h?: number } | null {
   if (!kf.length || t < kf[0].video_timestamp_ms - 200 || t > kf[kf.length - 1].video_timestamp_ms + 200) return null
   let lo = 0, hi = kf.length - 1
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (kf[m].video_timestamp_ms <= t) lo = m; else hi = m }
@@ -17,9 +17,9 @@ export function ringAt(kf: TrackingKeyframe[], t: number): { x: number; y: numbe
 }
 
 export default function TrackingRing({ videoRef, keyframes, live }: {
-  videoRef: RefObject<HTMLVideoElement>; keyframes: TrackingKeyframe[] | null | undefined; live?: { x: number; y: number } | null
+  videoRef: RefObject<HTMLVideoElement>; keyframes: TrackingKeyframe[] | null | undefined; live?: { x: number; y: number; h?: number } | null
 }) {
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const [pos, setPos] = useState<{ x: number; y: number; h?: number } | null>(null)
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 16, h: 9 })
   useEffect(() => {
     let raf = 0
@@ -28,7 +28,7 @@ export default function TrackingRing({ videoRef, keyframes, live }: {
       if (v) {
         if (v.videoWidth && (v.videoWidth !== size.w || v.videoHeight !== size.h)) setSize({ w: v.videoWidth, h: v.videoHeight })
         const p = keyframes && keyframes.length ? ringAt(keyframes, v.currentTime * 1000) : null
-        setPos(prev => (prev?.x === p?.x && prev?.y === p?.y ? prev : p))
+        setPos(prev => (prev?.x === p?.x && prev?.y === p?.y && prev?.h === p?.h ? prev : p))
       }
       raf = requestAnimationFrame(loop)
     }
@@ -37,12 +37,16 @@ export default function TrackingRing({ videoRef, keyframes, live }: {
   }, [videoRef, keyframes, size.w, size.h])
   const p = live || pos
   if (!p) return null
-  const r = size.h * 0.055
   const cx = (p.x / 100) * size.w, cy = (p.y / 100) * size.h
+  // with the player's height (detector tracking) the ring sits at his feet and scales with him (zoom, distance);
+  // without it (older rings) a fixed size round the clicked spot
+  const half = p.h != null ? Math.max(size.h * 0.015, (p.h / 100) * size.h / 2) : size.h * 0.055
+  const feet = p.h != null ? cy + half : cy + half * 0.85
+  const r = p.h != null ? half * 1.15 : half
   return (
     <svg viewBox={`0 0 ${size.w} ${size.h}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
-      <ellipse cx={cx} cy={cy + r * 0.85} rx={r * 1.1} ry={r * 0.38} fill="none" stroke="#FBBF24" strokeWidth={size.h * 0.006} opacity={0.95} />
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#FBBF24" strokeWidth={size.h * 0.004} strokeDasharray={`${r * 0.5} ${r * 0.3}`} opacity={0.75} />
+      <ellipse cx={cx} cy={feet} rx={half * 1.0} ry={half * 0.34} fill="none" stroke="#FBBF24" strokeWidth={Math.max(2, size.h * 0.005)} opacity={0.95} />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#FBBF24" strokeWidth={Math.max(1.5, size.h * 0.0035)} strokeDasharray={`${r * 0.5} ${r * 0.3}`} opacity={0.7} />
     </svg>
   )
 }

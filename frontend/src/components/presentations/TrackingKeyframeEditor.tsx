@@ -6,6 +6,10 @@
  * Track. The editor steps through the clip 80 ms at a time and utils/videoTracker follows him, writing a keyframe at
  * each step. If the ring slips (or the tracker says it lost him) it pauses: click him again and press Track to carry on
  * from there (everything after that moment is redone). Saved as the slide's tracking_keyframes (0-100 of the frame).
+ *
+ * Tracker: utils/playerDetectTracker (a person detector + kit colour + movement, smoothed) when it loads; the ring then
+ * only ever sits on a detected player and scales with him (keyframe `h`). Falls back to the colour-patch tracker
+ * (utils/videoTracker) if the detector cannot load on this device.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -13,6 +17,7 @@ import { Crosshair, Check, Loader2, Pause, Play, RotateCcw, Trash2, AlertCircle 
 import { presentationsAPI, type PresentationSlide, type TrackingKeyframe } from '@/services/presentationsApi'
 import { videoSessionsAPI } from '@/services/videoApi'
 import { PatchTracker, WORK_W, smoothPath } from '@/utils/videoTracker'
+import { DetectTracker } from '@/utils/playerDetectTracker'
 import TrackingRing from './TrackingRing'
 
 interface TrackingKeyframeEditorProps {
@@ -31,6 +36,14 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const trackerRef = useRef<PatchTracker | null>(null)
+  const detRef = useRef<DetectTracker | null>(null)          // one per editor; null until loaded (or if it failed)
+  const seededDet = useRef(false)                            // this run uses the detector (else the patch tracker)
+  const [detState, setDetState] = useState<'loading' | 'ready' | 'failed'>('loading')
+  useEffect(() => {
+    let live = true
+    DetectTracker.create().then(t => { if (live) { detRef.current = t; setDetState('ready') } }).catch(() => { if (live) setDetState('failed') })
+    return () => { live = false }
+  }, [])
   const [seed, setSeed] = useState<{ x: number; y: number; t: number } | null>(null)
   const [tracking, setTracking] = useState(false)
   const [nowMs, setNowMs] = useState(slide.clip_start_ms ?? 0)
@@ -97,11 +110,21 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
         }
         await seekTo(next / 1000)
         if (stopped) return
-        const f = grab()
-        const tr = trackerRef.current
-        if (!f || !tr) { setTracking(false); return }
-        const r = tr.update(f)
         const t = Math.round(v.currentTime * 1000)
+        let r: { x: number; y: number; h?: number; lost: boolean; edge: boolean; cut?: boolean }
+        if (seededDet.current && detRef.current) {
+          r = detRef.current.update(v, t)
+        } else {
+          const f = grab()
+          const tr = trackerRef.current
+          if (!f || !tr) { setTracking(false); return }
+          r = tr.update(f)
+        }
+        if (r.cut) {
+          setTracking(false)
+          setMsg({ kind: 'warn', text: `Camera cut at ${clock(t - startMs)}. Find him in the new shot, click on him and press Track.` })
+          return
+        }
         if (r.edge) {
           setTracking(false)
           setMsg({ kind: 'warn', text: `He went out of the picture at ${clock(t - startMs)}. When he is back in shot, click on him and press Track.` })
@@ -109,13 +132,13 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
         }
         // brief misses (a tackle, someone running across him) are carried through for up to ~0.5 s on his last spot
         misses = r.lost ? misses + 1 : 0
-        if (misses >= 6) {
+        if (misses >= (seededDet.current ? 5 : 6)) {
           setTracking(false)
           setMsg({ kind: 'warn', text: `Lost him at ${clock(t - startMs)} into the clip (a camera cut, or he was hidden). Click on him and press Track to carry on.` })
           return
         }
         if (r.lost) continue
-        const kf = { video_timestamp_ms: t, x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100 }
+        const kf: TrackingKeyframe = { video_timestamp_ms: t, x: Math.round(r.x * 100) / 100, y: Math.round(r.y * 100) / 100, ...(r.h ? { h: Math.round(r.h * 100) / 100 } : {}) }
         setKfs(prev => [...prev.filter(k => k.video_timestamp_ms < t - 40), kf])
       }
     })()
@@ -131,20 +154,33 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
     const f = grab()
     if (!f) return
     const t = Math.round(v.currentTime * 1000)
-    trackerRef.current = new PatchTracker(f, x, y)
-    setSeed({ x, y, t })
+    let sx = x, sy = y, sh: number | undefined
+    seededDet.current = false
+    if (detRef.current) {
+      const r = detRef.current.seed(v, x, y, t)
+      if (!r) {
+        setSeed(null); trackerRef.current = null
+        setMsg({ kind: 'warn', text: 'No player found there. Click right on him (pause where he is clearly visible).' })
+        return
+      }
+      seededDet.current = true
+      sx = r.x; sy = r.y; sh = r.h
+    } else {
+      trackerRef.current = new PatchTracker(f, x, y)
+    }
+    setSeed({ x: sx, y: sy, t })
     // this click replaces everything from here on
-    setKfs(prev => [...prev.filter(k => k.video_timestamp_ms < t - 40), { video_timestamp_ms: t, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }])
+    setKfs(prev => [...prev.filter(k => k.video_timestamp_ms < t - 40), { video_timestamp_ms: t, x: Math.round(sx * 100) / 100, y: Math.round(sy * 100) / 100, ...(sh ? { h: Math.round(sh * 100) / 100 } : {}) }])
     setMsg({ kind: 'info', text: 'Got him. Press Track: it steps through the clip and the ring follows him. Pause and click him again if it slips.' })
   }
 
   const track = () => {
-    if (!videoRef.current || !trackerRef.current) { setMsg({ kind: 'warn', text: 'Click on the player first.' }); return }
+    if (!videoRef.current || (!trackerRef.current && !seededDet.current)) { setMsg({ kind: 'warn', text: 'Click on the player first.' }); return }
     setTracking(true)
     setMsg({ kind: 'info', text: 'Tracking: stepping through the clip. Press Pause if the ring slips off him.' })
   }
-  const pause = () => { videoRef.current?.pause(); setTracking(false); trackerRef.current = null; setSeed(null); setMsg({ kind: 'info', text: 'Paused. Click on him to carry on from here (or Save).' }) }
-  const restart = () => { const v = videoRef.current; if (v) { v.pause(); v.currentTime = startMs / 1000 } setTracking(false); setKfs([]); trackerRef.current = null; setSeed(null); setMsg({ kind: 'info', text: 'Cleared. Pause where you can see the player clearly, then click on him.' }) }
+  const pause = () => { videoRef.current?.pause(); setTracking(false); trackerRef.current = null; seededDet.current = false; setSeed(null); setMsg({ kind: 'info', text: 'Paused. Click on him to carry on from here (or Save).' }) }
+  const restart = () => { const v = videoRef.current; if (v) { v.pause(); v.currentTime = startMs / 1000 } setTracking(false); setKfs([]); trackerRef.current = null; seededDet.current = false; setSeed(null); setMsg({ kind: 'info', text: 'Cleared. Pause where you can see the player clearly, then click on him.' }) }
 
   const covered = kfs.length ? Math.max(0, kfs[kfs.length - 1].video_timestamp_ms - kfs[0].video_timestamp_ms) : 0
 
@@ -157,7 +193,7 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
           {kfs.length > 0 && (
             <button onClick={() => saveMutation.mutate([])} disabled={saveMutation.isPending} className="btn-glass px-3 py-1.5 text-sm flex items-center gap-1.5" title="Save the slide with no ring"><Trash2 size={14} aria-hidden="true" /> Remove ring</button>
           )}
-          <button onClick={() => saveMutation.mutate(smoothPath(kfs))} disabled={saveMutation.isPending || tracking || kfs.length < 2} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-sm">
+          <button onClick={() => saveMutation.mutate(kfs.some(k => k.h != null) ? kfs : smoothPath(kfs))} disabled={saveMutation.isPending || tracking || kfs.length < 2} className="btn-primary flex items-center gap-1.5 px-3 py-1.5 text-sm">
             {saveMutation.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Check size={14} aria-hidden="true" />} Save
           </button>
         </div>
@@ -193,7 +229,7 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
           )}
           <button onClick={restart} disabled={tracking} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 text-sm"><RotateCcw size={14} aria-hidden="true" /> Start again</button>
           <input type="range" min={startMs} max={endMs} step={40} value={nowMs} disabled={tracking}
-            onChange={e => { const v = videoRef.current; if (v) { v.pause(); v.currentTime = Number(e.target.value) / 1000 } setSeed(null); trackerRef.current = null }}
+            onChange={e => { const v = videoRef.current; if (v) { v.pause(); v.currentTime = Number(e.target.value) / 1000 } setSeed(null); trackerRef.current = null; seededDet.current = false }}
             className="flex-1 min-w-[10rem] accent-amber-400" aria-label="Position in the clip" />
           <span className="text-xs text-white/60 tabular-nums">{clock(nowMs - startMs)} / {clock(endMs - startMs)}</span>
         </div>
@@ -201,6 +237,11 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
           {tracking ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : msg.kind !== 'info' ? <AlertCircle size={14} aria-hidden="true" /> : null}
           {msg.text}
           {kfs.length > 1 && !tracking && <span className="text-white/45">· ring covers {(covered / 1000).toFixed(1)} s of the clip</span>}
+        </p>
+        <p className="text-xs text-white/45 flex items-center gap-1.5" role="status">
+          {detState === 'loading' && <><Loader2 size={12} className="animate-spin" aria-hidden="true" /> Loading the player detector (first time only, a few seconds)…</>}
+          {detState === 'ready' && 'Player detector on: the ring locks onto the player you click and follows him.'}
+          {detState === 'failed' && 'The player detector could not load on this device: using colour tracking instead (less steady).'}
         </p>
       </div>
     </div>

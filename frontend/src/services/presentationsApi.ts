@@ -15,6 +15,8 @@ export interface TrackingKeyframe {
   video_timestamp_ms: number;
   x: number;
   y: number;
+  /** the player's height, 0-100 of the frame height (detector tracking): the ring scales with him */
+  h?: number;
 }
 
 export interface PresentationSlide {
