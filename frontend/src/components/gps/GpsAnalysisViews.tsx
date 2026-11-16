@@ -747,10 +747,11 @@ export function SupportView({ a, periods, onOpen }: { a: GpsMatchAnalysis; perio
 // ---------------------------------------------------------------- 12. marking
 
 // Pressure on the shooter (Owen 2026-11-16: "normal colours", and a list a coach can filter and see on the pitch).
-// Colours chosen to stand out on the grass: blue = tight (one of ours within 3 m), amber = 3-6 m, red = free (over 6 m).
+// Three clearly different colours that stand out on the grass and from our players (white when a shot is picked):
+// purple = tight (one of ours within 3 m), yellow = 3-6 m, red = free (over 6 m).
 const PRESSURE = [
-  { key: 'tight', label: 'Tight (within 3 m)', max: 3, color: '#3b82f6' },
-  { key: 'some', label: 'Some pressure (3-6 m)', max: 6, color: '#f59e0b' },
+  { key: 'tight', label: 'Tight (within 3 m)', max: 3, color: '#a855f7' },
+  { key: 'some', label: 'Some pressure (3-6 m)', max: 6, color: '#facc15' },
   { key: 'free', label: 'Free (over 6 m)', max: Infinity, color: '#ef4444' },
 ] as const
 const pressureOf = (m: number | null | undefined) => PRESSURE.find(p => (m ?? Infinity) <= p.max) || PRESSURE[2]
@@ -806,7 +807,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
                   {pickedVisible && picked!.shot_x != null && picked!.shot_y != null && (picked!.ours || []).map((o, k) => o.x != null && o.y != null && (
                     <g key={`o-${k}`}>
                       {o.name === picked!.nearest && <line x1={s.x(picked!.shot_x!, picked!.shot_y!)} y1={s.y(picked!.shot_y!)} x2={s.x(o.x, o.y)} y2={s.y(o.y)} stroke="#fff" strokeWidth={5} strokeDasharray="14 10" />}
-                      <circle cx={s.x(o.x, o.y)} cy={s.y(o.y)} r={20} fill={COLOR_OURS} stroke="#0b1226" strokeWidth={4} />
+                      <circle cx={s.x(o.x, o.y)} cy={s.y(o.y)} r={20} fill="#ffffff" stroke="#0b1226" strokeWidth={5} />
                       <text x={s.x(o.x, o.y)} y={s.y(o.y) + 50} textAnchor="middle" fontSize={24} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={6} paintOrder="stroke">{surname(o.name)}</text>
                     </g>
                   ))}
@@ -841,7 +842,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
               </div>
               <div className="flex items-center gap-2"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: pressureOf(picked.nearest_m).color }} aria-hidden="true" /><span className="text-white/80">{pressureOf(picked.nearest_m).label}: nearest was {picked.nearest || '–'}, {n1(picked.nearest_m, ' m')} away</span></div>
               <div className="text-white/65">{picked.within_5m} of ours within 5 m, {picked.within_10m} within 10 m{picked.assigned_marker ? ` · his assigned marker ${picked.assigned_marker.name} was ${n1(picked.assigned_marker.dist_m, ' m')} away` : ''}</div>
-              <div className="text-xs text-white/45">Green dots: where our players were at that moment. The video button opens the replay 10 s before, so you see the build-up.</div>
+              <div className="text-xs text-white/45">White dots: where our players were at that moment. The video button opens the replay 10 s before, so you see the build-up.</div>
               <button onClick={() => setSel(null)} className="text-xs text-white/60 hover:text-white underline">Clear</button>
             </div>
           ) : <p className="text-sm text-white/55">Click a shot on the pitch or in the list to see where our players were.</p>}
