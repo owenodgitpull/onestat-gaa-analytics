@@ -345,20 +345,45 @@ function spotsFinding(sp: GpsKoSpots | undefined): string | null {
 }
 
 /** Each player's average spot at the kick: kept (filled green) v lost (orange ring), joined by a line. */
-function KickoutSpotsPitch({ sp, L, W }: { sp: GpsKoSpots; L: number; W: number }) {
+const SPOT_WON = '#22c55e', SPOT_LOST = '#ef4444'
+
+/** "7 m deeper and 3 m nearer our left touchline" (lost spot relative to the won spot) */
+function shiftWords(p: GpsKoSpots['players'][number]): string {
+  const parts: string[] = []
+  if (Math.abs(p.dx_m) >= 2) parts.push(`${Math.abs(p.dx_m).toFixed(0)} m ${p.dx_m < 0 ? 'deeper' : 'further up'}`)
+  if (Math.abs(p.dy_m) >= 2) parts.push(`${Math.abs(p.dy_m).toFixed(0)} m nearer our ${p.dy_m > 0 ? 'right' : 'left'}`)
+  return parts.join(', ') || `${p.shift_m.toFixed(0)} m away`
+}
+
+/** Each player's average spot at the kick: green = kickouts we won, red = ones we lost, an arrow from one to the other.
+ * Players whose spot barely changed (under the noise level) are faded so the real pattern stands out. */
+function KickoutSpotsPitch({ sp, L, W, focus, onFocus }: { sp: GpsKoSpots; L: number; W: number; focus: string | null; onFocus: (id: string | null) => void }) {
   return (
-    <GpsPitch lengthM={L} widthM={W} label="Average spot of each player at the kick, kickouts won v lost">
+    <GpsPitch lengthM={L} widthM={W} label="Average spot of each player at the kick: green on kickouts we won, red on ones we lost">
       {(s) => (
         <>
-          {sp.players.map(p => p.won.x == null || p.won.y == null || p.lost.x == null || p.lost.y == null ? null : (
-            <g key={p.player_id}>
-              <title>{`${p.name}: won ${p.won.n} (${n0(p.won.x)} m from our goal), lost ${p.lost.n} (${n0(p.lost.x)} m) · ${p.shift_m} m apart`}</title>
-              <line x1={s.x(p.won.x, p.won.y)} y1={s.y(p.won.y)} x2={s.x(p.lost.x, p.lost.y)} y2={s.y(p.lost.y)} stroke="rgba(255,255,255,0.6)" strokeWidth={5} />
-              <circle cx={s.x(p.lost.x, p.lost.y)} cy={s.y(p.lost.y)} r={22} fill="#0b1226" stroke={KO_COLOR['lost clean']} strokeWidth={7} />
-              <circle cx={s.x(p.won.x, p.won.y)} cy={s.y(p.won.y)} r={22} fill={KO_COLOR['won clean']} stroke="#0b1226" strokeWidth={4} />
-              <text x={s.x(p.won.x, p.won.y)} y={s.y(p.won.y) + 56} textAnchor="middle" fontSize={27} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={7} paintOrder="stroke">{surname(p.name)}</text>
-            </g>
-          ))}
+          <defs>
+            <marker id="spotArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#fff" />
+            </marker>
+          </defs>
+          {[...sp.players].sort((x, y) => x.shift_m - y.shift_m).map(p => {
+            if (p.won.x == null || p.won.y == null || p.lost.x == null || p.lost.y == null) return null
+            const big = p.shift_m >= sp.noise_m
+            const dim = focus ? focus !== p.player_id : !big
+            const wx = s.x(p.won.x, p.won.y), wy = s.y(p.won.y), lx = s.x(p.lost.x, p.lost.y), ly = s.y(p.lost.y)
+            return (
+              <g key={p.player_id} opacity={dim ? 0.3 : 1} style={{ cursor: 'pointer' }} onClick={() => onFocus(focus === p.player_id ? null : p.player_id)}>
+                <title>{`${p.name}: on the ${p.lost.n} we lost he stood ${shiftWords(p)} than on the ${p.won.n} we won (${n0(p.won.x)} m v ${n0(p.lost.x)} m from our goal)`}</title>
+                {Math.hypot(lx - wx, ly - wy) > 30 && <line x1={wx} y1={wy} x2={lx} y2={ly} stroke="#fff" strokeWidth={big ? 6 : 4} markerEnd="url(#spotArrow)" />}
+                <circle cx={wx} cy={wy} r={20} fill={SPOT_WON} stroke="#0b1226" strokeWidth={4} />
+                <circle cx={lx} cy={ly} r={20} fill={SPOT_LOST} stroke="#0b1226" strokeWidth={4} />
+                {(big || focus === p.player_id) && (
+                  <text x={wx} y={wy - 32} textAnchor="middle" fontSize={27} fontWeight={700} fill="#fff" stroke="rgba(5,10,20,0.9)" strokeWidth={7} paintOrder="stroke">{surname(p.name)}</text>
+                )}
+              </g>
+            )
+          })}
         </>
       )}
     </GpsPitch>
@@ -392,6 +417,7 @@ function KickoutLandingPitch({ list, kind, L, W }: { list: GpsKickout[]; kind: '
 
 export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: { a: GpsMatchAnalysis; periods: Periods; onOpen: (ms: number) => void; team: string; matchId: string; sessionId?: string }) {
   const [mode, setMode] = useState<'picture' | 'play'>('picture')
+  const [spotFocus, setSpotFocus] = useState<string | null>(null)
   const [kind, setKind] = useState<'own' | 'opp'>('own')
   const [outcome, setOutcome] = useState<string>('all')
   const all = a.kickouts.kickouts.filter(k => k.kind === kind)
@@ -493,10 +519,35 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId }: {
       ) : <p className="text-sm text-white/55">No kickouts with that outcome.</p>}
 
       {spots && spots.players.length > 0 && (
-        <Section title="Who stood where: won v lost" note={`Each player's average spot at the kick: green = on the kickouts we won, orange ring = the ones we lost, joined by a line. Long lines are the pattern; under ${spots.noise_m} m is noise. Only players there for at least ${spots.min_each} of each. Hover a player for his figures.`}>
-          <div className="max-w-3xl">
-            <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}><KickoutSpotsPitch sp={spots} L={a.pitch_length_m} W={a.pitch_width_m} /></div>
-            <PitchFrameCaption team={team} />
+        <Section title="Who stood where: won v lost" note={`Each player's average spot at the kick (2.5 s before the tag). Only players there for at least ${spots.min_each} of each; a change under ${spots.noise_m} m is noise and is faded.`}>
+          <div className="grid grid-cols-1 md:grid-cols-[3fr_2fr] gap-4 items-start">
+            <div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs text-white/75">
+                <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: SPOT_WON }} aria-hidden="true" />where he stood on kickouts we won ({spots.n_won})</span>
+                <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: SPOT_LOST }} aria-hidden="true" />where he stood on ones we lost ({spots.n_lost})</span>
+                <span className="text-white/55">arrow: how his spot changed on the ones we lost</span>
+              </div>
+              <div className="rounded-xl overflow-hidden border border-white/10 mx-auto" style={{ maxWidth: pitchMaxWidth() }}><KickoutSpotsPitch sp={spots} L={a.pitch_length_m} W={a.pitch_width_m} focus={spotFocus} onFocus={setSpotFocus} /></div>
+              <PitchFrameCaption team={team} />
+            </div>
+            <div className="space-y-2 min-w-0">
+              <div className="text-sm font-semibold text-white">What changed on the ones we lost</div>
+              <p className="text-xs text-white/55">Biggest change first. Click a name to show him on his own.</p>
+              <div className="rounded-xl border border-white/10 divide-y divide-white/5">
+                {[...spots.players].sort((x, y) => y.shift_m - x.shift_m).map(p => {
+                  const big = p.shift_m >= spots.noise_m
+                  return (
+                    <button key={p.player_id} onClick={() => setSpotFocus(spotFocus === p.player_id ? null : p.player_id)} aria-pressed={spotFocus === p.player_id}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-left text-sm ${spotFocus === p.player_id ? 'bg-white/12' : 'hover:bg-white/5'} ${big ? 'text-white' : 'text-white/45'}`}>
+                      <span className="w-28 shrink-0 truncate font-medium">{surname(p.name)}</span>
+                      <span className="flex-1 truncate">{big ? shiftWords(p) : 'about the same spot'}</span>
+                      <span className="tabular-nums text-xs text-white/55 shrink-0">{p.shift_m.toFixed(0)} m</span>
+                    </button>
+                  )
+                })}
+              </div>
+              {spotFocus && <button onClick={() => setSpotFocus(null)} className="text-xs text-white/60 hover:text-white underline">Show everyone</button>}
+            </div>
           </div>
         </Section>
       )}
