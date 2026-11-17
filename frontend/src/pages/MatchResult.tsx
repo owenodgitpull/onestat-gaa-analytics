@@ -102,7 +102,7 @@ export default function MatchResult() {
   const { canEdit } = useAuth()
   const [editingDetails, setEditingDetails] = useState(false)
   const clubName = useClubName()
-  const { club: clubInfo } = useClub()
+  const { club: clubInfo, logoUrl: clubLogo } = useClub()
   const { data: match, isLoading: matchLoading } = useMatch(matchId || null)
   const [statsHalf, setStatsHalf] = useState<1 | 2 | undefined>(undefined)
   const [showExtendedStats, setShowExtendedStats] = useState(false)
@@ -625,7 +625,7 @@ export default function MatchResult() {
 
       {/* Header */}
       <div className="glass-card p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-6 items-center">
           {/* Left: Match Info */}
           <div className="space-y-3">
             <h1 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -686,24 +686,46 @@ export default function MatchResult() {
             </div>
           </div>
 
-          {/* Center: Final Score */}
-          <div className="flex items-center justify-center space-x-6 text-center">
-            <div>
-              <div className="text-4xl font-bold text-white">
-                {formatGAAScore(match.team_goals, match.team_points)}
+          {/* Center: Final Score, sports-HUD style: a plate per team, the winner lit in the club colour, the margin between */}
+          {(() => {
+            const diff = teamTotal - oppTotal
+            const accent = clubInfo?.primary_colour || '#10b981'
+            const logo = clubLogo
+            const plate = (name: string, goals: number, points: number, total: number, ours: boolean) => {
+              const won = ours ? diff > 0 : diff < 0
+              return (
+                <div className={`relative flex-1 min-w-0 rounded-2xl border px-4 pt-3 pb-4 text-center overflow-hidden ${won ? 'bg-white/[0.07]' : 'bg-white/[0.03] border-white/10'}`}
+                  style={won ? { borderColor: `${accent}99`, boxShadow: `0 0 0 1px ${accent}40, 0 10px 30px -12px ${accent}80` } : undefined}>
+                  <div className="absolute inset-x-0 top-0 h-1" style={{ background: won ? accent : 'rgba(255,255,255,0.12)' }} aria-hidden="true" />
+                  <div className="flex items-center justify-center gap-2 min-w-0">
+                    {ours && logo
+                      ? <img src={logo} alt="" className="w-7 h-7 rounded-full object-cover bg-white/10 shrink-0" />
+                      : <span className="w-7 h-7 rounded-full grid place-items-center text-xs font-bold bg-white/10 text-white/80 shrink-0" aria-hidden="true">{(name || '?').slice(0, 1).toUpperCase()}</span>}
+                    <span className="text-base md:text-lg font-bold uppercase tracking-wide text-white truncate">{name}</span>
+                  </div>
+                  <div className={`mt-2 text-5xl md:text-6xl font-black tabular-nums leading-none ${won ? 'text-white' : 'text-white/75'}`}>
+                    {goals}<span className="text-white/35 mx-0.5">-</span>{String(points).padStart(2, '0')}
+                  </div>
+                  <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/50 tabular-nums">{total} points</div>
+                </div>
+              )
+            }
+            return (
+              <div className="flex flex-col items-stretch gap-2 w-full md:min-w-[26rem]">
+                <div className="flex items-stretch gap-2">
+                  {plate(clubName, match.team_goals, match.team_points, teamTotal, true)}
+                  <div className="flex flex-col items-center justify-center px-1 shrink-0">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">FT</span>
+                  </div>
+                  {plate(match.opponent, match.opponent_goals, match.opponent_points, oppTotal, false)}
+                </div>
+                <div className="self-center px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border"
+                  style={diff > 0 ? { color: accent, borderColor: `${accent}66`, background: `${accent}1a` } : diff < 0 ? { color: '#fca5a5', borderColor: 'rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.1)' } : { color: '#fcd34d', borderColor: 'rgba(252,211,77,0.4)', background: 'rgba(252,211,77,0.1)' }}>
+                  {diff > 0 ? `Won by ${diff}` : diff < 0 ? `Lost by ${-diff}` : 'Draw'}
+                </div>
               </div>
-              <div className="text-white/60 text-sm mt-1">{clubName}</div>
-              <div className="text-white/40 text-xs">({teamTotal} pts)</div>
-            </div>
-            <div className="text-2xl text-white/40 font-light">vs</div>
-            <div>
-              <div className="text-4xl font-bold text-white/80">
-                {formatGAAScore(match.opponent_goals, match.opponent_points)}
-              </div>
-              <div className="text-white/60 text-sm mt-1">{match.opponent}</div>
-              <div className="text-white/40 text-xs">({oppTotal} pts)</div>
-            </div>
-          </div>
+            )
+          })()}
 
           {/* Right: Man of the Match */}
           <div className="flex justify-center md:justify-end">

@@ -47,6 +47,7 @@ export const DEFAULT_CHART_ORDER = [
 
 export const DEFAULT_SECTION_ORDER = [
   'my-charts',
+  'kickout-patterns',
 ]
 
 export interface DashboardLayout {
@@ -70,7 +71,7 @@ const DEFAULT_VISIBLE_CHARTS = [
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   const hiddenCharts = DEFAULT_CHART_ORDER.filter(id => !DEFAULT_VISIBLE_CHARTS.includes(id))
   return {
-    version: 7,
+    version: 8,
     chartOrder: [...DEFAULT_VISIBLE_CHARTS, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
     hiddenCharts,
     sectionOrder: [...DEFAULT_SECTION_ORDER],
@@ -138,6 +139,13 @@ function migrateLayout(layout: DashboardLayout): { layout: DashboardLayout; need
     for (const id of NEW_V7_CHART_IDS) {
       if (!existing.has(id)) migrated.hiddenCharts = [...migrated.hiddenCharts, id]
     }
+    needsSave = true
+  }
+
+  // v7 -> v8: kickout patterns across every GPS match (2026-11-17), a section under the charts
+  if (migrated.version === 7) {
+    migrated.version = 8
+    if (!(migrated.sectionOrder || []).includes('kickout-patterns')) migrated.sectionOrder = [...(migrated.sectionOrder || []), 'kickout-patterns']
     needsSave = true
   }
 

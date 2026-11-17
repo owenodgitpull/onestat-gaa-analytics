@@ -143,8 +143,9 @@ function Bar({ rate, color, label }: { rate: number; color: string; label: strin
   )
 }
 
-function PatternCard({ p, on, onClick }: { p: KoPattern; on: boolean; onClick: () => void }) {
+function PatternCard({ p, on, onClick, matchId }: { p: KoPattern; on: boolean; onClick: () => void; matchId?: string }) {
   const col = p.direction === 'win' ? WON : LOST
+  const tm = matchId ? p.matches.find(m => m.match_id === matchId) : undefined
   return (
     <button onClick={onClick} aria-pressed={on}
       className={`w-full text-left rounded-xl border p-3 space-y-2 transition-colors ${on ? 'bg-white/12 border-white/40' : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'}`}>
@@ -158,11 +159,12 @@ function PatternCard({ p, on, onClick }: { p: KoPattern; on: boolean; onClick: (
       <Bar rate={p.rate} color={col} label="These" />
       {p.rest_rate != null && <Bar rate={p.rest_rate} color="rgba(255,255,255,0.45)" label="Otherwise" />}
       <p className="text-[11px] text-white/50">Otherwise = {p.rest_is} ({p.rest_won} of {p.rest_n}){p.mostly_one_match ? ' · mostly from one match' : ''}</p>
+      {matchId && <p className="text-xs text-white/80">This match: {tm ? `won ${tm.won} of ${tm.n}` : 'did not happen'}</p>}
     </button>
   )
 }
 
-function PatternsTab({ side, kind, L, W, team, matchId, periods, onOpen }: { side: KoSide; kind: 'own' | 'opp'; L: number; W: number; team: string; matchId: string; periods: Periods; onOpen: (ms: number) => void }) {
+function PatternsTab({ side, kind, L, W, team, matchId, periods, onOpen }: { side: KoSide; kind: 'own' | 'opp'; L: number; W: number; team: string; matchId?: string; periods?: Periods; onOpen?: (ms: number) => void }) {
   const { print } = useReportMode()
   const all = [...side.patterns.win, ...side.patterns.lose]
   const [selId, setSelId] = useState<string | null>(null)
@@ -180,7 +182,7 @@ function PatternsTab({ side, kind, L, W, team, matchId, periods, onOpen }: { sid
               <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: d === 'win' ? WON : LOST }} aria-hidden="true" />
               {d === 'win' ? 'Goes with winning them' : 'Goes with losing them'}
             </div>
-            {list(d).map(p => <PatternCard key={p.id} p={p} on={sel?.id === p.id} onClick={() => setSelId(p.id)} />)}
+            {list(d).map(p => <PatternCard key={p.id} p={p} matchId={matchId} on={sel?.id === p.id} onClick={() => setSelId(p.id)} />)}
           </div>
         ))}
       </div>
@@ -205,7 +207,7 @@ function PatternsTab({ side, kind, L, W, team, matchId, periods, onOpen }: { sid
               <summary className="px-3 py-2 text-sm text-white/85 cursor-pointer select-none">Watch these {sel.n} kicks</summary>
               <div className="divide-y divide-white/5 max-h-72 overflow-y-auto">
                 {sel.kicks.map((k, i) => {
-                  const here = k.match_id === matchId
+                  const here = !!matchId && k.match_id === matchId && !!onOpen && !!periods
                   const t = Math.max(0, k.video_ms - 2500)
                   return (
                     <div key={i} className="flex items-center gap-2 px-3 py-2 text-xs text-white/85">
@@ -213,7 +215,7 @@ function PatternsTab({ side, kind, L, W, team, matchId, periods, onOpen }: { sid
                       <span className="w-28 shrink-0 truncate">{k.opponent} {shortDate(k.match_date)}</span>
                       <span className="capitalize flex-1 truncate">{k.outcome}</span>
                       {here ? (
-                        <button onClick={() => onOpen(t)} className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white"><Play size={11} /> {periodClock(k.video_ms, periods)}</button>
+                        <button onClick={() => onOpen!(t)} className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white"><Play size={11} /> {periodClock(k.video_ms, periods!)}</button>
                       ) : (
                         <Link to={`/results/${k.match_id}/gps?tab=replay&t=${t}`} className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white"><Play size={11} /> Open</Link>
                       )}
@@ -318,16 +320,43 @@ function ExplorerTab({ side, kind, L, W, team }: { side: KoSide; kind: 'own' | '
   )
 }
 
-export default function KickoutPatterns({ kind, team, L, W, matchId, periods, onOpen }: { kind: 'own' | 'opp'; team: string; L: number; W: number; matchId: string; periods: Periods; onOpen: (ms: number) => void }) {
+/** Season dashboard: standalone (its own side switch, standard pitch). Match Kickouts tab: follows the tab's side, marks
+ * how each pattern went in this match, and plays this match's kicks in place. */
+export default function KickoutPatterns({ kind: kindProp, team, L = 145, W = 85, matchId, periods, onOpen }: { kind?: 'own' | 'opp'; team: string; L?: number; W?: number; matchId?: string; periods?: Periods; onOpen?: (ms: number) => void }) {
   const { print } = useReportMode()
   const q = useQuery({ queryKey: ['gps-ko-patterns'], queryFn: () => gpsAnalysisApi.kickoutPatterns(), staleTime: 10 * 60 * 1000, retry: false })
   const [tab, setTab] = useState<'patterns' | 'types' | 'explore'>('patterns')
+  const [kindOwn, setKindOwn] = useState<'own' | 'opp'>(kindProp || 'own')
+  const kind = kindProp || kindOwn
   const side = q.data?.sides[kind]
   const whose = kind === 'own' ? `${team} kickouts` : 'their kickouts'
+  const lead = (s?: KoSide) => s ? [...s.patterns.win, ...s.patterns.lose].sort((a, b) => b.vs_luck - a.vs_luck)[0] : undefined
   return (
     <div className="glass-card p-4 space-y-4">
       <div className="space-y-1">
-        <h3 className="text-white text-base font-semibold">Across every GPS match: what goes with winning {whose}</h3>
+        <h3 className="text-white text-lg font-semibold">Kickout patterns {matchId ? 'across every GPS match' : `· all ${q.data?.matches.length ?? ''} GPS matches`}</h3>
+        {q.data && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-2">
+            {(['own', 'opp'] as const).map(k => {
+              const s = q.data!.sides[k]
+              if (!s) return null
+              const l = lead(s), active = k === kind
+              const Tag = kindProp ? 'div' : 'button'
+              return (
+                <Tag key={k} {...(kindProp ? {} : { onClick: () => setKindOwn(k), 'aria-pressed': active })}
+                  className={`text-left rounded-xl border p-4 space-y-1 ${active ? 'bg-white/10 border-white/30' : 'bg-white/[0.03] border-white/10'} ${kindProp ? '' : 'hover:bg-white/[0.08]'}`}>
+                  <div className="text-xs uppercase tracking-wide text-white/55">{k === 'own' ? `${team} kickouts` : 'Their kickouts'}</div>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-3xl font-extrabold text-white tabular-nums">{Math.round(s.rate * 100)}%</span>
+                    <span className="text-sm text-white/70 tabular-nums">won {s.won} of {s.n_kicks} that landed{s.over_sideline.n ? ` · ${s.over_sideline.n} over the sideline` : ''}</span>
+                  </div>
+                  {l && <p className="text-sm text-white/80">Lead: won {l.won} of {l.n} when {l.label} <span className="text-white/50">({l.rest_won} of {l.rest_n} otherwise, {l.strength})</span></p>}
+                </Tag>
+              )
+            })}
+          </div>
+        )}
+        <h4 className="text-white text-base font-semibold">What goes with winning {whose}</h4>
         {q.isLoading && <p className="text-sm text-white/60 flex items-center gap-2"><Loader2 size={14} className="animate-spin" aria-hidden="true" /> Testing every player spot, pairing and kick type across our GPS matches… (a few seconds the first time)</p>}
         {q.isError && <p className="text-sm text-amber-300 flex items-center gap-2"><AlertCircle size={14} aria-hidden="true" /> Could not work out the patterns. Try again shortly.</p>}
         {q.data && !side && <p className="text-sm text-white/60">Not enough {whose} with GPS yet.</p>}

@@ -40,6 +40,7 @@ import InsightAlertsPanel from '@/components/InsightAlertsPanel'
 import AiInsightsSection from '@/components/charts/AiInsightsSection'
 import MyChartsSection from '@/components/dashboard/MyChartsSection'
 import SortableSection from '@/components/dashboard/SortableSection'
+import KickoutPatterns from '@/components/gps/KickoutPatterns'
 import SeasonFilterBar from '@/components/dashboard/SeasonFilterBar'
 import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
@@ -47,7 +48,7 @@ import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion
 import { consumeDashboard, consumeSeasonDashboard, consumeLiveMatch } from '@/services/prefetch'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Match } from '@/types'
-import { useClub } from '@/contexts/ClubContext'
+import { useClub, useClubName } from '@/contexts/ClubContext'
 import { useTour } from '@/hooks/useTour'
 import { dashboardSteps } from '@/config/tourSteps'
 
@@ -108,6 +109,7 @@ function incrementRegenCount(clubId: string): number {
 export default function AnalyticsDashboard() {
   const navigate = useNavigate()
   const { club } = useClub()
+  const teamName = useClubName() || 'Our'
   const clubId = club?.id
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [seasonDashboard, setSeasonDashboard] = useState<SeasonDashboardData | null>(null)
@@ -498,6 +500,9 @@ export default function AnalyticsDashboard() {
             onUnpinChart={handleUnpinChart}
           />
         )
+      case 'kickout-patterns':
+        // pattern finding works best across matches: its season home (the match Kickouts tab shows it too)
+        return hasGpsData ? <KickoutPatterns team={teamName} /> : null
       default:
         return null
     }
