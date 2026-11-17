@@ -119,6 +119,30 @@ export interface GpsSeasonRow {
   shots_against?: number | null; nearest_on_scores_m?: number | null; unpressured_share_pct?: number | null
 }
 export interface GpsLoadAlert { player_id: string; name: string | null; match_id: string; opponent: string | null; match_date: string | null; minutes: number | null; hsr_m: number; hsr_per_min: number | null; sprints: number; distance_m: number; own_avg_hsr_per_min: number; vs_own_avg_pct: number; direction: 'above' | 'below' }
+/** Kickout patterns across every GPS match (backend gps_analysis/ko_rules.py) */
+export type KoLen = 'short' | 'mid' | 'long'
+export type KoChan = 'left' | 'centre' | 'right'
+export interface KoPatternMatch { match_id: string; opponent: string | null; match_date: string; n: number; won: number }
+export interface KoSpot { x: number; y: number; n: number }
+export interface KoPattern {
+  id: string; size: number; strength: 'stands out' | 'worth a look'; direction: 'win' | 'lose'; label: string
+  parts: { type: string; value: string | number; players: string[]; label: string }[]
+  n: number; won: number; rate: number; rest_n: number; rest_won: number; rest_rate: number | null; gap_pts: number
+  score: number; luck_bar: number; vs_luck: number; mostly_one_match: boolean; rest_is: string; reads: string
+  matches: KoPatternMatch[]
+  players: { player_id: string; name: string; here: KoSpot | null; otherwise: KoSpot | null }[]
+  kicks: { match_id: string; opponent: string | null; match_date: string; video_ms: number; half: number; outcome: string; won: boolean; landing_x: number; landing_y: number }[]
+}
+export interface KoExploreKick { m: number; ms: number; half: number; won: boolean; outcome: string; len: KoLen; ch: KoChan; lx: number; ly: number; p: [string, KoLen, KoChan, number, number, number][] }
+export interface KoSide {
+  kind: 'own' | 'opp'; n_kicks: number; won: number; rate: number; matches: number; conditions_tested: number; luck_bar: Record<string, number>
+  patterns: { win: KoPattern[]; lose: KoPattern[] }
+  kick_types: { length: KoLen; channel: KoChan; n: number; won: number }[]
+  over_sideline: { n: number; won: number }
+  explore: { names: Record<string, string>; matches: { match_id: string; opponent: string | null; match_date: string }[]; kicks: KoExploreKick[] }
+}
+export interface KoPatterns { sides: Partial<Record<'own' | 'opp', KoSide>>; matches: { match_id: string; opponent: string | null; match_date: string }[]; min_n: number; how_to_read: string }
+
 export interface GpsSeason { matches: GpsSeasonRow[]; load_alerts: GpsLoadAlert[]; players: Record<string, { name: string | null; matches: { match_id: string; opponent: string | null; match_date: string | null; minutes: number | null; hsr_m: number; hsr_per_min: number | null; sprints: number; distance_m: number }[] }>; note: string }
 
 export const gpsAnalysisApi = {
@@ -135,6 +159,7 @@ export const gpsAnalysisApi = {
     return fetchAPI<GpsHeatmap>(`/matches/${matchId}/gps/analysis/heatmap?${q.toString()}`, { timeoutMs: 60000 })
   },
   season: () => fetchAPI<GpsSeason>(`/gps-analysis/season`, { timeoutMs: 120000 }),
+  kickoutPatterns: () => fetchAPI<KoPatterns>(`/gps-analysis/season/kickout-patterns`, { timeoutMs: 120000 }),
   /** our players moving from one moment for up to a minute (kickouts "play on", "send to board") */
   play: (matchId: string, fromMs: number, toMs: number) =>
     fetchAPI<GpsPlayWindow>(`/matches/${matchId}/gps/analysis/play?from_ms=${Math.round(fromMs)}&to_ms=${Math.round(toMs)}`, { timeoutMs: 60000 }),

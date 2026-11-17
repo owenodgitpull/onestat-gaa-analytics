@@ -229,6 +229,10 @@ How to write it - section "Off the Ball", after Phase Analysis, 5-7 short headed
   landed (short / mid / long and channel) with won-lost per zone, and won_near_landing v lost_near_landing (our players within
   10 m of where it landed, with n_landed) - our numbers at the break. A zone or group under 5 is described, never compared.
   Never quote team_mean_x as the headline. These totals include kicks over the sideline, so they match the phase table.
+  SEASON KICKOUT PATTERNS: get_kickout_patterns lists which player spots / pairings / kick types went with winning or losing
+  kickouts over every GPS match, with a luck check. Where this match's kickouts fit one of them, say so with its figures
+  ("across our GPS matches, their kickouts that came down within 20 m of X: won 15 of 22, 19 of 78 otherwise - worth a look"),
+  keep its strength word, say 'goes with' (never 'caused'), and flag mostly_one_match.
 - BASELINE: get_gps_shape_trends_by_match baseline_other_matches gives the mean of each figure over our OTHER GPS matches. Use it
   for the two or three figures where this match stood out: "N m without the ball, against M m over our other K GPS matches" (n_matches / the field's n, exactly). Running is per player-minute, so periods of different length compare. If
   n_matches is 0, leave baselines out and say nothing about it - never write that no baseline was available.

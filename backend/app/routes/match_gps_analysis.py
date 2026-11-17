@@ -91,3 +91,10 @@ async def play_window(match_id: UUID, from_ms: int = Query(..., ge=0), to_ms: in
 async def season(user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db)):
     """One row per synced match (shape, transition, intensity, kickout push-up) + per-player running-load alerts."""
     return await service.season(db, user.club_id)
+
+
+@season_router.get("/season/kickout-patterns")
+async def kickout_patterns(user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db)):
+    """Which player spots, pairings and kick types go with winning or losing kickouts, across every GPS match, with a
+    luck check (services/gps_analysis/ko_rules.py)."""
+    return await service.season_kickout_patterns(db, user.club_id)

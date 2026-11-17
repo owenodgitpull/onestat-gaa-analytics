@@ -1533,6 +1533,9 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         from app.services.ai.gps_tools import get_gps_match_analysis
         return await get_gps_match_analysis(db, tool_input.get("match_id"), tool_input.get("sections"), tool_input.get("limit", 8), club_id=club_id,
                                             situation=tool_input.get("situation"), full_positions=tool_input.get("full_positions", False))
+    elif tool_name == "get_kickout_patterns":
+        from app.services.ai.gps_tools import get_kickout_patterns
+        return await get_kickout_patterns(db, club_id=club_id, side=tool_input.get("side"))
     elif tool_name == "get_gps_shape_trends_by_match":
         from app.services.ai.gps_tools import get_gps_season_trends
         return await get_gps_season_trends(db, club_id=club_id, exclude_match_id=tool_input.get("exclude_match_id"))

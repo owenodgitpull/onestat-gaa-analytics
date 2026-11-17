@@ -73,6 +73,7 @@ SEASON_TOOLS = [
     "get_match_gps_positional_analysis",
     "get_gps_shape_trends_by_match",
     "get_player_kpi_profile",
+    "get_kickout_patterns",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)

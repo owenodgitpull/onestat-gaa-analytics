@@ -234,7 +234,41 @@ async def get_gps_season_trends(db, club_id=None, exclude_match_id=None) -> str:
                                      "player-minute, so matches of different length compare fairly."})
 
 
+async def get_kickout_patterns(db, club_id=None, side=None) -> str:
+    """Kickout patterns across every GPS match (ko_rules), trimmed for the agent: no ids, no kick lists."""
+    res = await gps.season_kickout_patterns(db, club_id)
+    sides = {}
+    for k, v in res["sides"].items():
+        if side and k != side:
+            continue
+        def trim(p):
+            return {"pattern": p["label"], "strength": p["strength"], "won": p["won"], "of": p["n"], "rest_won": p["rest_won"],
+                    "rest_of": p["rest_n"], "compared_with": p["rest_is"], "gap_pts": p["gap_pts"], "mostly_one_match": p["mostly_one_match"],
+                    "by_match": [f"{m['opponent']} {m['match_date']}: {m['won']}/{m['n']}" for m in p["matches"]],
+                    "spots": [{"name": pl["name"], "here": pl["here"], "otherwise": pl["otherwise"]} for pl in p["players"]]}
+        sides["our_kickouts" if k == "own" else "their_kickouts"] = {
+            "kicks": v["n_kicks"], "won": v["won"], "matches": v["matches"], "conditions_tested": v["conditions_tested"],
+            "goes_with_winning": [trim(p) for p in v["patterns"]["win"]], "goes_with_losing": [trim(p) for p in v["patterns"]["lose"]],
+            "kick_types": v["kick_types"], "over_the_sideline": v["over_sideline"]}
+    return safe_json({"frame_note": FRAME_NOTE, "sides": sides, "how_to_read": res["how_to_read"] +
+                      " Spots are in our attack frame (x = metres from our goal, y small = our left). Say 'goes with', never "
+                      "'causes'; give won/of against rest_won/rest_of and who the rest are (compared_with); flag mostly_one_match."})
+
+
 TOOL_DEFS = [
+    {
+        "name": "get_kickout_patterns",
+        "description": (
+            "Kickout patterns across EVERY match with synced GPS: which player spots at the kick (channel, zone, near where the "
+            "ball came down), pairs standing together and kick types (length x channel) go with winning or losing our kickouts "
+            "and theirs, each with won/of v the other kicks with the same players on, the matches it came from, and a luck "
+            "check ('stands out' v 'worth a look'). Use for 'what works on kickouts', 'who should be where', season reviews, "
+            "and to link a match's kickout results to the season's patterns."
+        ),
+        "input_schema": {"type": "object", "properties": {
+            "side": {"type": "string", "enum": ["own", "opp"], "description": "Only our kickouts (own) or theirs (opp); default both"}},
+            "required": []},
+    },
     {
         "name": "get_match_gps_positional_analysis",
         "description": (

@@ -14,6 +14,7 @@ import {
 } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption, pitchMaxWidth, artToRealX, ART_WARP } from './GpsPitch'
 import KickoutPlayOn from './KickoutPlayOn'
+import KickoutPatterns from './KickoutPatterns'
 import { useReportMode } from '../../contexts/ReportModeContext'
 
 type Periods = GpsReplayContext['periods']
@@ -484,6 +485,9 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId, ini
         </div>
         {finding && <p className="text-sm text-white/80">{finding}</p>}
       </div>
+
+      {/* the season's patterns, right under this match's headline (Owen 2026-11-17) */}
+      <KickoutPatterns kind={kind} team={team} L={a.pitch_length_m} W={a.pitch_width_m} matchId={matchId} periods={periods} onOpen={onOpen} />
 
       {print ? null : k ? (
         <div ref={listTop} className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 scroll-mt-20">

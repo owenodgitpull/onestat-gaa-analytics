@@ -276,3 +276,29 @@ async def season(db: AsyncSession, club_id) -> dict:
 def _mean(v):
     v = [x for x in v if x is not None]
     return round(float(np.mean(v)), 1) if v else None
+
+
+# ------------------------------------------------------------------ kickout patterns across every GPS match (2026-11-17)
+
+_KO_PAT: Dict[str, dict] = {}
+
+
+async def season_kickout_patterns(db: AsyncSession, club_id) -> dict:
+    """ko_rules over every synced match's kickouts. Cached until any match's analysis key changes (a few seconds of numpy
+    for the luck check, run in a worker thread)."""
+    from . import ko_rules
+    rows, keys = [], []
+    for m in await synced_matches(db, club_id):
+        try:
+            res, _, inp = await analyse(db, m)
+        except NotReady:
+            continue
+        keys.append(str(inp.cache_key))
+        rows += ko_rules.collect(res)
+    key = f"{club_id}|" + "|".join(sorted(keys))
+    hit = _KO_PAT.get(str(club_id))
+    if hit and hit["key"] == key:
+        return hit["value"]
+    value = await asyncio.to_thread(ko_rules.kickout_patterns, rows)
+    _KO_PAT[str(club_id)] = {"key": key, "value": value}
+    return value
