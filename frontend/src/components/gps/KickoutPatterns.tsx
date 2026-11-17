@@ -147,10 +147,9 @@ function PatternCard({ p, on, onClick }: { p: KoPattern; on: boolean; onClick: (
   const col = p.direction === 'win' ? WON : LOST
   return (
     <button onClick={onClick} aria-pressed={on}
-      className={`w-full text-left rounded-xl border p-3 space-y-2 transition-colors ${on ? 'bg-white/12 border-white/40' : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'}`}
-      style={{ borderLeft: `4px solid ${col}` }}>
+      className={`w-full text-left rounded-xl border p-3 space-y-2 transition-colors ${on ? 'bg-white/12 border-white/40' : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-white font-semibold tabular-nums">Won {p.won} of {p.n}</span>
+        <span className="flex items-center gap-2 text-white font-semibold tabular-nums"><span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: col }} aria-hidden="true" />Won {p.won} of {p.n}</span>
         <span className={`text-[11px] px-2 py-0.5 rounded-full ${p.strength === 'stands out' ? 'bg-white text-slate-900 font-semibold' : 'border border-white/30 text-white/80'}`}>
           {p.strength === 'stands out' ? 'Stands out' : 'Worth a look'}
         </span>
