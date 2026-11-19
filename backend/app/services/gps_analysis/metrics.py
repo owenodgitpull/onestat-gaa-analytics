@@ -27,6 +27,7 @@ SHOT_TYPES = ("POINT_SCORED", "GOAL_SCORED", "WIDE", "SHORT", "SAVED", "HIT_POST
 DEAD_BALL_TYPES = ("POINT_SCORED", "GOAL_SCORED", "WIDE", "SAVED", "FOUL_COMMITTED", "SIDELINE_KICK", "SIDELINE_BALL",
                    "FORTY_FIVE", "THROW_IN", "FREE_KICK", "YELLOW_CARD", "BLACK_CARD", "RED_CARD")
 TURNOVER_EVENT_TYPES = ("TURNOVER_LOST", "TURNOVER_WON", "INTERCEPTION", "TACKLE_WON", "OUR_UNFORCED_ERROR", "OPP_UNFORCED_ERROR", "SHORT")
+KO_AT_CARRY_START_MS = 1500   # a kickout tagged within this of a carry's start is the kickout that carry came from
 PERIOD_NAME = {1: "1st half", 2: "2nd half", 3: "Extra time 1", 4: "Extra time 2"}
 
 
@@ -124,6 +125,9 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
     arfh = inp.attacking_right_first_half
     cs = [c for c in inp.carries if c.team in ("own", "opponent")]
     dead = sorted(e.video_ms for e in inp.events if e.event_type in DEAD_BALL_TYPES or "KICKOUT" in e.event_type)
+    # kickouts each side won (OWN_/OPP_KICKOUT_WON* = we won it, *_OPPOSITION_WON* = they did; over the sideline = nobody's carry)
+    ko_won_by = {"own": {e.video_ms for e in inp.events if "KICKOUT" in e.event_type and e.event_type.endswith(("_WON", "_WON_BREAK")) and "OPPOSITION" not in e.event_type},
+                 "opponent": {e.video_ms for e in inp.events if "KICKOUT_OPPOSITION_WON" in e.event_type}}
     V = g.valid()
     lost, won = [], []
     for k in range(len(cs) - 1):
@@ -139,7 +143,12 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
         # A foul, a sideline, a 45, a card or a kickout in between means play stopped: a restart, not a transition -
         # nobody is "getting back" against a live ball. This was only checked for untagged changes of possession, so
         # McHugh's foul (2nd half 56', a free to Dublin) was timed as a 1-second recovery from the free being taken.
+        # The kickout that STARTED the losing carry is not a stoppage before the turnover: it is tagged at the carry's
+        # own start, and it threw out every turnover straight off a won kickout (Down 2H 56:28, tackled 11 s after
+        # we won the kickout, was missing from back-behind-ball).
         i0 = np.searchsorted(dead, a.video_ms - 500)
+        while i0 < len(dead) and dead[i0] <= a.video_ms + KO_AT_CARRY_START_MS and dead[i0] in ko_won_by.get(a.team, ()):
+            i0 += 1
         if i0 < len(dead) and dead[i0] <= b.video_ms:
             continue
         # the moment of the loss, less the measured tap delay (taps land a second or more after the moment)
