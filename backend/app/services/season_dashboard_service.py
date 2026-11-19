@@ -241,6 +241,33 @@ class SeasonDashboardService:
     SEASON_DASHBOARD_CACHE_VERSION = "v10"  # (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
+    async def _fresh_kpi_insights(db: AsyncSession, club_id, data_fp: str, result: dict, background_tasks=None) -> None:
+        """Put the KPI cards' AI lines on from the insight cache, only when they were written for THESE figures. The
+        dashboard payload kept its own copy, so a sentence quoting old figures stayed beside a corrected card. A stale
+        set is blanked (the pop-up says "check back later") and rewritten in the background."""
+        from app.models.season_cache import SeasonCache
+        kpi = result.get("kpi_cards") or {}
+        cards = kpi.get("cards") or []
+        if not cards:
+            return
+        try:
+            row = (await db.execute(select(SeasonCache).where(SeasonCache.club_id == club_id, SeasonCache.cache_type == "kpi_insights")
+                                    .order_by(desc(SeasonCache.cached_at)))).scalars().first()
+            ok = row is not None and row.cached_result and row.data_fingerprint == _kpi_insight_key(data_fp, kpi)
+            for c in cards:
+                c["insight"] = (row.cached_result.get(c["key"], "") if ok else "")
+            fun = result.get("possession_funnel")
+            if isinstance(fun, dict):
+                fun["insight"] = row.cached_result.get("possession_funnel", "") if ok else ""
+            if not ok and background_tasks is not None:
+                from app.services.ai import get_fixture_context
+                ctx = await get_fixture_context(db, club_id=club_id)
+                data = {**kpi, "funnel_summary": {k: (fun or {}).get(k, 0) for k in ("attack_rate", "shot_rate", "score_rate", "opponent_attack_rate", "opponent_shot_rate", "opponent_score_rate")}}
+                background_tasks.add_task(_regenerate_kpi_insights_task, data, ctx, club_id)
+        except Exception as e:
+            logger.warning(f"KPI insight refresh skipped: {e}")
+
+    @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
         """
         Cached wrapper around _get_all_fresh — same data-fingerprint pattern
@@ -268,12 +295,19 @@ class SeasonDashboardService:
             )
         )
         cache = cache_result.scalar_one_or_none()
+        is_filtered = bool(competition or last_n or stage)
         if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
-            return cache.cached_result
+            result = cache.cached_result
+            if not is_filtered:
+                await SeasonDashboardService._fresh_kpi_insights(db, club_id, fingerprint, result, background_tasks)
+            return result
 
         result = await SeasonDashboardService._get_all_fresh(
             db, club_id, background_tasks, competition, last_n, stage
         )
+        if not is_filtered:
+            # the fresh compute already scheduled any rewrite (_get_cached_kpi_insights), so no second one here
+            await SeasonDashboardService._fresh_kpi_insights(db, club_id, fingerprint, result, None)
 
         if cache:
             cache.cached_result = result
@@ -3564,6 +3598,16 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
     return hashlib.sha256(fingerprint_str.encode()).hexdigest()
 
 
+def _kpi_insight_key(data_fp: str, kpi_data: dict) -> str:
+    """The insight cache key: the data AND the card figures. Keyed on the data alone, a change to how a card is worked
+    out (2026-11-19: kickouts over the sideline, turnovers incl. unforced errors) left the old sentences quoting the old
+    figures ("below the 69.3% season average" beside a 64.2% card)."""
+    import hashlib
+    sig = repr(sorted((c.get("key"), c.get("value"), (c.get("trend") or {}).get("recent"), (c.get("trend") or {}).get("season"))
+                      for c in kpi_data.get("cards", [])))
+    return hashlib.md5(f"{data_fp}|{sig}".encode()).hexdigest()
+
+
 async def _get_cached_kpi_insights(
     db: AsyncSession, kpi_data: dict, fixture_context: str, club_id, background_tasks=None
 ) -> dict:
@@ -3581,7 +3625,7 @@ async def _get_cached_kpi_insights(
     from app.models.season_cache import SeasonCache
     from app.services.ai import generate_kpi_insights
 
-    fingerprint = await _compute_data_fingerprint(db, club_id)
+    fingerprint = _kpi_insight_key(await _compute_data_fingerprint(db, club_id), kpi_data)
 
     # Check cache. club_id should always be a real value in production (every
     # HTTP caller has one via auth) — the (club_id, cache_type) pair is
@@ -3661,7 +3705,7 @@ async def _regenerate_kpi_insights_task(kpi_data: dict, fixture_context: str, cl
 
     try:
         async with AsyncSessionLocal() as db:
-            fingerprint = await _compute_data_fingerprint(db, club_id)
+            fingerprint = _kpi_insight_key(await _compute_data_fingerprint(db, club_id), kpi_data)
             insights = await generate_kpi_insights(db, kpi_data, fixture_context=fixture_context, club_id=club_id)
             if not insights:
                 return

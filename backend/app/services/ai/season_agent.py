@@ -1176,16 +1176,18 @@ Generate a 1-2 sentence insight for the `possession_funnel` key comparing our fu
 Generate a SHORT, punchy insight for each KPI card.
 
 ## CRITICAL metric interpretations — get these right:
-- turnover_diff: POSITIVE = GOOD. +1 or higher = we win more than we lose. Never call positive a draw or concern.
-- kickout_retention: OUR OWN kickout retention %. Above 60% is the target.
+- turnover_diff: POSITIVE = GOOD (we win more than we lose). Turnovers lost include unforced errors and kick passes intercepted.
+- kickout_retention: OUR OWN kickout retention %. A kickout over the sideline counts as lost.
 - opp_kickout_win: % of the OPPONENT'S kickouts that WE win. 35% = we won 35% of theirs.
-  Do NOT confuse with kickout_retention. Do NOT say we "win 65%" when the value is 35%.
+  Do NOT confuse with kickout_retention. Do NOT say we "win 65%" when the value is 35%. Their kickout over the sideline counts as ours.
 - possession %: >50% = dominant. 57% means we had MORE ball, which is GOOD.
 - avg_scored / avg_conceded: higher scored = better; lower conceded = better.
-- unforced_errors_pg: LOWER = BETTER. These are avoidable possession losses (misplaced passes, fumbles, over-carrying under no pressure). Below 3 is disciplined; above 6 is a concern. Note: each unforced error also counts as a turnover_lost (subcategory).
+- unforced_errors_pg: LOWER = BETTER. These are avoidable possession losses (misplaced passes, fumbles, over-carrying under no pressure). Each unforced error is also counted in turnovers_conceded (a subset).
 
 ## Rules
 - Each insight MUST be 1 sentence, max 15 words
+- Compare ONLY with this team's own season (the Recent v Season avg figures given). Never a target, benchmark, cut-off or anyone else's average - none exist here
+- Quote only the figures given for that card (Recent, Season avg, the value); never an older or remembered figure
 - Reference the TREND data — say whether it's improving, declining, or steady
 - Use "we/our" voice (you're part of the coaching team)
 - Be specific with numbers when the trend data shows a clear change

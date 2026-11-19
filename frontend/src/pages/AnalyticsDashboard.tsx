@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import WeeklyBriefCard from '@/components/dashboard/WeeklyBriefCard'
 import KPILibraryModal from '@/components/dashboard/KPILibraryModal'
+import InsightsBoard from '@/components/dashboard/InsightsBoard'
 import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS, NEW_KPIS } from '@/config/kpiRegistry'
 import SquadHealthView from '@/components/SquadHealthView'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
@@ -642,7 +643,15 @@ export default function AnalyticsDashboard() {
               AI-powered charts, trend analysis, and tactical recommendations will appear here once you tag match events via live recording or video analysis.
             </p>
           </div>
-        ) : <AiInsightsSection
+        ) : <>
+        {/* Every insight already on the season dashboard, on one collapsible board above the AI charts */}
+        <InsightsBoard
+          cards={seasonDashboard?.kpi_cards?.cards || []}
+          funnelInsight={seasonDashboard?.possession_funnel?.insight}
+          aiCharts={aiCharts}
+          hasGps={hasGpsData}
+        />
+        <AiInsightsSection
           aiCharts={aiCharts}
           pinnedChartIds={pinnedChartIds}
           loadingAICharts={loadingAICharts}
@@ -660,6 +669,7 @@ export default function AnalyticsDashboard() {
           suggestions={suggestions}
           loadingSuggestions={loadingSuggestions}
         />
+        </>
       ) : (
         <>
       {/* Weekly Brief — only show when there's match data */}
