@@ -512,14 +512,15 @@ async def chat_stream_endpoint(
         # The browser sends earlier turns as plain text, so the model could not tell a reply built from real tool
         # calls from one it made up - and "corrected" a real video reply as invented (McGee opp kickouts, 2026-11-19:
         # the compilation was built, 5 clips). Each earlier reply now carries the app's own record of what it ran.
+        turn_history = history
         try:
-            history = await _annotate_history(db, session.id, history)
+            turn_history = await _annotate_history(db, session.id, history)
         except Exception as e:
             logger.warning(f"chat history annotation skipped: {e}")
 
         try:
             async for event_line in chat_with_analyst_stream(
-                db, history, request.message, session_id=session_id, club_id=user.club_id, user_id=user.user_id
+                db, turn_history, request.message, session_id=session_id, club_id=user.club_id, user_id=user.user_id
             ):
                 # Parse and collect viz/text from the event
                 yield event_line
