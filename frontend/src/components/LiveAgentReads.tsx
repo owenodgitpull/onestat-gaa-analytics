@@ -65,7 +65,15 @@ export default function LiveAgentReads({ matchId, halfMins = 35 }: { matchId: st
             <li key={r.id} className={`rounded-xl border px-4 py-3 ${r.trigger === 'half_time' ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-white/10 bg-white/[0.03]'}`}>
               <div className="text-[11px] uppercase tracking-wide text-white/50 font-semibold tabular-nums mb-1">{when(r, halfMins)}</div>
               <p className="text-sm text-white font-semibold leading-snug">{headline}</p>
-              {open && rest.map((p, k) => <p key={k} className="text-sm text-white/80 leading-relaxed mt-2">{p}</p>)}
+              {open && rest.map((p, k) => (
+                // the live format is headline / evidence / why it matters + one instruction (match_agent OUTPUT FORMAT)
+                <div key={k} className={`mt-2.5 ${k === 1 ? 'rounded-lg bg-emerald-500/[0.08] px-3 py-2' : ''}`}>
+                  <div className={`text-[10px] uppercase tracking-wider font-semibold mb-0.5 ${k === 1 ? 'text-emerald-300/80' : 'text-white/45'}`}>
+                    {k === 0 ? 'The picture' : k === 1 ? 'Sideline call' : 'More'}
+                  </div>
+                  <p className="text-sm text-white/80 leading-relaxed">{p}</p>
+                </div>
+              ))}
             </li>
           )
         })}
