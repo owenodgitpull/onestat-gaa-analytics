@@ -121,6 +121,31 @@ def _label(c: dict, names: Dict[str, str], kind: str = "own", w3: float = 28.0) 
     return c["key"]
 
 
+def _role(c: dict, names: Dict[str, str], kind: str = "own") -> str:
+    """The same condition in coaching words, for the "Setup" headline (Owen 2026-11-19: the reads had no tactical speak).
+    Describes WHERE players stood, never why it worked: "McGee in the drop zone", "Malone pushed up", "overload on our
+    left". Bands run from the kicking goal, so 'close to it' is pushed up on their kickout and dropped short on ours."""
+    nm = lambda pid: names.get(pid, "?")
+    near = {"short": "pushed up" if kind == "opp" else "dropped short", "mid": "in the middle third",
+            "long": "dropped deep" if kind == "opp" else "pushed up the pitch"}
+    t, v = c["type"], c["value"]
+    if t == "landing_length":
+        return {"short": "short kick", "mid": "mid-range kick", "long": "long kick"}[v]
+    if t == "landing_channel":
+        return "kick down the middle" if v == "centre" else f"kick to our {v} wing"
+    if t == "player_channel":
+        return f"{nm(c['players'][0])} " + ("central" if v == "centre" else f"wide on our {v}")
+    if t == "player_length":
+        return f"{nm(c['players'][0])} {near[v]}"
+    if t == "player_near_drop":
+        return f"{nm(c['players'][0])} in the drop zone"
+    if t == "pair_together":
+        return f"{nm(c['players'][0])} and {nm(c['players'][1])} paired up"
+    if t == "count_channel":
+        return "overload " + ("through the middle" if v == "centre" else f"on our {v}") + f" ({c['count']}+)"
+    return c["key"]
+
+
 def _join(parts: List[str]) -> str:
     return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
 
@@ -237,6 +262,10 @@ def mine(rows: List[dict], kind: str, seed: int = 7, min_n: int = MIN_N, min_res
         per_match = np.array([h[ix].sum() for ix in groups])
         spread_ok = (not spread) or (int((per_match > 0).sum()) >= SPREAD_MATCHES and per_match.max() <= SPREAD_SHARE * h.sum())
         ranked.append((ratio * (1.0 if spread_ok else 0.8), t, g, ratio, h, spread_ok))
+    # the last 3 matches (by date), so every pattern also reads "lately" beside the season (the team v itself)
+    mdate = {r["match_id"]: r["match_date"] for r in rs}
+    last3 = set(sorted(mdate, key=lambda m: mdate[m])[-3:]) if len(mdate) > 3 else set()
+    in3 = np.array([r["match_id"] in last3 for r in rs])
     out = {"win": [], "lose": []}
     listed = {"win": [], "lose": []}
     for _, t, g, ratio, h, spread_ok in sorted(ranked, key=lambda x: (-x[0], len(x[1]))):
@@ -251,7 +280,7 @@ def mine(rows: List[dict], kind: str, seed: int = 7, min_n: int = MIN_N, min_res
         strength = "stands out" if ratio >= 1 and spread_ok else "worth a look"
         rest = ctx & ~h
         parts = [{"type": conds[keys[i]]["type"], "value": conds[keys[i]]["value"], "players": list(conds[keys[i]]["players"]),
-                  "label": _label(conds[keys[i]], names, kind, w3)} for i in t]
+                  "label": _label(conds[keys[i]], names, kind, w3), "role": _role(conds[keys[i]], names, kind)} for i in t]
         pids = sorted({p for c in parts for p in c["players"]})
         kicks = [rs[k] for k in np.where(h)[0]]
         rest_kicks = [rs[k] for k in np.where(rest)[0]]
@@ -264,7 +293,18 @@ def mine(rows: List[dict], kind: str, seed: int = 7, min_n: int = MIN_N, min_res
             bm = by_match.setdefault(r["match_id"], {"match_id": r["match_id"], "opponent": r["opponent"], "match_date": r["match_date"], "n": 0, "won": 0})
             bm["n"] += 1; bm["won"] += bool(r["won"])
         hw, hn, rw, rn = int(won[h].sum()), int(h.sum()), int(won[rest].sum()), int(rest.sum())
+        setup = " + ".join(c["role"] for c in parts)
+        l3 = {"n": int((h & in3).sum()), "won": int(won[h & in3].sum()), "rest_n": int((rest & in3).sum()),
+              "rest_won": int(won[rest & in3].sum())} if last3 else None
+        n_m = len(by_match)
+        # the one line every surface uses (cards, match tab, agents, reports): Setup, won X of Y, the rest, last 3,
+        # matches, strength. "Setup" for winning, "Losing setup" for losing; the strength word never upgrades.
+        card = (f"{'Setup' if d == 'win' else 'Losing setup'}: {setup} - won {hw} of {hn}"
+                + (f" · rest {rw} of {rn}" if rn else "")
+                + (f" · last 3 matches {l3['won']} of {l3['n']}" if l3 and l3["n"] else (" · not seen in the last 3 matches" if l3 else ""))
+                + f" · {n_m} match{'es' if n_m != 1 else ''} · {strength}")
         out[d].append({
+            "setup": setup, "card": card, "last3": l3,
             "id": "|".join(keys[i] for i in t), "size": size, "strength": strength, "direction": d,
             "label": _join([c["label"] for c in parts]), "parts": parts,
             "n": hn, "won": hw, "rate": round(hw / hn, 3), "rest_n": rn, "rest_won": rw, "rest_rate": round(rw / rn, 3) if rn else None,

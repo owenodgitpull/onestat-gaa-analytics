@@ -155,10 +155,19 @@ function PatternCard({ p, on, onClick, matchId }: { p: KoPattern; on: boolean; o
           {p.strength === 'stands out' ? 'Stands out' : 'Worth a look'}
         </span>
       </div>
-      <p className="text-sm text-white/85 leading-snug">When {p.label}</p>
+      {p.setup ? (
+        <div className="space-y-0.5">
+          <p className="text-sm text-white font-medium leading-snug">
+            <span className="text-[10px] uppercase tracking-wide text-white/55 font-semibold mr-1.5">{p.direction === 'win' ? 'Setup' : 'Losing setup'}</span>
+            {p.setup}
+          </p>
+          <p className="text-xs text-white/60 leading-snug">When {p.label}</p>
+        </div>
+      ) : <p className="text-sm text-white/85 leading-snug">When {p.label}</p>}
       <Bar rate={p.rate} color={col} label="These" />
       {p.rest_rate != null && <Bar rate={p.rest_rate} color="rgba(255,255,255,0.45)" label="Otherwise" />}
       <p className="text-[11px] text-white/50">Otherwise = {p.rest_is} ({p.rest_won} of {p.rest_n}){p.mostly_one_match ? ' · mostly from one match' : ''}</p>
+      {!matchId && p.last3 && <p className="text-xs text-white/80 tabular-nums">Last 3 matches: {p.last3.n ? `won ${p.last3.won} of ${p.last3.n}` : 'not seen'}</p>}
       {matchId && p.matches.length > 1 && <p className="text-xs text-white/80">This match: {tm ? `won ${tm.won} of ${tm.n}` : 'did not happen'}</p>}
     </button>
   )
@@ -355,7 +364,7 @@ export default function KickoutPatterns({ kind: kindProp, team, L = 145, W = 85,
                     <span className="text-3xl font-extrabold text-white tabular-nums">{Math.round(s.rate * 100)}%</span>
                     <span className="text-sm text-white/70 tabular-nums">won {s.won} of {s.n_kicks} that landed{s.over_sideline.n ? ` · ${s.over_sideline.n} over the sideline` : ''}</span>
                   </div>
-                  {l && <p className="text-sm text-white/80">Lead: won {l.won} of {l.n} when {l.label} <span className="text-white/50">({l.rest_won} of {l.rest_n} otherwise, {l.strength})</span></p>}
+                  {l && <p className="text-sm text-white/80">{l.setup ? <>Setup: {l.setup} — won {l.won} of {l.n}</> : <>Lead: won {l.won} of {l.n} when {l.label}</>} <span className="text-white/50">({l.rest_won} of {l.rest_n} otherwise{l.last3 && l.last3.n ? `, last 3 matches ${l.last3.won} of ${l.last3.n}` : ''}, {l.strength})</span></p>}
                 </Tag>
               )
             })}

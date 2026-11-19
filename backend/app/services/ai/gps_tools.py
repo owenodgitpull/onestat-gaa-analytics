@@ -239,7 +239,8 @@ async def get_gps_season_trends(db, club_id=None, exclude_match_id=None) -> str:
 
 def _trim_ko_side(v: dict) -> dict:
     def trim(p):
-        return {"pattern": p["label"], "strength": p["strength"], "won": p["won"], "of": p["n"], "rest_won": p["rest_won"],
+        return {"card": p.get("card"), "setup": p.get("setup"), "last_3_matches": p.get("last3"),
+                "pattern": p["label"], "strength": p["strength"], "won": p["won"], "of": p["n"], "rest_won": p["rest_won"],
                 "rest_of": p["rest_n"], "compared_with": p["rest_is"], "gap_pts": p["gap_pts"], "mostly_one_match": p["mostly_one_match"],
                 "by_match": [f"{m['opponent']} {m['match_date']}: {m['won']}/{m['n']}" for m in p["matches"]],
                 "spots": [{"name": pl["name"], "here": pl["here"], "otherwise": pl["otherwise"]} for pl in p["players"]]}
@@ -258,7 +259,11 @@ async def get_kickout_patterns(db, club_id=None, side=None) -> str:
     res = await gps.season_kickout_patterns(db, club_id)
     return safe_json({"frame_note": FRAME_NOTE, "sides": _trim_ko(res, side), "how_to_read": res["how_to_read"] +
                       " Spots are in our attack frame (x = metres from our goal, y small = our left). Say 'goes with', never "
-                      "'causes'; give won/of against rest_won/rest_of and who the rest are (compared_with); flag mostly_one_match."})
+                      "'causes'; give won/of against rest_won/rest_of and who the rest are (compared_with); flag mostly_one_match. "
+                      "Lead each pattern with its `card` line exactly as written (the wording the screens use: Setup / "
+                      "Losing setup, won X of Y, rest, last 3 matches, matches, strength) - never upgrade 'worth a look' to "
+                      "'high-success' or similar. Then say what the shape is in coaching terms from the `setup` words (drop "
+                      "zone, pushed up, overload, paired up, dropped deep) - describe positions, not why it worked."})
 
 
 TOOL_DEFS = [

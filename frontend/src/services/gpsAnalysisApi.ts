@@ -126,7 +126,11 @@ export interface KoPatternMatch { match_id: string; opponent: string | null; mat
 export interface KoSpot { x: number; y: number; n: number }
 export interface KoPattern {
   id: string; size: number; strength: 'stands out' | 'worth a look'; direction: 'win' | 'lose'; label: string
-  parts: { type: string; value: string | number; players: string[]; label: string }[]
+  /** coaching words ("McGee in the drop zone + Malone pushed up") and the one line every surface quotes */
+  setup?: string; card?: string
+  /** the same pattern over the last 3 matches (null when there are 3 or fewer) */
+  last3?: { n: number; won: number; rest_n: number; rest_won: number } | null
+  parts: { type: string; value: string | number; players: string[]; label: string; role?: string }[]
   n: number; won: number; rate: number; rest_n: number; rest_won: number; rest_rate: number | null; gap_pts: number
   score: number; luck_bar: number; vs_luck: number; mostly_one_match: boolean; rest_is: string; reads: string
   matches: KoPatternMatch[]

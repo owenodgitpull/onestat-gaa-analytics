@@ -231,7 +231,8 @@ How to write it - section "Off the Ball", after Phase Analysis, 5-7 short headed
   Never quote team_mean_x as the headline. These totals include kicks over the sideline, so they match the phase table.
   SEASON KICKOUT PATTERNS: get_kickout_patterns lists which player spots / pairings / kick types went with winning or losing
   kickouts over every GPS match, with a luck check. Where this match's kickouts fit one of them, say so with its figures
-  ("across our GPS matches, their kickouts that came down within 20 m of X: won 15 of 22, 19 of 78 otherwise - worth a look"),
+  using the pattern's `card` line as written ("Setup: McGee in the drop zone + Malone pushed up - won 8 of 8 · rest 11 of 37 ·
+  last 3 matches 3 of 3 · 4 matches · worth a look"),
   keep its strength word, say 'goes with' (never 'caused'), and flag mostly_one_match.
 - BASELINE: get_gps_shape_trends_by_match baseline_other_matches gives the mean of each figure over our OTHER GPS matches. Use it
   for the two or three figures where this match stood out: "N m without the ball, against M m over our other K GPS matches" (n_matches / the field's n, exactly). Running is per player-minute, so periods of different length compare. If
