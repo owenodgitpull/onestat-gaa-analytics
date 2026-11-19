@@ -60,6 +60,7 @@ import ScoreableFreesAnalysis from '../components/charts/ScoreableFreesAnalysis'
 import AttackEfficiencyCard from '../components/charts/AttackEfficiencyCard'
 import SeasonBenchmarkCard from '../components/charts/SeasonBenchmarkCard'
 import MatchStatsPanel from '../components/MatchStatsPanel'
+import LiveAgentReads from '../components/LiveAgentReads'
 import GPSConfirmModal from '../components/GPSConfirmModal'
 import GpsTracksModal from '../components/gps/GpsTracksModal'
 import GpsMatchCard from '../components/gps/GpsMatchCard'
@@ -1565,6 +1566,9 @@ export default function MatchResult() {
           </button>
         </div>
       ) : null}
+
+      {/* The live match agent's 5-minute reads, in match order (collapsed to the first two) */}
+      {matchId && <LiveAgentReads matchId={matchId} halfMins={match?.half_duration_mins || 35} />}
 
       {/* Extended Stats Modal */}
       {showExtendedStats && match && (
