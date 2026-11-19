@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Play } from 'lucide-react'
 import GpsPitch, { PitchFrameCaption, pitchMaxWidth, type PitchScale } from './GpsPitch'
-import { gpsAnalysisApi, COLOR_OURS, periodClock, type KoPattern, type KoSide, type KoLen, type KoChan } from '../../services/gpsAnalysisApi'
+import { gpsAnalysisApi, COLOR_OURS, periodClock, type KoPattern, type KoPatterns, type KoSide, type KoLen, type KoChan } from '../../services/gpsAnalysisApi'
 import { useReportMode } from '../../contexts/ReportModeContext'
 
 const WON = '#22c55e', LOST = '#ef4444'
@@ -159,7 +159,7 @@ function PatternCard({ p, on, onClick, matchId }: { p: KoPattern; on: boolean; o
       <Bar rate={p.rate} color={col} label="These" />
       {p.rest_rate != null && <Bar rate={p.rest_rate} color="rgba(255,255,255,0.45)" label="Otherwise" />}
       <p className="text-[11px] text-white/50">Otherwise = {p.rest_is} ({p.rest_won} of {p.rest_n}){p.mostly_one_match ? ' · mostly from one match' : ''}</p>
-      {matchId && <p className="text-xs text-white/80">This match: {tm ? `won ${tm.won} of ${tm.n}` : 'did not happen'}</p>}
+      {matchId && p.matches.length > 1 && <p className="text-xs text-white/80">This match: {tm ? `won ${tm.won} of ${tm.n}` : 'did not happen'}</p>}
     </button>
   )
 }
@@ -322,9 +322,13 @@ function ExplorerTab({ side, kind, L, W, team }: { side: KoSide; kind: 'own' | '
 
 /** Season dashboard: standalone (its own side switch, standard pitch). Match Kickouts tab: follows the tab's side, marks
  * how each pattern went in this match, and plays this match's kicks in place. */
-export default function KickoutPatterns({ kind: kindProp, team, L = 145, W = 85, matchId, periods, onOpen }: { kind?: 'own' | 'opp'; team: string; L?: number; W?: number; matchId?: string; periods?: Periods; onOpen?: (ms: number) => void }) {
+export default function KickoutPatterns({ kind: kindProp, team, L = 145, W = 85, matchId, periods, onOpen, data }: { kind?: 'own' | 'opp'; team: string; L?: number; W?: number; matchId?: string; periods?: Periods; onOpen?: (ms: number) => void
+  /** one match's own patterns (analysis.kickouts.match_patterns): the match Kickouts tab. Without it: every GPS match (dashboard). */
+  data?: KoPatterns | null }) {
   const { print } = useReportMode()
-  const q = useQuery({ queryKey: ['gps-ko-patterns'], queryFn: () => gpsAnalysisApi.kickoutPatterns(), staleTime: 10 * 60 * 1000, retry: false })
+  const single = data !== undefined
+  const fetched = useQuery({ queryKey: ['gps-ko-patterns'], queryFn: () => gpsAnalysisApi.kickoutPatterns(), staleTime: 10 * 60 * 1000, retry: false, enabled: !single })
+  const q = single ? { data: data || undefined, isLoading: false, isError: false } : fetched
   const [tab, setTab] = useState<'patterns' | 'types' | 'explore'>('patterns')
   const [kindOwn, setKindOwn] = useState<'own' | 'opp'>(kindProp || 'own')
   const kind = kindProp || kindOwn
@@ -334,7 +338,8 @@ export default function KickoutPatterns({ kind: kindProp, team, L = 145, W = 85,
   return (
     <div className="glass-card p-4 space-y-4">
       <div className="space-y-1">
-        <h3 className="text-white text-lg font-semibold">Kickout patterns {matchId ? 'across every GPS match' : `· all ${q.data?.matches.length ?? ''} GPS matches`}</h3>
+        <h3 className="text-white text-lg font-semibold">{single ? 'Kickout patterns in this match' : `Kickout patterns · all ${q.data?.matches.length ?? ''} GPS matches`}</h3>
+        {single && !data && <p className="text-sm text-white/60">Not worked out for this match yet.</p>}
         {q.data && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-2">
             {(['own', 'opp'] as const).map(k => {
@@ -363,12 +368,14 @@ export default function KickoutPatterns({ kind: kindProp, team, L = 145, W = 85,
         {side && (
           <>
             <p className="text-sm text-white/75">
-              {side.matches} matches ({q.data!.matches.map(m => `${m.opponent} ${shortDate(m.match_date)}`).join(', ')}): we won {side.won} of the {side.n_kicks} that landed ({Math.round(side.rate * 100)}%).
+              {single ? 'In this match' : `${side.matches} matches (${q.data!.matches.map(m => `${m.opponent} ${shortDate(m.match_date)}`).join(', ')})`}: we won {side.won} of the {side.n_kicks} that landed ({Math.round(side.rate * 100)}%).
             </p>
+            {single && <p className="text-xs text-white/65">One match is only a few kicks, so these are leads to watch on video, rarely proof. The season dashboard looks for the same patterns across every GPS match, where they mean more.</p>}
             <p className="text-xs text-white/55 max-w-none">
               Everything is read <b className="text-white/80">at the kick</b>, before anyone knows who wins it. We test {side.conditions_tested} spots and pairings plus their combinations, and searching that many always throws up a few by luck,
               so each is checked against the results shuffled at random. <b className="text-white/80">Stands out</b>: unlikely to be luck. <b className="text-white/80">Worth a look</b>: could still be luck, so watch the clips before acting on it.
               A player's pattern is compared with the other kicks <i>he</i> was on for, so it is about where he stood, not whether he played.
+              Sides are thirds of the width; distances from a goal are from the goal the kick was taken from.
             </p>
           </>
         )}

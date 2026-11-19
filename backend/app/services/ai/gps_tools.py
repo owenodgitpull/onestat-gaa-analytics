@@ -127,7 +127,10 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
         rows = [{k: v for k, v in r.items() if k not in ("at_kick", "after_6s", "moved")} for r in ko["kickouts"]]
         spots = {k: {**v, "players": [{kk: vv for kk, vv in p.items() if kk != "player_id"} for p in v["players"][:6]]}
                  for k, v in (ko.get("player_spots") or {}).items()}
-        return {"patterns": ko.get("patterns"), "totals": ko.get("totals"), "player_spots": spots, "zones": ko.get("zones"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
+        mp = ko.get("match_patterns") or {}
+        this_match = ({"sides": _trim_ko(mp), "how_to_read": "THIS MATCH ONLY (luck check inside this match): with so few kicks these are leads "
+                       "('worth a look'), almost never proof; the season list is get_kickout_patterns."} if mp.get("sides") else None)
+        return {"patterns": ko.get("patterns"), "this_match_patterns": this_match, "totals": ko.get("totals"), "player_spots": spots, "zones": ko.get("zones"), "groups": ko["groups"], "push_up_on_their_kickouts": ko["push_up_on_their_kickouts"], "kickouts": rows[:limit * 3],
                 "how_to_read": "totals = kickouts with a GPS frame per side (own = ours, opp = theirs), won/lost from OUR side, over_the_sideline "
                                "included (our kick straight out = lost, theirs = won); quote these, never add groups up. team_mean_x = mean distance "
                                "of our outfielders from our own goal line at the kick, read 2.5 s before the tag (the tag is when the ball "
@@ -234,23 +237,26 @@ async def get_gps_season_trends(db, club_id=None, exclude_match_id=None) -> str:
                                      "player-minute, so matches of different length compare fairly."})
 
 
+def _trim_ko_side(v: dict) -> dict:
+    def trim(p):
+        return {"pattern": p["label"], "strength": p["strength"], "won": p["won"], "of": p["n"], "rest_won": p["rest_won"],
+                "rest_of": p["rest_n"], "compared_with": p["rest_is"], "gap_pts": p["gap_pts"], "mostly_one_match": p["mostly_one_match"],
+                "by_match": [f"{m['opponent']} {m['match_date']}: {m['won']}/{m['n']}" for m in p["matches"]],
+                "spots": [{"name": pl["name"], "here": pl["here"], "otherwise": pl["otherwise"]} for pl in p["players"]]}
+    return {"kicks": v["n_kicks"], "won": v["won"], "matches": v["matches"], "conditions_tested": v["conditions_tested"],
+            "goes_with_winning": [trim(p) for p in v["patterns"]["win"]], "goes_with_losing": [trim(p) for p in v["patterns"]["lose"]],
+            "kick_types": v["kick_types"], "over_the_sideline": v["over_sideline"]}
+
+
+def _trim_ko(res: dict, side=None) -> dict:
+    return {("our_kickouts" if k == "own" else "their_kickouts"): _trim_ko_side(v)
+            for k, v in (res.get("sides") or {}).items() if not side or k == side}
+
+
 async def get_kickout_patterns(db, club_id=None, side=None) -> str:
     """Kickout patterns across every GPS match (ko_rules), trimmed for the agent: no ids, no kick lists."""
     res = await gps.season_kickout_patterns(db, club_id)
-    sides = {}
-    for k, v in res["sides"].items():
-        if side and k != side:
-            continue
-        def trim(p):
-            return {"pattern": p["label"], "strength": p["strength"], "won": p["won"], "of": p["n"], "rest_won": p["rest_won"],
-                    "rest_of": p["rest_n"], "compared_with": p["rest_is"], "gap_pts": p["gap_pts"], "mostly_one_match": p["mostly_one_match"],
-                    "by_match": [f"{m['opponent']} {m['match_date']}: {m['won']}/{m['n']}" for m in p["matches"]],
-                    "spots": [{"name": pl["name"], "here": pl["here"], "otherwise": pl["otherwise"]} for pl in p["players"]]}
-        sides["our_kickouts" if k == "own" else "their_kickouts"] = {
-            "kicks": v["n_kicks"], "won": v["won"], "matches": v["matches"], "conditions_tested": v["conditions_tested"],
-            "goes_with_winning": [trim(p) for p in v["patterns"]["win"]], "goes_with_losing": [trim(p) for p in v["patterns"]["lose"]],
-            "kick_types": v["kick_types"], "over_the_sideline": v["over_sideline"]}
-    return safe_json({"frame_note": FRAME_NOTE, "sides": sides, "how_to_read": res["how_to_read"] +
+    return safe_json({"frame_note": FRAME_NOTE, "sides": _trim_ko(res, side), "how_to_read": res["how_to_read"] +
                       " Spots are in our attack frame (x = metres from our goal, y small = our left). Say 'goes with', never "
                       "'causes'; give won/of against rest_won/rest_of and who the rest are (compared_with); flag mostly_one_match."})
 

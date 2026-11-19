@@ -82,6 +82,12 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
         "situations": si, "positions": ap, "pressure": pr,
         "computed_in_s": round(time.time() - t0, 1),
     }
+    # this match's own kickout patterns (the season list is /gps-analysis/season/kickout-patterns)
+    try:
+        from .ko_rules import match_kickout_patterns
+        out["kickouts"]["match_patterns"] = match_kickout_patterns(out)
+    except Exception as e:     # never lose the analysis over it
+        out["kickouts"]["match_patterns"] = {"error": str(e)[:200]}
     # each carry's start lined up from GPS, for the replay's ball (10 Hz grid); the tag shift saved with the sync is in it
     al = g10.carry_align or {}
     cs = [c for c in inp.carries if c.team in ("own", "opponent")]

@@ -178,16 +178,17 @@
     z-index: 0;
   }
 
-  /* Top edge light reflection */
+  /* Top trim: the brand gradient (green to blue, --gradient-primary's colours) across the top edge, fading at the rounded
+     corners (Owen 2026-11-19: "a splash of colour") */
   .glass-card::after {
     content: '';
     position: absolute;
-    top: 0;
-    left: 8%;
-    right: 8%;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), rgba(0, 176, 255, 0.18), rgba(255, 255, 255, 0.25), transparent);
-    border-radius: inherit;
+    top: -1px;
+    left: 14px;
+    right: 14px;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(0, 230, 118, 0) 0%, rgba(0, 230, 118, 0.85) 12%, rgba(0, 200, 140, 0.8) 45%, rgba(0, 176, 255, 0.85) 88%, rgba(0, 176, 255, 0) 100%);
+    border-radius: 2px;
     pointer-events: none;
     z-index: 1;
   }

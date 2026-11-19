@@ -486,8 +486,9 @@ export function KickoutsView({ a, periods, onOpen, team, matchId, sessionId, ini
         {finding && <p className="text-sm text-white/80">{finding}</p>}
       </div>
 
-      {/* the season's patterns, right under this match's headline (Owen 2026-11-17) */}
-      <KickoutPatterns kind={kind} team={team} L={a.pitch_length_m} W={a.pitch_width_m} matchId={matchId} periods={periods} onOpen={onOpen} />
+      {/* THIS match's own patterns (Owen 2026-11-19: the season list lives on the dashboard) */}
+      <KickoutPatterns kind={kind} team={team} L={a.pitch_length_m} W={a.pitch_width_m} matchId={matchId} periods={periods} onOpen={onOpen}
+        data={a.kickouts.match_patterns && 'sides' in a.kickouts.match_patterns ? a.kickouts.match_patterns : null} />
 
       {print ? null : k ? (
         <div ref={listTop} className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 scroll-mt-20">

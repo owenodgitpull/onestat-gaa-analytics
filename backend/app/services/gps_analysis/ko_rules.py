@@ -96,24 +96,28 @@ def _conditions(rs: List[dict], kind: str):
     return conds, names
 
 
-def _label(c: dict, names: Dict[str, str]) -> str:
-    """Reads after "when": "McGee was on our left", "the kick landed long (over 65 m)"."""
+def _label(c: dict, names: Dict[str, str], kind: str = "own", w3: float = 28.0) -> str:
+    """Reads after "when", in plain metres (Owen 2026-11-19: "on our centre" was unclear): "McGee was within 28 m of our
+    left touchline", "Murphy was over 65 m from our goal". w3 = a third of the pitch width (the channel edge)."""
     nm = lambda pid: names.get(pid, "?")
+    goal = "our goal" if kind == "own" else "their goal"
+    band = {"short": f"within 45 m of {goal}", "mid": f"45-65 m from {goal}", "long": f"over 65 m from {goal}"}
+    side = lambda ch: (f"in the middle (over {w3:.0f} m from both touchlines)" if ch == "centre" else f"within {w3:.0f} m of our {ch} touchline")
     t = c["type"]
     if t == "landing_length":
-        return f"the kick landed {LEN_WORD[c['value']]}"
+        return f"the kick came down {band[c['value']]}"
     if t == "landing_channel":
-        return f"the kick landed on our {c['value']}"
+        return f"the kick came down {side(c['value'])}"
     if t == "player_channel":
-        return f"{nm(c['players'][0])} was on our {c['value']}"
+        return f"{nm(c['players'][0])} was {side(c['value'])}"
     if t == "player_length":
-        return f"{nm(c['players'][0])} was in the {c['value']} zone"
+        return f"{nm(c['players'][0])} was {band[c['value']]}"
     if t == "player_near_drop":
         return f"{nm(c['players'][0])} was within {DROP_M:.0f} m of where it came down"
     if t == "pair_together":
         return f"{nm(c['players'][0])} and {nm(c['players'][1])} were within {PAIR_M:.0f} m of each other"
     if t == "count_channel":
-        return f"{c['count']}+ of ours were on our {c['value']}"
+        return f"{c['count']}+ of ours were {side(c['value'])}"
     return c["key"]
 
 
@@ -124,7 +128,8 @@ def _join(parts: List[str]) -> str:
 class _Search:
     """Every single, pair and three of conditions, scored with matrix products so the shuffles are cheap."""
 
-    def __init__(self, C: np.ndarray, X: np.ndarray):
+    def __init__(self, C: np.ndarray, X: np.ndarray, min_n: int = MIN_N, min_rest: int = MIN_REST):
+        self.min_n, self.min_rest = min_n, min_rest
         self.C = C.astype(np.float32)          # (m, n) condition holds
         self.X = X.astype(np.float32)          # (m, n) the condition's players were on (all ones for team/landing)
         self.Cb, self.Xb = C, X
@@ -141,7 +146,7 @@ class _Search:
             ctx_rate = np.where(xn > 0, xw / np.maximum(xn, 1), 0)
             ph = (hw + SHRINK_K * ctx_rate) / (hn + SHRINK_K)
             pr = np.where(rn > 0, rw / np.maximum(rn, 1), 0)
-            ok = (hn >= MIN_N) & (rn >= MIN_REST)
+            ok = (hn >= self.min_n) & (rn >= self.min_rest)
         return np.where(ok, ph - pr, 0.0)
 
     def run(self, w: np.ndarray):
@@ -174,24 +179,25 @@ class _Search:
         return g1, np.where(keep2, g2u, 0.0), iu, g3, (pi, pj)
 
 
-def mine(rows: List[dict], kind: str, seed: int = 7) -> Optional[dict]:
+def mine(rows: List[dict], kind: str, seed: int = 7, min_n: int = MIN_N, min_rest: int = MIN_REST, spread: bool = True) -> Optional[dict]:
     rs = [r for r in rows if r["kind"] == kind and r["outcome"] != "over the sideline" and r.get("landing_x") is not None]
     n = len(rs)
-    if n < 2 * MIN_N:
+    if n < 2 * min_n:
         return None
     won = np.array([bool(r["won"]) for r in rs])
     conds, names = _conditions(rs, kind)
+    w3 = float(np.median([r["W"] for r in rs])) / 3
     on: Dict[str, np.ndarray] = {}
     for k, r in enumerate(rs):
         for p in r["at_kick"]:
             on.setdefault(p["player_id"], np.zeros(n, bool))[k] = True
-    keys = [k for k, c in conds.items() if c["v"].sum() >= MIN_N]
+    keys = [k for k, c in conds.items() if c["v"].sum() >= min_n]
     if not keys:
         return None
     C = np.array([conds[k]["v"] for k in keys])
     X = np.array([np.logical_and.reduce([on[p] for p in conds[k]["players"]]) if conds[k]["players"] else np.ones(n, bool)
                   for k in keys])
-    S = _Search(C, X)
+    S = _Search(C, X, min_n, min_rest)
     g1, g2, iu, g3, (pi, pj) = S.run(won)
 
     # the luck bar per pattern size: shuffle won/lost inside each match, same candidate sets
@@ -229,7 +235,7 @@ def mine(rows: List[dict], kind: str, seed: int = 7) -> Optional[dict]:
             continue
         h = np.logical_and.reduce([C[i] for i in t])
         per_match = np.array([h[ix].sum() for ix in groups])
-        spread_ok = int((per_match > 0).sum()) >= SPREAD_MATCHES and per_match.max() <= SPREAD_SHARE * h.sum()
+        spread_ok = (not spread) or (int((per_match > 0).sum()) >= SPREAD_MATCHES and per_match.max() <= SPREAD_SHARE * h.sum())
         ranked.append((ratio * (1.0 if spread_ok else 0.8), t, g, ratio, h, spread_ok))
     out = {"win": [], "lose": []}
     listed = {"win": [], "lose": []}
@@ -245,7 +251,7 @@ def mine(rows: List[dict], kind: str, seed: int = 7) -> Optional[dict]:
         strength = "stands out" if ratio >= 1 and spread_ok else "worth a look"
         rest = ctx & ~h
         parts = [{"type": conds[keys[i]]["type"], "value": conds[keys[i]]["value"], "players": list(conds[keys[i]]["players"]),
-                  "label": _label(conds[keys[i]], names)} for i in t]
+                  "label": _label(conds[keys[i]], names, kind, w3)} for i in t]
         pids = sorted({p for c in parts for p in c["players"]})
         kicks = [rs[k] for k in np.where(h)[0]]
         rest_kicks = [rs[k] for k in np.where(rest)[0]]
@@ -302,6 +308,16 @@ def mine(rows: List[dict], kind: str, seed: int = 7) -> Optional[dict]:
     }
 
 
+MATCH_MIN_N = 4    # one match: 4 kicks a side is the least worth describing (the luck bar is far higher on so few)
+
+
+def match_kickout_patterns(res: dict) -> dict:
+    """The same search on ONE match's kickouts (the match Kickouts tab): smaller groups allowed, the luck check shuffles
+    inside this match only, no spread-over-matches rule. With ~20-35 kicks a side, expect leads, rarely anything that
+    stands out."""
+    return kickout_patterns(collect(res), min_n=MATCH_MIN_N, min_rest=MATCH_MIN_N, spread=False)
+
+
 HOW_TO_READ = (
     "Every condition is read AT THE KICK (before anyone knows who wins it), in our attack frame: channels are thirds of the "
     "width as WE attack; bands are metres from the KICKING goal (short < 45, mid 45-65, long > 65). A player pattern is "
@@ -312,7 +328,7 @@ HOW_TO_READ = (
 )
 
 
-def kickout_patterns(rows: List[dict]) -> dict:
-    sides = {k: mine(rows, k) for k in ("own", "opp")}
+def kickout_patterns(rows: List[dict], min_n: int = MIN_N, min_rest: int = MIN_REST, spread: bool = True) -> dict:
+    sides = {k: mine(rows, k, min_n=min_n, min_rest=min_rest, spread=spread) for k in ("own", "opp")}
     return {"sides": {k: v for k, v in sides.items() if v}, "matches": [{"match_id": a, "opponent": b, "match_date": c} for a, b, c in sorted({(r["match_id"], r["opponent"], r["match_date"]) for r in rows}, key=lambda m: m[2])],
-            "min_n": MIN_N, "how_to_read": HOW_TO_READ}
+            "min_n": min_n, "how_to_read": HOW_TO_READ}

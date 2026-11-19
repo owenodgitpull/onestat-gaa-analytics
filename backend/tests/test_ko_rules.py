@@ -27,7 +27,7 @@ def _rows(seed, effect):
 def test_real_effect_stands_out():
     out = kickout_patterns(_rows(1, True))["sides"]["own"]["patterns"]["win"]
     top = [p for p in out if p["strength"] == "stands out"]
-    assert top and any(pt["label"] == "P0 was on our left" for p in top for pt in p["parts"])
+    assert top and any(pt["label"].startswith("P0 was within") and "left touchline" in pt["label"] for p in top for pt in p["parts"])
 
 
 def test_noise_rarely_stands_out():
