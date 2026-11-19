@@ -686,32 +686,35 @@ export default function MatchResult() {
             </div>
           </div>
 
-          {/* Center: Final Score, sports-HUD style: a plate per team, the winner lit in the club colour, the margin between */}
+          {/* Center: Final Score, sports-HUD style: a plate per team with a top trim in that team's kit colours (half primary, half secondary) */}
           {(() => {
             const diff = teamTotal - oppTotal
             const accent = clubInfo?.primary_colour || '#10b981'
             const logo = clubLogo
+            const kit = (ours: boolean): [string, string] => ours
+              ? [match.team_strip_colour || clubInfo?.primary_colour || accent, match.team_strip_secondary_colour || clubInfo?.secondary_colour || match.team_strip_colour || clubInfo?.primary_colour || accent]
+              : [match.opponent_strip_colour || '#64748b', match.opponent_strip_secondary_colour || match.opponent_strip_colour || '#94a3b8']
             const plate = (name: string, goals: number, points: number, total: number, ours: boolean) => {
               const won = ours ? diff > 0 : diff < 0
+              const [c1, c2] = kit(ours)
               return (
-                <div className={`relative flex-1 min-w-0 rounded-2xl border px-4 pt-3 pb-4 text-center overflow-hidden ${won ? 'bg-white/[0.07]' : 'bg-white/[0.03] border-white/10'}`}
-                  style={won ? { borderColor: `${accent}99`, boxShadow: `0 0 0 1px ${accent}40, 0 10px 30px -12px ${accent}80` } : undefined}>
-                  <div className="absolute inset-x-0 top-0 h-1" style={{ background: won ? accent : 'rgba(255,255,255,0.12)' }} aria-hidden="true" />
+                <div className="relative flex-1 min-w-0 rounded-xl border border-white/10 bg-white/[0.05] px-3 pt-3 pb-2.5 text-center overflow-hidden">
+                  <div className="absolute inset-x-0 top-0 h-1.5 flex" aria-hidden="true"><span className="flex-1" style={{ background: c1 }} /><span className="flex-1" style={{ background: c2 }} /></div>
                   <div className="flex items-center justify-center gap-2 min-w-0">
                     {ours && logo
                       ? <img src={logo} alt="" className="w-7 h-7 rounded-full object-cover bg-white/10 shrink-0" />
                       : <span className="w-7 h-7 rounded-full grid place-items-center text-xs font-bold bg-white/10 text-white/80 shrink-0" aria-hidden="true">{(name || '?').slice(0, 1).toUpperCase()}</span>}
-                    <span className="text-base md:text-lg font-bold uppercase tracking-wide text-white truncate">{name}</span>
+                    <span className="text-base font-bold uppercase tracking-wide text-white truncate">{name}</span>
                   </div>
-                  <div className={`mt-2 text-5xl md:text-6xl font-black tabular-nums leading-none ${won ? 'text-white' : 'text-white/75'}`}>
+                  <div className={`mt-1.5 text-4xl md:text-[2.75rem] font-black tabular-nums leading-none ${won ? 'text-white' : 'text-white/70'}`}>
                     {goals}<span className="text-white/35 mx-0.5">-</span>{String(points).padStart(2, '0')}
                   </div>
-                  <div className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/50 tabular-nums">{total} points</div>
+                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50 tabular-nums">{total} points</div>
                 </div>
               )
             }
             return (
-              <div className="flex flex-col items-stretch gap-2 w-full md:min-w-[26rem]">
+              <div className="flex flex-col items-stretch gap-2 w-full md:w-[22rem]">
                 <div className="flex items-stretch gap-2">
                   {plate(clubName, match.team_goals, match.team_points, teamTotal, true)}
                   <div className="flex flex-col items-center justify-center px-1 shrink-0">
