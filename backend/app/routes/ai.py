@@ -423,6 +423,37 @@ async def chat_endpoint(
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
 
+async def _annotate_history(db: AsyncSession, session_uuid, history: list) -> list:
+    """Append to each earlier assistant turn the app's record of what that reply really ran and showed (tools, video
+    built, charts, tables), matched to the stored message by its text. Read by the model only."""
+    rows = (await db.execute(
+        select(ChatSessionMessage.content, ChatSessionMessage.visualizations)
+        .where(ChatSessionMessage.session_id == session_uuid, ChatSessionMessage.role == "assistant")
+    )).all()
+    by_text = {(c or "").strip(): v for c, v in rows if v}
+    out = []
+    for m in history:
+        v = by_text.get((m.get("content") or "").strip()) if m.get("role") == "assistant" else None
+        if not v:
+            out.append(m)
+            continue
+        parts = []
+        for item in v:
+            k, d = item.get("kind"), item.get("data") or {}
+            if k == "tools" and d.get("names"):
+                parts.append("tools run: " + ", ".join(d["names"]))
+            elif k == "video":
+                parts.append(f"video compilation built and shown: '{d.get('title')}', {d.get('clip_count')} clips (id {d.get('compilation_id')})")
+            elif k == "chart":
+                parts.append(f"chart shown: '{d.get('title') or 'chart'}'")
+            elif k == "table":
+                parts.append(f"table shown: '{d.get('title') or 'table'}'")
+        note = ("\n\n[App record of this reply, not seen by the user: it came from real tool results - "
+                + "; ".join(parts) + ".]") if parts else ""
+        out.append({**m, "content": (m.get("content") or "") + note})
+    return out
+
+
 @router.post("/chat/stream")
 async def chat_stream_endpoint(
     request: ChatRequest,
@@ -476,6 +507,15 @@ async def chat_stream_endpoint(
         # Collect assistant response
         accumulated_text = ""
         collected_vizs = []
+        tools_used: list = []
+
+        # The browser sends earlier turns as plain text, so the model could not tell a reply built from real tool
+        # calls from one it made up - and "corrected" a real video reply as invented (McGee opp kickouts, 2026-11-19:
+        # the compilation was built, 5 clips). Each earlier reply now carries the app's own record of what it ran.
+        try:
+            history = await _annotate_history(db, session.id, history)
+        except Exception as e:
+            logger.warning(f"chat history annotation skipped: {e}")
 
         try:
             async for event_line in chat_with_analyst_stream(
@@ -489,6 +529,9 @@ async def chat_stream_endpoint(
                         payload = json.loads(event_line[6:].strip())
                         if payload.get("type") == "text":
                             accumulated_text += payload.get("content", "")
+                        elif payload.get("type") == "thinking" and payload.get("tool"):
+                            if payload["tool"] not in tools_used:
+                                tools_used.append(payload["tool"])
                         elif payload.get("type") == "chart" and payload.get("chart"):
                             collected_vizs.append({"kind": "chart", "data": payload["chart"]})
                         elif payload.get("type") == "table" and payload.get("table"):
@@ -501,7 +544,10 @@ async def chat_stream_endpoint(
             logger.error(f"Chat stream error (session {session_id}): {e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            # Persist assistant message even on partial responses
+            # Persist assistant message even on partial responses (the tools it ran ride along for the next turn's
+            # history; the page only draws chart / table / video kinds)
+            if tools_used:
+                collected_vizs.append({"kind": "tools", "data": {"names": tools_used}})
             try:
                 if accumulated_text:
                     assistant_msg = ChatSessionMessage(
