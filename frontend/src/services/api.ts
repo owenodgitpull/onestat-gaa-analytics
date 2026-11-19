@@ -1761,6 +1761,11 @@ export interface DashboardChartsResponse {
   summary?: string;
   error?: string;
   generated_at?: string;
+  /** Load More: nothing new worth charting on this data (or the set is full) */
+  done?: boolean | null;
+  reason?: string | null;
+  /** Load More: one is already running for this club - its charts land in the cache */
+  pending?: boolean | null;
 }
 
 export interface SingleChartResponse {

@@ -106,6 +106,30 @@ TRAINING_TOOLS = [
 MAX_SEASON_TURNS = 5
 
 
+MAX_AI_CHARTS = 12          # Load More stops here on one set of data
+_CHARTS_RUNNING: dict = {}  # club_id -> a Load More / regenerate in flight (this process)
+
+
+async def _chart_season_facts(db, club_id) -> dict:
+    """The facts the chart prompt opens with, from this club's counted matches only: results from the match scores
+    (frees and 45s included), totals, and turnovers by the dashboard's one definition."""
+    from app.services.season_dashboard_service import SeasonDashboardService, turnover_events
+    ms = await SeasonDashboardService._get_completed_matches(db, club_id)
+    res = []
+    for m in ms:
+        us = (m.team_goals or 0) * 3 + (m.team_points or 0)
+        them = (m.opponent_goals or 0) * 3 + (m.opponent_points or 0)
+        res.append({"opponent": m.opponent, "date": str(m.match_date)[:10], "competition": m.competition,
+                    "team_score": f"{m.team_goals}-{m.team_points}", "team_total": us,
+                    "opponent_score": f"{m.opponent_goals}-{m.opponent_points}", "opponent_total": them,
+                    "result": "W" if us > them else "L" if us < them else "D"})
+    tos = await turnover_events(db, [m.id for m in ms]) if ms else []
+    return {"match_results": res,
+            "totals": {"goals": sum(m.team_goals or 0 for m in ms), "points": sum(m.team_points or 0 for m in ms),
+                       "opp_goals": sum(m.opponent_goals or 0 for m in ms), "opp_points": sum(m.opponent_points or 0 for m in ms)},
+            "turnovers": {"won": sum(1 for t in tos if t.side == "won"), "lost": sum(1 for t in tos if t.side == "lost")}}
+
+
 class SeasonAgent:
     """Agentic Season Intelligence — analyses accumulated season data."""
 
@@ -526,7 +550,6 @@ class SeasonAgent:
         merge_with_cache: bool = False,
     ) -> dict:
         """Generate Recharts-compatible chart specs for the dashboard via agentic analysis."""
-        from app.services.ai.chart_engine import _get_raw_data_for_charts
         from app.models.season_cache import SeasonCache
         from app.services.season_dashboard_service import _compute_data_fingerprint
 
@@ -550,17 +573,60 @@ class SeasonAgent:
             cache = None
             fingerprint = None
 
-        raw_data = await _get_raw_data_for_charts(db)
+        prior_charts = (cache.cached_result.get("charts") or []) if (cache and isinstance(cache.cached_result, dict) and cache.data_fingerprint == fingerprint) else []
+        if merge_with_cache:
+            # Load More: stop when the AI has said there is nothing new on this data, or the set is full - answered from
+            # the cache, no model call (each run is ~2 minutes and real money)
+            cr = cache.cached_result if (cache and isinstance(cache.cached_result, dict)) else {}
+            if cache and cache.data_fingerprint == fingerprint and cr.get("done"):
+                return {"success": True, "charts": [], "done": True, "reason": cr.get("done_reason")}
+            if len(prior_charts) >= MAX_AI_CHARTS:
+                return {"success": True, "charts": [], "done": True,
+                        "reason": f"That's {len(prior_charts)} charts on this data - new ones come once more matches are tagged."}
+            if club_id and str(club_id) in _CHARTS_RUNNING:
+                return {"success": True, "charts": [], "pending": True}
 
+        # Only this club's matches, as compact facts (it loaded EVERY club's matches and events - 27 matches, 5,000
+        # events, 24 s - and told the model "Matches Played: 27"). The agent's tools give it everything else.
+        raw_data = await _chart_season_facts(db, club_id)
+        titles = {c.get("id"): c.get("title") for c in prior_charts if isinstance(c, dict)}
         context = {
             "raw_data": raw_data,
             "excluded_chart_ids": excluded_chart_ids,
+            "on_screen_titles": [titles[i] for i in excluded_chart_ids if i in titles],
+            "dismissed_ids": [i for i in excluded_chart_ids if i not in titles],
             "num_charts": num_charts,
+            "load_more": merge_with_cache,
         }
 
+        if club_id:
+            _CHARTS_RUNNING[str(club_id)] = True
         try:
             result = await SeasonAgent.analyze_season(db, "dashboard_charts", context, club_id=club_id)
             charts = result.get("charts", [])
+            # never repeat what is on screen: the same id gets a new one, the same title is dropped
+            seen_ids = set(excluded_chart_ids) | set(titles)
+            seen_titles = {(t or "").strip().lower() for t in titles.values()}
+            fresh = []
+            for c in charts:
+                if not isinstance(c, dict) or (c.get("title") or "").strip().lower() in seen_titles:
+                    continue
+                base_id = c.get("id") or "chart"
+                cid, n = base_id, 2
+                while cid in seen_ids:
+                    cid = f"{base_id}_{n}"
+                    n += 1
+                c["id"] = cid
+                seen_ids.add(cid)
+                seen_titles.add((c.get("title") or "").strip().lower())
+                fresh.append(c)
+            charts = fresh
+            if merge_with_cache and not charts:
+                reason = result.get("reason") or "Nothing new worth charting on this data yet - more charts come once more matches are tagged."
+                if cache and cache.data_fingerprint == fingerprint and isinstance(cache.cached_result, dict):
+                    cache.cached_result = {**cache.cached_result, "done": True, "done_reason": reason}
+                    await db.commit()
+                return {"success": True, "charts": [], "done": True, "reason": reason}
             logger.info(f"Dashboard charts AI returned {len(charts)} charts, keys in result: {list(result.keys())}")
             if not charts:
                 logger.warning(f"Dashboard charts AI returned empty charts. Full result keys: {list(result.keys())}, result snippet: {str(result)[:500]}")
@@ -616,6 +682,9 @@ class SeasonAgent:
                 "error": str(e),
                 "charts": [],
             }
+        finally:
+            if club_id:
+                _CHARTS_RUNNING.pop(str(club_id), None)
 
     # -------------------------------------------------------------------------
     # SINGLE CHART wrapper
@@ -1247,70 +1316,20 @@ Return ONLY a valid JSON array. If nothing noteworthy, return [].
     elif task == "dashboard_charts":
         raw_data = context.get("raw_data", {})
         num_charts = context.get("num_charts", 4)
-        excluded = context.get("excluded_chart_ids", [])
-
-        # Pre-calculate key stats
-        matches = raw_data.get("matches", [])
-        events = raw_data.get("events", [])
-
-        team_events = [e for e in events if e.get("team") == "own"]
-        opp_events = [e for e in events if e.get("team") == "opponent"]
-
-        tm_goals = len([e for e in team_events if e.get("event_type") == "goal"])
-        tm_points = len([e for e in team_events if e.get("event_type") == "point"])
-        tm_two_pts = len([e for e in team_events if e.get("event_type") == "two_point"])
-        opp_goals = len([e for e in opp_events if e.get("event_type") == "goal"])
-        opp_points = len([e for e in opp_events if e.get("event_type") == "point"])
-        opp_two_pts = len([e for e in opp_events if e.get("event_type") == "two_point"])
-
-        tm_total = tm_goals * 3 + tm_points + tm_two_pts * 2
-        opp_total = opp_goals * 3 + opp_points + opp_two_pts * 2
-
-        # Match results
-        match_results = []
-        for match in matches:
-            match_events = [e for e in events if e.get("match_id") == match.get("id")]
-            d_goals = len([e for e in match_events if e.get("team") == "own" and e.get("event_type") == "goal"])
-            d_pts = len([e for e in match_events if e.get("team") == "own" and e.get("event_type") in ["point", "two_point"]])
-            d_2pts = len([e for e in match_events if e.get("team") == "own" and e.get("event_type") == "two_point"])
-            o_goals = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") == "goal"])
-            o_pts = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") in ["point", "two_point"]])
-            o_2pts = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") == "two_point"])
-
-            d_score = d_goals * 3 + d_pts + d_2pts
-            o_score = o_goals * 3 + o_pts + o_2pts
-
-            result_val = "W" if d_score > o_score else ("L" if d_score < o_score else "D")
-            match_results.append({
-                "opponent": match.get("opponent"),
-                "team_score": f"{d_goals}-{d_pts + d_2pts}",
-                "team_total": d_score,
-                "opponent_score": f"{o_goals}-{o_pts + o_2pts}",
-                "opponent_total": o_score,
-                "result": result_val,
-            })
-
-        # Top scorers
-        player_scores = {}
-        for e in team_events:
-            if e.get("event_type") in ["goal", "point", "two_point"] and e.get("player"):
-                player = e.get("player")
-                if player not in player_scores:
-                    player_scores[player] = {"goals": 0, "points": 0, "two_pointers": 0, "total_score": 0}
-                if e.get("event_type") == "goal":
-                    player_scores[player]["goals"] += 1
-                    player_scores[player]["total_score"] += 3
-                elif e.get("event_type") == "two_point":
-                    player_scores[player]["two_pointers"] += 1
-                    player_scores[player]["total_score"] += 2
-                else:
-                    player_scores[player]["points"] += 1
-                    player_scores[player]["total_score"] += 1
-
-        turnovers_won = len([e for e in team_events if e.get("event_type") == "turnover_won"])
-        turnovers_lost = len([e for e in team_events if e.get("event_type") == "turnover_lost"])
-
-        excluded_str = f"\nDO NOT generate these chart types (user dismissed them): {', '.join(excluded)}" if excluded else ""
+        match_results = raw_data.get("match_results", [])
+        tot = raw_data.get("totals", {})
+        tos = raw_data.get("turnovers", {})
+        on_screen = context.get("on_screen_titles") or []
+        dismissed = context.get("dismissed_ids") or []
+        excluded_str = ""
+        if on_screen:
+            excluded_str += "\n\n## Already on the manager's screen - do NOT repeat or near-repeat these\n" + "\n".join(f"- {t}" for t in on_screen)
+        if dismissed:
+            excluded_str += f"\nThe manager dismissed charts with these ids - avoid those topics: {', '.join(dismissed)}"
+        if context.get("load_more"):
+            excluded_str += (f"\n\nThis is LOAD MORE: add up to {num_charts} charts that show something NEW. If fewer are genuinely "
+                             "new and useful, return fewer. If nothing new is worth charting on this data, return "
+                             '{"charts": [], "done": true, "reason": "<one plain sentence for the manager>"} - never pad with a weaker repeat.')
 
         base += f"""
 ## Task: Generate {num_charts} Dashboard Charts
@@ -1324,15 +1343,15 @@ Generate actual Recharts-compatible chart specifications.
 5. If there is only 1 completed match, write all insights in the context of that single match. Do not fabricate a season narrative.
 
 ## ACTUAL SEASON DATA (Use these exact numbers!)
-### Matches Played: {len(matches)} (completed only — call get_team_season_totals to verify the real count)
+### Matches Played: {len(match_results)} (completed only — call get_team_season_totals to verify the real count)
 ### Match Results:
 {json.dumps(match_results, indent=2)}
 
-### Season Totals:
-- Team: {tm_goals} goals, {tm_points} points, {tm_two_pts} two-pointers = {tm_total} total
-- Opponents: {opp_goals} goals, {opp_points} points, {opp_two_pts} two-pointers = {opp_total} total
+### Season Totals (from the match scores; points include frees, 45s and two-pointers at 2):
+- Team: {tot.get('goals', 0)}-{tot.get('points', 0)} = {tot.get('goals', 0) * 3 + tot.get('points', 0)} total
+- Opponents: {tot.get('opp_goals', 0)}-{tot.get('opp_points', 0)} = {tot.get('opp_goals', 0) * 3 + tot.get('opp_points', 0)} total
 
-### Turnovers: Won {turnovers_won}, Lost {turnovers_lost}, Net {turnovers_won - turnovers_lost}
+### Turnovers (incl. unforced errors and intercepted kick passes): Won {tos.get('won', 0)}, Lost {tos.get('lost', 0)}, Net {tos.get('won', 0) - tos.get('lost', 0)}
 
 ## Chart Design — Think Like a GAA Manager
 These charts appear in the "AI Insights" tab — they must show things the manager CANNOT see from the standard Season Stats view (which already has possession funnel, kickout outcomes, scoring by zone, shot map, score timeline, etc).

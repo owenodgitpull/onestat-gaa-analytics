@@ -144,6 +144,11 @@ class DashboardChartsResponse(BaseModel):
     summary: Optional[str] = None
     error: Optional[str] = None
     generated_at: Optional[str] = None
+    # Load More: done = nothing new worth charting on this data (or the set is full) - the button goes away until new
+    # match data arrives; pending = a Load More for this club is already running (the result lands in the cache)
+    done: Optional[bool] = None
+    reason: Optional[str] = None
+    pending: Optional[bool] = None
 
 
 class SingleChartRequest(BaseModel):

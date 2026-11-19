@@ -244,8 +244,10 @@ export default function AnalyticsDashboard() {
     try {
       const result = await api.ai.getDashboardCharts(dismissedChartIds, 4, forceRefresh)
       if (result.success && result.charts && result.charts.length > 0) {
-        setAiCharts(result.charts)
+        setAiCharts(result.charts.filter(c => !dismissedChartIds.includes(c.id)))
         setAiChartsSummary(result.summary || '')
+        // the cached set remembers when Load More has run out on this data (a Regenerate starts a fresh set)
+        setLoadMoreDone(result.done ? (result.reason || 'Nothing new worth charting on this data yet.') : null)
         if (forceRefresh && clubId) setRegenCount(incrementRegenCount(clubId))
       } else if (forceRefresh) {
         console.warn('AI charts regeneration returned empty result:', result)
@@ -273,35 +275,61 @@ export default function AnalyticsDashboard() {
 
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+  const [loadMoreDone, setLoadMoreDone] = useState<string | null>(null)
+  const addCharts = useCallback((incoming: AIChartSpec[]) => {
+    // never show the same chart twice (a retry or a cache pick-up can return ones already on screen)
+    setAiCharts(prev => {
+      const have = new Set(prev.map(c => c.id))
+      return [...prev, ...incoming.filter(c => !have.has(c.id) && !dismissedChartIds.includes(c.id))]
+    })
+  }, [dismissedChartIds])
+  // A run outlives the browser's wait (they take 1-3 minutes) and lands in the server cache: pick it up from there,
+  // which is a plain cache read, instead of telling the user to come back later.
+  const pickUpFromCache = useCallback(async (before: number) => {
+    for (let i = 0; i < 18; i++) {
+      await new Promise(r => setTimeout(r, 10_000))
+      try {
+        const r = await api.ai.getDashboardCharts(dismissedChartIds, 4, false)
+        if (r.success && r.charts && r.charts.length > before) { addCharts(r.charts); return true }
+        if (r.done) { setLoadMoreDone(r.reason || 'Nothing new worth charting on this data yet.'); return true }
+      } catch { /* keep waiting */ }
+    }
+    return false
+  }, [dismissedChartIds, addCharts])
   const loadMoreCharts = useCallback(async () => {
-    if (regenLimitReached) return
+    if (regenLimitReached || loadingMore) return
     setLoadingMore(true)
     setLoadMoreError(null)
+    const before = aiCharts.length
     try {
       const existingIds = aiCharts.map(c => c.id)
       const allExcluded = [...dismissedChartIds, ...existingIds]
       const result = await api.ai.getDashboardCharts(allExcluded, 2, true, true)
-      if (result.success && result.charts && result.charts.length > 0) {
-        setAiCharts(prev => [...prev, ...result.charts])
+      if (result.done) {
+        setLoadMoreDone(result.reason || 'Nothing new worth charting on this data yet.')
+      } else if (result.pending) {
+        if (!(await pickUpFromCache(before))) setLoadMoreError("Still working on it — the new charts will be here next time you open this tab.")
+      } else if (result.success && result.charts && result.charts.length > 0) {
+        addCharts(result.charts)
         if (clubId) setRegenCount(incrementRegenCount(clubId))
       } else {
         setLoadMoreError("Couldn't generate more charts right now — try again in a moment.")
       }
     } catch (err) {
       console.error('Failed to load more charts:', err)
-      // Generation keeps running server-side even if this request timed out
-      // client-side (see fetchAPI/getDashboardCharts) — so a timeout isn't
-      // really a failure, just a "still cooking" state worth saying plainly.
+      // the run keeps going on the server after the browser stops waiting: wait on the cache instead
       const timedOut = err instanceof Error && err.message.includes('taking longer than expected')
-      setLoadMoreError(
-        timedOut
-          ? "Still generating — this can take a minute or two. It'll be ready next time you open this tab, even if you navigate away now."
-          : (err instanceof Error ? err.message : "Couldn't generate more charts right now — try again in a moment.")
-      )
+      if (timedOut && (await pickUpFromCache(before))) {
+        if (clubId) setRegenCount(incrementRegenCount(clubId))
+      } else {
+        setLoadMoreError(timedOut
+          ? "Still working on it — the new charts will be here next time you open this tab."
+          : (err instanceof Error ? err.message : "Couldn't generate more charts right now — try again in a moment."))
+      }
     } finally {
       setLoadingMore(false)
     }
-  }, [aiCharts, dismissedChartIds, regenLimitReached, clubId])
+  }, [aiCharts, dismissedChartIds, regenLimitReached, clubId, loadingMore, addCharts, pickUpFromCache])
 
   const handlePinChart = useCallback((chart: AIChartSpec) => {
     pinChart(chart)
@@ -663,6 +691,7 @@ export default function AnalyticsDashboard() {
           onLoadMore={loadMoreCharts}
           loadingMore={loadingMore}
           loadMoreError={loadMoreError}
+          loadMoreDone={loadMoreDone}
           regenLimitReached={regenLimitReached}
           isPinned={isPinned}
           aiChartsSummary={aiChartsSummary}

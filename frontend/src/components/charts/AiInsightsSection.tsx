@@ -15,6 +15,8 @@ interface AiInsightsSectionProps {
   onLoadMore?: () => void
   loadingMore?: boolean
   loadMoreError?: string | null
+  /** why Load More has stopped on this data (the button is replaced by this line) */
+  loadMoreDone?: string | null
   regenLimitReached?: boolean
   isPinned: (chartId: string) => boolean
   aiChartsSummary?: string
@@ -41,6 +43,7 @@ export default function AiInsightsSection({
   onLoadMore,
   loadingMore = false,
   loadMoreError = null,
+  loadMoreDone = null,
   regenLimitReached = false,
   isPinned,
   aiChartsSummary,
@@ -190,7 +193,10 @@ export default function AiInsightsSection({
       )}
 
       {/* Load More button */}
-      {dynamicCharts.length > 0 && onLoadMore && !regenLimitReached && (
+      {dynamicCharts.length > 0 && loadMoreDone && (
+        <p className="text-xs text-white/55 text-center mt-4 max-w-md mx-auto">{loadMoreDone}</p>
+      )}
+      {dynamicCharts.length > 0 && onLoadMore && !regenLimitReached && !loadMoreDone && (
         <div className="flex flex-col items-center gap-2 mt-4">
           <button
             onClick={onLoadMore}
@@ -205,7 +211,7 @@ export default function AiInsightsSection({
           </button>
           {loadingMore && (
             <p className="text-xs text-white/40 text-center max-w-sm">
-              This can take a minute or two — feel free to check back later, no need to wait on this page.
+              Finding something new in the data — usually 1-2 minutes. They'll appear here as soon as they're ready.
             </p>
           )}
           {loadMoreError && !loadingMore && (
