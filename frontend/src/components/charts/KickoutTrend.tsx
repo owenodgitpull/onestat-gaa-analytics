@@ -68,6 +68,8 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
     'Won Break': m.won_break,
     'Lost Clean': m.lost_clean,
     'Lost Break': m.lost_break,
+    'Won Over Line': m.won_sideline ?? 0,
+    'Lost Over Line': m.lost_sideline ?? 0,
   }))
 
   // Season totals for the summary row
@@ -75,23 +77,28 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
   const totalWonBreak = data.reduce((s, m) => s + m.won_break, 0)
   const totalLostClean = data.reduce((s, m) => s + m.lost_clean, 0)
   const totalLostBreak = data.reduce((s, m) => s + m.lost_break, 0)
-  const totalAll = totalWonClean + totalWonBreak + totalLostClean + totalLostBreak
-  const wonPct = totalAll > 0 ? Math.round((totalWonClean + totalWonBreak) / totalAll * 100) : 0
+  // over the sideline: lost by the kicking team (ours lost, theirs won)
+  const totalWonLine = data.reduce((s, m) => s + (m.won_sideline ?? 0), 0)
+  const totalLostLine = data.reduce((s, m) => s + (m.lost_sideline ?? 0), 0)
+  const totalAll = totalWonClean + totalWonBreak + totalLostClean + totalLostBreak + totalWonLine + totalLostLine
+  const wonPct = totalAll > 0 ? Math.round((totalWonClean + totalWonBreak + totalWonLine) / totalAll * 100) : 0
+  const won = (m: KickoutTrendMatch) => m.won_clean + m.won_break + (m.won_sideline ?? 0)
+  const all = (m: KickoutTrendMatch) => won(m) + m.lost_clean + m.lost_break + (m.lost_sideline ?? 0)
 
   // Compute 2-line data-derived insight
   const kickoutInsight = (() => {
     if (totalAll === 0) return null
-    const totalWon = totalWonClean + totalWonBreak
+    const totalWon = totalWonClean + totalWonBreak + totalWonLine
     const cleanPct = totalWon > 0 ? Math.round(totalWonClean / totalWon * 100) : 0
 
     // Trend: compare first half of matches vs second half
     const mid = Math.ceil(data.length / 2)
     const early = data.slice(0, mid)
     const late = data.slice(mid)
-    const earlyWon = early.reduce((s, m) => s + m.won_clean + m.won_break, 0)
-    const earlyTotal = early.reduce((s, m) => s + m.won_clean + m.won_break + m.lost_clean + m.lost_break, 0)
-    const lateWon = late.reduce((s, m) => s + m.won_clean + m.won_break, 0)
-    const lateTotal = late.reduce((s, m) => s + m.won_clean + m.won_break + m.lost_clean + m.lost_break, 0)
+    const earlyWon = early.reduce((s, m) => s + won(m), 0)
+    const earlyTotal = early.reduce((s, m) => s + all(m), 0)
+    const lateWon = late.reduce((s, m) => s + won(m), 0)
+    const lateTotal = late.reduce((s, m) => s + all(m), 0)
     const earlyPct = earlyTotal > 0 ? Math.round(earlyWon / earlyTotal * 100) : 0
     const latePct = lateTotal > 0 ? Math.round(lateWon / lateTotal * 100) : 0
 
@@ -148,7 +155,9 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
               <Bar dataKey="Won Clean" stackId="1" fill="#10b981" radius={[0, 0, 0, 0]} />
               <Bar dataKey="Won Break" stackId="1" fill="#f59e0b" />
               <Bar dataKey="Lost Clean" stackId="1" fill="#ef4444" />
-              <Bar dataKey="Lost Break" stackId="1" fill="#f97316" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Lost Break" stackId="1" fill="#f97316" />
+              <Bar dataKey="Won Over Line" stackId="1" fill="#6ee7b7" />
+              <Bar dataKey="Lost Over Line" stackId="1" fill="#fca5a5" radius={[4, 4, 0, 0]} />
             </BarChart>
           </div>
           <p className="text-white/30 text-[10px] text-center mt-1">Swipe to see all matches →</p>
@@ -174,7 +183,9 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
             <Bar dataKey="Won Clean" stackId="1" fill="#10b981" radius={[0, 0, 0, 0]} />
             <Bar dataKey="Won Break" stackId="1" fill="#f59e0b" />
             <Bar dataKey="Lost Clean" stackId="1" fill="#ef4444" />
-            <Bar dataKey="Lost Break" stackId="1" fill="#f97316" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Lost Break" stackId="1" fill="#f97316" />
+            <Bar dataKey="Won Over Line" stackId="1" fill="#6ee7b7" />
+            <Bar dataKey="Lost Over Line" stackId="1" fill="#fca5a5" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}

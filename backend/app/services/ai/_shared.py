@@ -2835,12 +2835,21 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             if et_.endswith("_break"):
                 row["on_the_break"] += 1
         elif et_ in SCORE_TYPES and ed.get("team") == "opponent":
-            row = _opp_scorers.setdefault(nm, {"player": nm, "scores": 0, "goals": 0, "points": 0})
+            # "points" was every non-goal score counted as 1, so a two-pointer counted 1 and the chat read Havern's
+            # 4 frees + 2 two-pointers + 1 point (0-9) as "0-6". Points are now the value, with the parts beside them.
+            row = _opp_scorers.setdefault(nm, {"player": nm, "scores": 0, "goals": 0, "points": 0, "one_pointers": 0,
+                                               "two_pointers": 0, "from_frees": 0, "from_play": 0})
             row["scores"] += 1
             if et_ in ("goal", "penalty_goal"):
                 row["goals"] += 1
+            elif et_ in ("two_point", "two_point_free"):
+                row["two_pointers"] += 1
+                row["points"] += 2
             else:
+                row["one_pointers"] += 1
                 row["points"] += 1
+            row["from_frees" if et_ in ("point_free", "two_point_free", "forty_five", "penalty_goal") else "from_play"] += 1
+            row["score"] = f"{row['goals']}-{row['points']} ({row['goals'] * 3 + row['points']} pts)"
     # Everything each named opposition player did (counts by event type), so "what did their number 8 do?" is one lookup
     _opp_by_player: dict = {}
     for ed in events_data:
@@ -2889,7 +2898,9 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     if opp_names:
         result_payload["opposition_players_note"] = (
             "Events carry `opposition_player` (the named opposition player). opposition_kickout_winners and "
-            "opposition_scorers are roll-ups of those names - use them to say who won their kickouts or scored."
+            "opposition_scorers are roll-ups of those names - use them to say who won their kickouts or scored. "
+            "Quote a scorer's `score` as given (goals-points, a two-pointer counts 2); `scores` is how many times he "
+            "scored, never his points; from_frees + from_play = scores."
         )
     if zone_summary:
         result_payload["zone_summary"] = zone_summary

@@ -72,7 +72,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       turnover_diff: {
         what: 'Turnovers won minus lost — positive means we\'re winning more ball than giving it away',
-        formula: 'Turnovers won − Turnovers lost. A positive number means we\'re coming out on top in the battle for possession.',
+        formula: 'Turnovers won − Turnovers lost. Lost = turnovers lost, unforced errors, kick passes intercepted, and their interceptions and tackles won; won is the same from their side. A positive number means we\'re coming out on top in the battle for possession.',
       },
       fouls_per_game: {
         what: 'Average fouls committed per match — fewer means less frees conceded to opposition',
@@ -90,11 +90,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       kickout_retention: {
         what: 'How often we retain our own goalkeeper\'s kickouts — crucial for building attacks from restarts',
-        formula: '(Own kickouts retained ÷ Total own kickouts) × 100.',
+        formula: '(Own kickouts retained ÷ Total own kickouts) × 100. A kickout over the sideline counts as lost.',
       },
       opp_kickout_win: {
         what: 'Percentage of opposition kickouts your team wins. Winning opp kickouts is high-value — you\'re taking the ball in an advanced position with their defence disorganised.',
-        formula: '(Opposition kickouts won by your team ÷ Total opp kickouts) × 100.',
+        formula: '(Opposition kickouts won by your team ÷ Total opp kickouts) × 100. Their kickout over the sideline counts as ours.',
       },
     },
   },
@@ -156,11 +156,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       turnover_to_score: {
         what: 'Of all turnovers your team wins, what percentage result in a score. Winning the ball back means nothing if you don\'t capitalise.',
-        formula: '(Turnovers won whose possession ended in our score ÷ Turnovers won) × 100. Turnovers won = turnovers, interceptions and tackles won; the possession ends at our next shot (a score counts), a ball we lose, their shot or turnover, a kickout or the end of the half.',
+        formula: '(Turnovers won whose possession ended in our score ÷ Turnovers won) × 100. Turnovers won = turnovers, interceptions and tackles won, their unforced errors and their kick passes we intercepted; the possession ends at our next shot (a score counts), a ball we lose, their shot or turnover, a kickout or the end of the half.',
       },
       turnovers_conceded: {
         what: 'Average times per game your team loses possession through errors — misplaced passes, overcarrying, fumbles.',
-        formula: 'Total turnovers conceded ÷ Matches played.',
+        formula: 'Turnovers conceded ÷ Matches played. Includes unforced errors (also their own card), kick passes intercepted, and their interceptions and tackles won.',
       },
     },
   },
@@ -296,7 +296,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       ball_recovery_avg_min: {
         what: 'Average minutes to win back possession after a turnover or unforced error. Measures pressing intensity and transition speed — lower is better.',
-        formula: 'For each possession loss event (turnover / unforced error), find the next own-team recovery event and measure the gap, to the second where the match clock is recorded (capped at 10 min to exclude half-time gaps). Average across all losses in the season.',
+        formula: 'For each turnover conceded (incl. unforced errors, intercepted kick passes, their interceptions and tackles), find the next own-team recovery event and measure the gap, to the second where the match clock is recorded (capped at 10 min to exclude half-time gaps). Average across all losses in the season.',
       },
     },
   },

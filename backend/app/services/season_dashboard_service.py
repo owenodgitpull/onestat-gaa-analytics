@@ -21,6 +21,54 @@ from app.models.player import Player
 logger = logging.getLogger(__name__)
 
 
+# Turnovers, one definition for every KPI (Owen 2026-11-19): unforced errors are a subset of turnovers conceded (they
+# keep their own card too), and a kick pass tagged "intercepted" is a turnover. An intercepted kick pass is usually
+# ALSO tagged as the other team's interception a second or two later (5 of the first 6), so it only counts when no
+# interception by the other team sits within TO_PAIR_S of it - otherwise the same turnover would count twice.
+TO_PAIR_S = 6
+
+
+async def turnover_events(db: AsyncSession, match_ids) -> list:
+    """Every turnover in the matches, from OUR side: objects with match_id, half, t_s, created_at, side ('won'/'lost'),
+    unforced (our or their unforced error). Lost = our turnover lost / unforced error / intercepted kick pass + their
+    interception / tackle won / turnover won; won = the mirror."""
+    from types import SimpleNamespace
+    if not match_ids:
+        return []
+    TL, UE, LKP = EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR, EventType.LONG_KICK_PASS
+    rows = (await db.execute(
+        select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.sub_type, MatchEvent.half,
+               MatchEvent.match_clock_s, MatchEvent.minute, MatchEvent.created_at)
+        .where(and_(MatchEvent.match_id.in_(list(match_ids)),
+                    MatchEvent.event_type.in_([TL, UE, LKP, EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON])))
+    )).all()
+
+    def _t(r):
+        return r.match_clock_s if r.match_clock_s is not None else (r.minute or 0) * 60
+
+    ints: dict = {}
+    for r in rows:
+        if r.event_type == EventType.INTERCEPTION:
+            ints.setdefault((r.match_id, r.half, r.team), []).append(_t(r))
+    out = []
+    for r in rows:
+        own = r.team == Team.OWN
+        if r.event_type == LKP:
+            if (r.sub_type or "").lower() != "intercepted":
+                continue
+            other = Team.OPPONENT if own else Team.OWN
+            if any(abs(x - _t(r)) <= TO_PAIR_S for x in ints.get((r.match_id, r.half, other), [])):
+                continue
+            side = "lost" if own else "won"
+        elif r.event_type in (TL, UE):
+            side = "lost" if own else "won"
+        else:
+            side = "won" if own else "lost"
+        out.append(SimpleNamespace(match_id=r.match_id, half=r.half, t_s=_t(r), minute=r.minute, created_at=r.created_at,
+                                   side=side, unforced=r.event_type == UE))
+    return out
+
+
 # Event type groupings
 SHOT_EVENTS = [
     EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
@@ -190,7 +238,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v8"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v9"  # (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
@@ -700,6 +748,8 @@ class SeasonDashboardService:
             EventType.OWN_KICKOUT_WON_BREAK, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
             EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
             EventType.OPP_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+            # over the sideline: lost by the kicking team (Owen 2026-11-19)
+            EventType.OWN_KICKOUT_SIDELINE, EventType.OPP_KICKOUT_SIDELINE,
         ]
         events_result = await db.execute(
             select(MatchEvent).options(
@@ -739,10 +789,14 @@ class SeasonDashboardService:
         for e in all_kickout_events:
             mid = e.match_id
             if mid not in match_kickouts:
-                match_kickouts[mid] = {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0}
+                match_kickouts[mid] = {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0, "won_sideline": 0, "lost_sideline": 0}
 
             # Detailed types encode who won in the name, legacy types use team field
-            if e.event_type in won_clean_types:
+            if e.event_type == EventType.OWN_KICKOUT_SIDELINE:
+                match_kickouts[mid]["lost_sideline"] += 1
+            elif e.event_type == EventType.OPP_KICKOUT_SIDELINE:
+                match_kickouts[mid]["won_sideline"] += 1
+            elif e.event_type in won_clean_types:
                 if e.event_type == EventType.KICKOUT_WON and e.team != Team.OWN:
                     continue
                 match_kickouts[mid]["won_clean"] += 1
@@ -762,8 +816,8 @@ class SeasonDashboardService:
         results = []
         for mid in match_ids:
             m = matches_map[mid]
-            ko = match_kickouts.get(mid, {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0})
-            total = ko["won_clean"] + ko["won_break"] + ko["lost_clean"] + ko["lost_break"]
+            ko = match_kickouts.get(mid, {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0, "won_sideline": 0, "lost_sideline": 0})
+            total = ko["won_clean"] + ko["won_break"] + ko["lost_clean"] + ko["lost_break"] + ko["won_sideline"] + ko["lost_sideline"]
             results.append({
                 "match_id": str(mid),
                 "opponent": m.opponent,
@@ -772,6 +826,8 @@ class SeasonDashboardService:
                 "won_break": ko["won_break"],
                 "lost_clean": ko["lost_clean"],
                 "lost_break": ko["lost_break"],
+                "won_sideline": ko["won_sideline"],     # their kickout went over the sideline
+                "lost_sideline": ko["lost_sideline"],   # ours went over the sideline
                 "won_clean_pct": round((ko["won_clean"] / total * 100) if total > 0 else 0, 1),
                 "won_break_pct": round((ko["won_break"] / total * 100) if total > 0 else 0, 1),
                 "lost_clean_pct": round((ko["lost_clean"] / total * 100) if total > 0 else 0, 1),
@@ -1474,33 +1530,14 @@ class SeasonDashboardService:
         n = len(matches)
 
         # --- Fresh per-match queries ---
-        # Turnovers won/lost per match (consistent with KPI card: interceptions counted both ways)
-        to_result = await db.execute(
-            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.event_type.in_([
-                        EventType.TURNOVER_WON, EventType.TURNOVER_LOST,
-                        EventType.INTERCEPTION, EventType.TACKLE_WON,
-                        EventType.UNFORCED_ERROR,
-                    ]),
-                )
-            )
-            .group_by(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type)
-        )
+        # Turnovers won/lost per match: the same set as the KPI cards (turnover_events - unforced errors and intercepted
+        # kick passes included; errors = our unforced errors, a subset of lost)
         match_to = {}
-        for row in to_result:
-            mid = row.match_id
-            match_to.setdefault(mid, {"won": 0, "lost": 0, "errors": 0})
-            if row.team == Team.OWN and row.event_type in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON):
-                match_to[mid]["won"] += row.cnt
-            elif row.team == Team.OWN and row.event_type == EventType.TURNOVER_LOST:
-                match_to[mid]["lost"] += row.cnt
-            elif row.team == Team.OPPONENT and row.event_type in (EventType.INTERCEPTION, EventType.TACKLE_WON):
-                match_to[mid]["lost"] += row.cnt
-            elif row.team == Team.OWN and row.event_type == EventType.UNFORCED_ERROR:
-                match_to[mid]["errors"] += row.cnt
+        for r in await turnover_events(db, match_ids):
+            t = match_to.setdefault(r.match_id, {"won": 0, "lost": 0, "errors": 0})
+            t[r.side] += 1
+            if r.side == "lost" and r.unforced:
+                t["errors"] += 1
 
         # Fouls per match
         foul_result = await db.execute(
@@ -1644,15 +1681,9 @@ class SeasonDashboardService:
             # KICKOUTS
             make_row("kickout_win_rate", "Kickout Win %", "KICKOUTS",
                      lambda mid: (
-                         (kickout_per_match.get(str(mid), {}).get("won_clean", 0) +
-                          kickout_per_match.get(str(mid), {}).get("won_break", 0)) /
-                         max(
-                             kickout_per_match.get(str(mid), {}).get("won_clean", 0) +
-                             kickout_per_match.get(str(mid), {}).get("won_break", 0) +
-                             kickout_per_match.get(str(mid), {}).get("lost_clean", 0) +
-                             kickout_per_match.get(str(mid), {}).get("lost_break", 0),
-                             1
-                         ) * 100
+                         sum(kickout_per_match.get(str(mid), {}).get(k, 0) for k in ("won_clean", "won_break", "won_sideline")) /
+                         max(sum(kickout_per_match.get(str(mid), {}).get(k, 0) for k in
+                                 ("won_clean", "won_break", "won_sideline", "lost_clean", "lost_break", "lost_sideline")), 1) * 100
                      )),
             make_row("kickout_clean_win", "Clean Wins", "KICKOUTS",
                      lambda mid: kickout_per_match.get(str(mid), {}).get("won_clean", 0)),
@@ -2301,32 +2332,15 @@ class SeasonDashboardService:
         match_ids = [m.id for m in matches]
 
         # --- Turnover differential ---
-        # Won = own TURNOVER_WON + own INTERCEPTION + own TACKLE_WON
-        # Lost = own TURNOVER_LOST + opp INTERCEPTION + opp TACKLE_WON (symmetric)
-        to_result = await db.execute(
-            select(MatchEvent.team, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.event_type.in_([
-                        EventType.TURNOVER_WON, EventType.TURNOVER_LOST,
-                        EventType.INTERCEPTION, EventType.TACKLE_WON,
-                    ]),
-                )
-            )
-            .group_by(MatchEvent.team, MatchEvent.event_type)
-        )
-        to_counts = {(row.team, row.event_type): row.cnt for row in to_result}
-        t_won = (
-            to_counts.get((Team.OWN, EventType.TURNOVER_WON), 0) +
-            to_counts.get((Team.OWN, EventType.INTERCEPTION), 0) +
-            to_counts.get((Team.OWN, EventType.TACKLE_WON), 0)
-        )
-        t_lost = (
-            to_counts.get((Team.OWN, EventType.TURNOVER_LOST), 0) +
-            to_counts.get((Team.OPPONENT, EventType.INTERCEPTION), 0) +
-            to_counts.get((Team.OPPONENT, EventType.TACKLE_WON), 0)
-        )
+        # One definition (turnover_events): lost includes our unforced errors and intercepted kick passes; won is the mirror
+        to_rows = await turnover_events(db, match_ids)
+
+        def _to_counts(ids) -> tuple:
+            ids = set(ids)
+            return (sum(1 for r in to_rows if r.match_id in ids and r.side == "won"),
+                    sum(1 for r in to_rows if r.match_id in ids and r.side == "lost"))
+
+        t_won, t_lost = _to_counts(match_ids)
         turnover_diff = t_won - t_lost
 
         # --- Kickout retention (own kickouts) ---
@@ -2338,6 +2352,8 @@ class SeasonDashboardService:
             EventType.OWN_KICKOUT_OPPOSITION_WON,
             EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
         ]
+        # A kickout over the sideline is a kickout LOST (Owen 2026-11-19: it was left out, 69% read for what is 64%)
+        own_ko_lost_types = own_ko_lost_types + [EventType.OWN_KICKOUT_SIDELINE]
         # Include legacy kickout types for own team
         legacy_ko_types = [EventType.KICKOUT_WON, EventType.KICKOUT_LOST]
 
@@ -2422,38 +2438,40 @@ class SeasonDashboardService:
         # (It was min(all from-play scores, turnovers won) / turnovers won, which read 100% whenever we scored more
         # from play than we won turnovers.) Walk each match's events in clock order: after a turnover we won, the
         # possession ends at our next shot (a score counts), a ball we lose, their shot or turnover, or a kickout.
-        TO_WIN = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}
-        OWN_LOSS = {EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR}
-        OPP_ENDS = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON} | set(SHOT_EVENTS)
+        # The turnovers are the same set as the differential (turnover_events), so their unforced errors and our
+        # intercepts of a kick pass count as turnovers won here too.
         KO_TYPES = {e for e in EventType if "kickout" in e.value}
 
         seq_result = await db.execute(
             select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.half,
                    MatchEvent.match_clock_s, MatchEvent.minute, MatchEvent.created_at)
             .where(and_(MatchEvent.match_id.in_(match_ids),
-                        MatchEvent.event_type.in_(list(TO_WIN | OWN_LOSS | OPP_ENDS | KO_TYPES | set(SHOT_EVENTS)))))
+                        MatchEvent.event_type.in_(list(KO_TYPES | set(SHOT_EVENTS)))))
         )
-        seq_rows = sorted(seq_result.all(), key=lambda r: (str(r.match_id), r.half or 0,
-                                                          r.match_clock_s if r.match_clock_s is not None else (r.minute or 0) * 60,
-                                                          r.created_at))
+        # (match_id, half, t_s, created_at, kind): kind = won / lost (turnovers), own_score / own_miss / opp_shot, ko
+        seq_rows = [(r.match_id, r.half, r.match_clock_s if r.match_clock_s is not None else (r.minute or 0) * 60, r.created_at,
+                     "ko" if r.event_type in KO_TYPES else
+                     ("own_score" if r.event_type in SCORE_EVENTS else "own_miss") if r.team == Team.OWN else "opp_shot")
+                    for r in seq_result.all()]
+        seq_rows += [(r.match_id, r.half, r.t_s, r.created_at, r.side) for r in to_rows]
+        seq_rows.sort(key=lambda r: (str(r[0]), r[1] or 0, r[2], r[3]))
 
         def _turnover_to_score(ids) -> tuple:
             won = scored = 0
             open_since = None    # (match_id, half) of a live turnover-won possession
-            for r in seq_rows:
-                if r.match_id not in ids:
+            for mid, half, _t, _c, kind in seq_rows:
+                if mid not in ids:
                     continue
-                if open_since is not None and open_since != (r.match_id, r.half):
+                if open_since is not None and open_since != (mid, half):
                     open_since = None                    # new match or period: the possession ended
-                if r.team == Team.OWN and r.event_type in TO_WIN:
-                    won += 1; open_since = (r.match_id, r.half); continue
+                if kind == "won":
+                    won += 1; open_since = (mid, half); continue
                 if open_since is None:
                     continue
-                if r.team == Team.OWN and r.event_type in SHOT_EVENTS:
-                    scored += 1 if r.event_type in SCORE_EVENTS else 0
+                if kind in ("own_score", "own_miss"):
+                    scored += 1 if kind == "own_score" else 0
                     open_since = None
-                elif (r.team == Team.OWN and r.event_type in OWN_LOSS) or (r.team == Team.OPPONENT and r.event_type in OPP_ENDS) \
-                        or r.event_type in KO_TYPES:
+                elif kind in ("lost", "opp_shot", "ko"):
                     open_since = None
             return won, scored
 
@@ -2574,7 +2592,8 @@ class SeasonDashboardService:
         goal_chances = round((goal_chances_result.scalar() or 0) / n, 1)
 
         # --- Opp kickout win % ---
-        opp_ko_won_types = [EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK]
+        # their kickout over the sideline is one they lost, so ours
+        opp_ko_won_types = [EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_SIDELINE]
         opp_ko_lost_types = [EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK]
         opp_ko_result = await db.execute(
             select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
@@ -2669,20 +2688,7 @@ class SeasonDashboardService:
         # Recent turnovers (per match)
         # same definitions as the season figures (won = our turnover won / interception / tackle won; lost = our
         # turnover lost + their interception / tackle won) — the recent side counted only turnover won / lost
-        recent_to = await db.execute(
-            select(MatchEvent.team, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(recent_ids),
-                    MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST,
-                                               EventType.INTERCEPTION, EventType.TACKLE_WON]),
-                )
-            )
-            .group_by(MatchEvent.team, MatchEvent.event_type)
-        )
-        rtc = {(row.team, row.event_type): row.cnt for row in recent_to}
-        r_won = sum(rtc.get((Team.OWN, e), 0) for e in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON))
-        r_lost = rtc.get((Team.OWN, EventType.TURNOVER_LOST), 0) + sum(rtc.get((Team.OPPONENT, e), 0) for e in (EventType.INTERCEPTION, EventType.TACKLE_WON))
+        r_won, r_lost = _to_counts(recent_ids)
         recent_to_diff = (r_won - r_lost) / trend_window
         recent_to_lost_pg = r_lost / trend_window
 
@@ -2809,9 +2815,8 @@ class SeasonDashboardService:
         recent_opp_kickout_win = round(r_opp_ko_won / r_opp_ko_total * 100, 1) if r_opp_ko_total > 0 else opp_kickout_win
 
         # --- Ball recovery time (avg minutes per match to win back possession) ---
-        BALL_LOSS_TYPES = frozenset([EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR])
+        # a loss is any turnover lost (turnover_events: incl. their interceptions / tackles and our intercepted kick passes)
         BALL_RECOVERY_TYPES = frozenset([
-            EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON,
             EventType.OWN_KICKOUT_WON, EventType.OPP_KICKOUT_WON, EventType.KICKOUT_WON,
             EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK,
             EventType.GOAL, EventType.POINT, EventType.POINT_FREE,
@@ -2825,30 +2830,33 @@ class SeasonDashboardService:
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.minute.isnot(None),
-                    MatchEvent.event_type.in_(list(BALL_LOSS_TYPES | BALL_RECOVERY_TYPES)),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_(list(BALL_RECOVERY_TYPES)),
                 )
             )
         )
         # timed to the second where the clock is recorded (whole minutes made a quick regain read as 0 and be dropped,
-        # and a 50-second one read as a minute)
-        recovery_ev_rows = sorted(recovery_ev_result.all(), key=lambda r: (str(r.match_id), r.half or 0,
-                                  r.match_clock_s if r.match_clock_s is not None else r.minute * 60, r.created_at))
+        # and a 50-second one read as a minute). (match_id, half, t_s, created_at, is_loss)
+        recovery_ev_rows = [(r.match_id, r.half, r.match_clock_s if r.match_clock_s is not None else r.minute * 60, r.created_at, False)
+                            for r in recovery_ev_result.all()]
+        recovery_ev_rows += [(r.match_id, r.half, r.t_s, r.created_at, r.side == "lost") for r in to_rows if r.minute is not None]
+        recovery_ev_rows.sort(key=lambda r: (str(r[0]), r[1] or 0, r[2], r[3]))
 
         def _compute_recovery_avg(rows, filter_ids=None):
             from collections import defaultdict
             ev_by_match = defaultdict(list)
             for r in rows:
-                if filter_ids is None or r.match_id in filter_ids:
-                    ev_by_match[r.match_id].append(r)
+                if filter_ids is None or r[0] in filter_ids:
+                    ev_by_match[r[0]].append(r)
             match_avgs = []
             for evs in ev_by_match.values():
                 loss_min = None
                 gaps = []
                 for e in evs:
-                    t_s = e.match_clock_s if e.match_clock_s is not None else e.minute * 60
-                    if e.team == Team.OWN and e.event_type in BALL_LOSS_TYPES:
+                    t_s, is_loss = e[2], e[4]
+                    if is_loss:
                         loss_min = t_s
-                    elif loss_min is not None and e.team == Team.OWN and e.event_type in BALL_RECOVERY_TYPES:
+                    elif loss_min is not None:
                         diff = (t_s - loss_min) / 60.0
                         if 0 <= diff <= 10:
                             gaps.append(diff)
