@@ -622,7 +622,14 @@ export default function AnalyticsDashboard() {
                                 <h3 className="text-sm font-bold text-white">{card.label}</h3>
                                 <div className="mt-1 flex items-baseline gap-2 flex-wrap">
                                   <span className={`text-2xl font-bold tabular-nums ${valueColor}`}>{displayValue}</span>
-                                  {card.trend && <span className="text-xs text-white/60 tabular-nums">last {card.trend.window}: {fmtTrend(card, card.trend.recent)} · season {fmtTrend(card, card.trend.season)}{card.trend.good === true ? ' · better' : card.trend.good === false ? ' · worse' : ' · about the same'}</span>}
+                                  {card.trend && (() => {
+                                    // a sentence, not "last 3: 59.5 · season 64.2 · worse"
+                                    const t = card.trend!
+                                    const u = card.format === 'percent' ? '%' : card.format === 'seconds' ? ' s' : ''
+                                    const move = t.direction === 'up' ? 'Up to' : t.direction === 'down' ? 'Down to' : 'Steady at'
+                                    const verdict = t.good === true ? 'better' : t.good === false ? 'worse' : 'about the same'
+                                    return <span className="text-xs text-white/65 tabular-nums">{move} {fmtTrend(card, t.recent)}{u} over the last {t.window} matches, against {fmtTrend(card, t.season)}{u} for the season: {verdict}</span>
+                                  })()}
                                 </div>
                               </div>
                               <button onClick={() => setActiveTooltip(null)} aria-label="Close" className="p-1 rounded-lg hover:bg-white/10 transition-colors shrink-0">
