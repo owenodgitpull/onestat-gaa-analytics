@@ -203,7 +203,7 @@ What it can and cannot see (a manager will check one claim against the video; ge
   in the first half and was 13 m further up in the second".
 
 How to write it - section "Off the Ball", after Phase Analysis, 5-7 short headed paragraphs, figures inside sentences:
-- "Shape": with and without the ball, by half (compactness, length, width, deepest six, team height). Say what changed
+- "Shape": with and without the ball, by half (compactness, length, width, deepest six, team height). Without the ball, compactness and length are the DEFENSIVE BLOCK (all but the 3 furthest forward, who the rules keep up) in settled defence (from 6 s after we lost it); with the ball, all 14 - say so when you compare them. Say what changed
   between halves. Game state (who was ahead) only from margin_by_ten_minutes / halves, quoted with the score - never assumed,
   and never the phrase "not a trend".
 - "Who played where": from positions, the two or three players whose average spot differed most from their listed

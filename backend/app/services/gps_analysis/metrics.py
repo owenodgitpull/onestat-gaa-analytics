@@ -85,17 +85,47 @@ def shape_series(g: Grid, min_players: int = 10) -> Dict[str, np.ndarray]:
         comp = np.nanmean(np.hypot(Xm - cx, Ym - cy), 0)
         srt = np.sort(np.where(V, g.X, np.inf), 0)[:6]
         deep6 = np.where(np.isfinite(srt).all(0), srt.mean(0), np.nan)
+    # the defending BLOCK: every outfielder but the 3 furthest forward. The 2025/26 rules keep 3 up in their half while
+    # we defend, so with all 14 the centre is dragged upfield and we read looser than the block really is (27 m without
+    # the ball v 30 m with it - too small a gap to believe). x is metres from our goal, so furthest forward = biggest x.
+    B = V.copy()
+    top3 = np.argsort(-np.where(V, g.X, -np.inf), 0)[:3]
+    cols = np.arange(V.shape[1])
+    for r in range(min(3, top3.shape[0])):
+        B[top3[r], cols] = False
+    XB = np.where(B, g.X, np.nan); YB = np.where(B, g.Y, np.nan)
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore", RuntimeWarning)
+        bcx = np.nanmean(XB, 0); bcy = np.nanmean(YB, 0)
+        bcomp = np.nanmean(np.hypot(XB - bcx, YB - bcy), 0)
+        blength = np.nanmax(XB, 0) - np.nanmin(XB, 0)
     ok = n >= min_players
     area = np.full(len(g.t), np.nan)
     for j in np.where(ok)[0]:
         area[j] = _hull_area(g.X[V[:, j], j], g.Y[V[:, j], j])
     nan = lambda a: np.where(ok, a, np.nan)
     return {"n": n, "length": nan(length), "width": nan(width), "compactness": nan(comp), "area": area,
-            "centroid_x": nan(cx), "deep6": nan(deep6)}
+            "centroid_x": nan(cx), "deep6": nan(deep6), "block_compactness": nan(bcomp), "block_length": nan(blength)}
+
+
+SETTLE_S = 6   # without the ball, shape counts from 6 s after we lost it: the first seconds are the transition scramble
+
+
+def _settled_out(g: Grid) -> np.ndarray:
+    """True where the opposition has had the ball for at least SETTLE_S seconds without a break."""
+    out = g.poss == -1
+    need = int(round(SETTLE_S * g.hz))
+    run = np.zeros(len(out), int)
+    c = 0
+    for j, o in enumerate(out):
+        c = c + 1 if o else 0
+        run[j] = c
+    return out & (run > need)
 
 
 def shape_summary(g: Grid, sh) -> dict:
     out = {}
+    settled = _settled_out(g)
     for h in sorted(set(g.half.tolist())) + [0]:
         hm = (g.half == h) if h else np.ones(len(g.t), bool)
         row = {}
@@ -104,6 +134,14 @@ def shape_summary(g: Grid, sh) -> dict:
             m = hm & sm & ~np.isnan(sh["length"])
             row[state] = {k: r1(np.nanmean(sh[k][m])) if m.any() else None for k in ("length", "width", "compactness", "area", "centroid_x", "deep6")}
             row[state]["seconds"] = int(m.sum() / g.hz)
+        # without the ball, compactness and length are the 11-man block in SETTLED defence (see shape_series and
+        # _settled_out); the all-14, all-the-time figures stay beside them for reference
+        o = row["out"]
+        ms = hm & settled & ~np.isnan(sh["block_compactness"])
+        o["compactness_all14"], o["length_all14"] = o["compactness"], o["length"]
+        o["compactness"] = r1(np.nanmean(sh["block_compactness"][ms])) if ms.any() else None
+        o["length"] = r1(np.nanmean(sh["block_length"][ms])) if ms.any() else None
+        o["settled_seconds"] = int(ms.sum() / g.hz)
         out["all" if not h else str(h)] = row
     return out
 

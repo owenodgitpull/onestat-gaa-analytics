@@ -227,8 +227,9 @@ async def get_gps_season_trends(db, club_id=None, exclude_match_id=None) -> str:
     se = await gps.season(db, club_id)
     extra = {"baseline_other_matches": _baseline(se["matches"], exclude_match_id)} if exclude_match_id else {}
     return safe_json({"frame_note": FRAME_NOTE, "matches": se["matches"], **extra, "load_alerts": se["load_alerts"][:30], "note": se["note"],
-                      "how_to_read": "compactness_out_m = mean distance of our outfielders from their centre while the opposition had the ball "
-                                     "(lower = tighter). hsr = running above 5.5 m/s. load_alerts compare a player's high-speed metres per "
+                      "how_to_read": "compactness_out_m / length_out_m = our DEFENSIVE BLOCK while the opposition had the ball: every outfielder "
+                                     "but the 3 furthest forward (the rules keep 3 up), settled defence only (from 6 s after we lost it); "
+                                     "mean distance from the block's centre (lower = tighter) and deepest-to-highest. compactness_in_m = all 14 with the ball. hsr = running above 5.5 m/s. load_alerts compare a player's high-speed metres per "
                                      "minute in one match with his own average in the other GPS matches (+-25% or more). "
                                      "baseline_other_matches (only with exclude_match_id) = the mean over our OTHER GPS matches, n = how many "
                                      "had that figure: write 'over our other N GPS matches' with that n; prev_3_mean = the 3 GPS matches before this one "

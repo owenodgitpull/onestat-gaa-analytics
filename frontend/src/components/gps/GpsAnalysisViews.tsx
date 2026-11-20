@@ -122,7 +122,7 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Tile label="Team distance" value={n1(s.team_distance_m / 1000, ' km')} sub={`${s.players_tracked} players tracked`} cmp={{ k: 'team_distance_km', v: s.team_distance_m / 1000, hib: true, unit: 'km' }} />
         <Tile label="High-speed running" value={n1(s.team_hsr_m / 1000, ' km')} sub="over 5.5 m/s" cmp={{ k: 'team_hsr_km', v: s.team_hsr_m / 1000, hib: true, unit: 'km' }} />
-        <Tile label="Compact without ball" value={n1(s.shape.out.compactness, ' m')} sub={`vs ${n1(s.shape.in.compactness, ' m')} with it · avg distance to team centre`} cmp={{ k: 'compactness_out_m', v: s.shape.out.compactness, hib: false, unit: 'm' }} />
+        <Tile label="Compact without ball" value={n1(s.shape.out.compactness, ' m')} sub={`the 11 behind the ball, settled · ${n1(s.shape.in.compactness, ' m')} with it (all 14)`} cmp={{ k: 'compactness_out_m', v: s.shape.out.compactness, hib: false, unit: 'm' }} />
         <Tile label="Back behind the ball" value={backBehindBall(s.transitions).value} sub={backBehindBall(s.transitions).sub}
           cmp={{ k: 'back_in_15s_pct', v: s.transitions.caught_short ? Math.round((100 * Math.max(0, s.transitions.caught_short - s.transitions.not_recovered_in_15s)) / s.transitions.caught_short) : null, hib: true, unit: '%', dec: 0 }} />
       </div>
@@ -179,8 +179,8 @@ export function ShapeView({ matchId, a, periods, onOpen }: { matchId: string; a:
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label="Compactness" value={n1(sh.out.compactness, ' m')} sub={`without the ball · ${n1(sh.in.compactness, ' m')} with it`} cmp={{ k: 'compactness_out_m', v: sh.out.compactness, hib: false, unit: 'm' }} />
-        <Tile label="Length" value={n1(sh.out.length, ' m')} sub={`without the ball · ${n1(sh.in.length, ' m')} with it`} cmp={{ k: 'length_out_m', v: sh.out.length, hib: false, unit: 'm' }} />
+        <Tile label="Compactness" value={n1(sh.out.compactness, ' m')} sub={`without the ball: the 11 behind it, settled · ${n1(sh.in.compactness, ' m')} with it`} cmp={{ k: 'compactness_out_m', v: sh.out.compactness, hib: false, unit: 'm' }} />
+        <Tile label="Length" value={n1(sh.out.length, ' m')} sub={`without the ball: the 11 behind it, settled · ${n1(sh.in.length, ' m')} with it`} cmp={{ k: 'length_out_m', v: sh.out.length, hib: false, unit: 'm' }} />
         <Tile label="Width" value={n1(sh.out.width, ' m')} sub={`without the ball · ${n1(sh.in.width, ' m')} with it`} cmp={{ k: 'width_out_m', v: sh.out.width, hib: null, unit: 'm' }} />
         <Tile label="Deepest 6" value={n1(sh.out.deep6, ' m')} sub={`from our goal, without the ball`} cmp={{ k: 'deep6_out_m', v: sh.out.deep6, hib: null, unit: 'm' }} />
       </div>

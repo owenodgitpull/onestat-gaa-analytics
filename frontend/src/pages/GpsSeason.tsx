@@ -15,8 +15,8 @@ import { Loading, Failed, Tile } from '../components/gps/GpsAnalysisViews'
 const n1 = (v: number | null | undefined, unit = '') => (v == null ? '–' : `${Math.round(v * 10) / 10}${unit}`)
 
 const METRICS: { key: keyof GpsSeasonRow; label: string; unit: string; help: string; lowerBetter?: boolean }[] = [
-  { key: 'compactness_out_m', label: 'Compactness without the ball', unit: ' m', help: 'average distance from the team centre while they had it', lowerBetter: true },
-  { key: 'length_out_m', label: 'Length without the ball', unit: ' m', help: 'deepest to highest outfielder', lowerBetter: true },
+  { key: 'compactness_out_m', label: 'Compactness without the ball', unit: ' m', help: 'the 11 behind the ball (3 kept up left out), settled defence: average distance from their centre', lowerBetter: true },
+  { key: 'length_out_m', label: 'Length without the ball', unit: ' m', help: 'deepest to highest of the 11 behind the ball, settled defence', lowerBetter: true },
   { key: 'median_recovery_s', label: 'Back behind the ball', unit: ' s', help: 'median seconds after a turnover lost', lowerBetter: true },
   { key: 'median_forward_runners', label: 'Broke forward', unit: '', help: 'median players breaking forward after winning it' },
   { key: 'hsr_per_player_min', label: 'High-speed per player-minute', unit: ' m', help: 'metres above 5.5 m/s' },
