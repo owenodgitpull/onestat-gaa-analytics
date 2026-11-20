@@ -322,7 +322,9 @@ function shotLabel(event_type: string) {
   return SHOT_EVENT_LABELS[event_type] ?? event_type.replace(/_/g, ' ')
 }
 
-// GAA Half-Pitch SVG Shot Map (attacking half only)
+// GAA pitch shot map. The server turns every shot to face the goal we attack (x = 100, our left = y 0), and the
+// artwork is the WHOLE pitch: it used to stretch x 50-100 across the full width, so a shot 20 m out drew near halfway
+// (Murphy's wide v Down 11'), and it dropped any shot below halfway.
 function ShotMap({ shots }: { shots: ShotEvent[] }) {
   const [selectedShot, setSelectedShot] = useState<{ shot: ShotEvent; x: number; y: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -331,10 +333,9 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
     'goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'
   ])
 
-  // Only show shots with coordinates in the attacking half (pitch_x >= 50)
-  const plotShots = shots.filter(s => s.pitch_x !== null && s.pitch_y !== null && s.pitch_x! >= 50)
+  const plotShots = shots.filter(s => s.pitch_x !== null && s.pitch_y !== null)
   const noCoordCount = shots.filter(s => s.pitch_x === null || s.pitch_y === null).length
-  const wrongHalfCount = shots.filter(s => s.pitch_x !== null && s.pitch_y !== null && s.pitch_x! < 50).length
+  const wrongHalfCount = 0
 
   if (plotShots.length === 0) {
     return (
@@ -377,8 +378,7 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
           {plotShots.map((shot, i) => {
             const isScore = scoringTypes.has(shot.event_type)
             const isGoal = shot.event_type === 'goal'
-            const normX = ((shot.pitch_x! - 50) / 50) * 100
-            const x = (normX / 100) * 1960 + 183
+            const x = (shot.pitch_x! / 100) * 1960 + 183
             const y = (shot.pitch_y! / 100) * 1167 + 123
             const isSelected = selectedShot?.shot === shot
             return (
