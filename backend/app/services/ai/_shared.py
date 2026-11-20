@@ -6660,17 +6660,16 @@ async def get_ball_recovery_time(db: AsyncSession, match_id: str | None = None, 
             scope_ids = [m.id for m in matches]
             match_labels = {m.id: f"{m.opponent} ({m.match_date.strftime('%d %b') if m.match_date else 'Unknown'})" for m in matches}
 
-        # Fetch events with minute data
+        # timed on the match clock to the second (whole minutes read a quick regain as 0 and dropped it)
         ev_result = await db.execute(
-            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute)
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute,
+                   MatchEvent.half, MatchEvent.match_clock_s, MatchEvent.created_at)
             .where(
                 and_(
                     MatchEvent.match_id.in_(scope_ids),
-                    MatchEvent.minute.isnot(None),
                     MatchEvent.event_type.in_(list(BALL_LOSS | BALL_RECOVERY)),
                 )
             )
-            .order_by(MatchEvent.match_id, MatchEvent.minute)
         )
         rows = ev_result.all()
 
@@ -6678,18 +6677,11 @@ async def get_ball_recovery_time(db: AsyncSession, match_id: str | None = None, 
         for r in rows:
             ev_by_match[r.match_id].append(r)
 
+        from app.services.season_dashboard_service import clock_gaps
+
         def _recovery_avg(evs, team):
-            loss_min = None
-            gaps = []
-            for e in evs:
-                if e.team == team and e.event_type in BALL_LOSS:
-                    loss_min = e.minute
-                elif loss_min is not None and e.team == team and e.event_type in BALL_RECOVERY:
-                    diff = e.minute - loss_min
-                    if 0 < diff <= 10:
-                        gaps.append(diff)
-                    loss_min = None
-            return round(sum(gaps) / len(gaps), 2) if gaps else None
+            g = clock_gaps(evs, team, BALL_LOSS, BALL_RECOVERY, 600)
+            return round(sum(g) / len(g) / 60, 2) if g else None
 
         per_match = []
         for mid in scope_ids:
@@ -6773,16 +6765,17 @@ async def get_turnover_to_shot_time(db: AsyncSession, match_id: str | None = Non
             scope_ids = [m.id for m in matches]
             match_labels = {m.id: f"{m.opponent} ({m.match_date.strftime('%d %b') if m.match_date else 'Unknown'})" for m in matches}
 
+        # on the MATCH CLOCK (it diffed created_at - when the tags were saved - which for video tagging is pauses,
+        # rewinds and sessions days apart, so nearly every gap fell outside 60 s and it said "insufficient data")
         ev_result = await db.execute(
-            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.created_at)
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.created_at,
+                   MatchEvent.minute, MatchEvent.half, MatchEvent.match_clock_s)
             .where(
                 and_(
                     MatchEvent.match_id.in_(scope_ids),
-                    MatchEvent.created_at.isnot(None),
                     MatchEvent.event_type.in_(list(BALL_WON | SHOT_TYPES)),
                 )
             )
-            .order_by(MatchEvent.match_id, MatchEvent.created_at)
         )
         rows = ev_result.all()
 
@@ -6790,18 +6783,11 @@ async def get_turnover_to_shot_time(db: AsyncSession, match_id: str | None = Non
         for r in rows:
             ev_by_match[r.match_id].append(r)
 
+        from app.services.season_dashboard_service import clock_gaps
+
         def _transition_avg(evs, team):
-            won_at = None
-            gaps = []
-            for e in evs:
-                if e.team == team and e.event_type in BALL_WON:
-                    won_at = e.created_at
-                elif won_at is not None and e.team == team and e.event_type in SHOT_TYPES:
-                    diff = (e.created_at - won_at).total_seconds()
-                    if 0 < diff <= 60:
-                        gaps.append(diff)
-                    won_at = None
-            return round(sum(gaps) / len(gaps), 1) if gaps else None
+            g = clock_gaps(evs, team, BALL_WON, SHOT_TYPES, 60)
+            return round(sum(g) / len(g), 1) if g else None
 
         per_match = []
         for mid in scope_ids:

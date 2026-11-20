@@ -28,6 +28,35 @@ logger = logging.getLogger(__name__)
 TO_PAIR_S = 6
 
 
+def _clock_s(r):
+    """Seconds on the match clock: match_clock_s where the tag has it (every video-tagged event), else the minute."""
+    c = getattr(r, "match_clock_s", None)
+    if c is not None:
+        return c
+    return r.minute * 60 if getattr(r, "minute", None) is not None else None
+
+
+def clock_gaps(evs, team, start_types, end_types, max_s: float) -> list:
+    """Seconds from each `team` start event to its next `team` end event, on the MATCH CLOCK and within the same period.
+    The transition tools and chart timed this from when the tags were SAVED (created_at) - fine for live recording,
+    meaningless for video tagging (pauses, rewinds, sessions days apart), so they came back "insufficient data"."""
+    rows = sorted((e for e in evs if _clock_s(e) is not None),
+                  key=lambda e: (getattr(e, "half", None) or 0, _clock_s(e), getattr(e, "created_at", None) or 0))
+    start, out = None, []
+    for e in rows:
+        if e.team != team:
+            continue
+        if e.event_type in start_types:
+            start = e
+        elif start is not None and e.event_type in end_types:
+            if (getattr(e, "half", None) or 0) == (getattr(start, "half", None) or 0):
+                d = _clock_s(e) - _clock_s(start)
+                if 0 <= d <= max_s:
+                    out.append(d)
+            start = None
+    return out
+
+
 async def turnover_events(db: AsyncSession, match_ids) -> list:
     """Every turnover in the matches, from OUR side: objects with match_id, half, t_s, created_at, side ('won'/'lost'),
     unforced (our or their unforced error). Lost = our turnover lost / unforced error / intercepted kick pass + their
@@ -238,7 +267,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v13"  # (v13): basis line per card; (v12): turnover differential per game; (v11): kickout trend split by whose kickout; (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v14"  # (v14): transition speed on the match clock; (v13): basis line per card; (v12): turnover differential per game; (v11): kickout trend split by whose kickout; (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def _fresh_kpi_insights(db: AsyncSession, club_id, data_fp: str, result: dict, background_tasks=None) -> None:
@@ -3379,14 +3408,14 @@ class SeasonDashboardService:
         SHOT_TYPES = frozenset(ALL_SHOT_TYPES)
 
         ev_result = await db.execute(
-            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute, MatchEvent.created_at)
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute, MatchEvent.created_at,
+                   MatchEvent.half, MatchEvent.match_clock_s)
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.event_type.in_(list(BALL_LOSS | BALL_WON | SHOT_TYPES)),
                 )
             )
-            .order_by(MatchEvent.match_id, MatchEvent.created_at)
         )
         rows = ev_result.all()
         if not rows:
@@ -3397,38 +3426,14 @@ class SeasonDashboardService:
             ev_by_match.setdefault(r.match_id, []).append(r)
 
         def _recovery_avg(evs, team) -> float | None:
-            """Minutes from losing the ball to winning it back."""
-            loss_min = None
-            gaps = []
-            for e in evs:
-                if e.minute is None:
-                    continue
-                if e.team == team and e.event_type in BALL_LOSS:
-                    loss_min = e.minute
-                elif loss_min is not None and e.team == team and e.event_type in BALL_WON:
-                    diff = e.minute - loss_min
-                    if 0 < diff <= 10:
-                        gaps.append(diff)
-                    loss_min = None
-            return round(sum(gaps) / len(gaps), 2) if gaps else None
+            """Minutes from losing the ball to winning it back, on the match clock (to the second)."""
+            g = clock_gaps(evs, team, BALL_LOSS, BALL_WON, 600)
+            return round(sum(g) / len(g) / 60, 2) if g else None
 
         def _transition_avg(evs, team) -> float | None:
-            """Seconds from winning the ball to a shot away — created_at,
-            not minute, since a real transition is typically faster than a
-            whole minute (see get_turnover_to_shot_time's own docstring)."""
-            won_at = None
-            gaps = []
-            for e in evs:
-                if e.created_at is None:
-                    continue
-                if e.team == team and e.event_type in BALL_WON:
-                    won_at = e.created_at
-                elif won_at is not None and e.team == team and e.event_type in SHOT_TYPES:
-                    diff = (e.created_at - won_at).total_seconds()
-                    if 0 < diff <= 60:
-                        gaps.append(diff)
-                    won_at = None
-            return round(sum(gaps) / len(gaps), 1) if gaps else None
+            """Seconds from winning the ball to a shot away, on the match clock."""
+            g = clock_gaps(evs, team, BALL_WON, SHOT_TYPES, 60)
+            return round(sum(g) / len(g), 1) if g else None
 
         per_match = []
         for mid in match_ids:
