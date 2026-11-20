@@ -51,7 +51,7 @@ export default function GpsMatchCard({ matchId }: { matchId: string }) {
                 <KpiInfoButton label={String(l)} />
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-white/50 truncate pr-6">{l}</div>
                 <div className="text-lg font-bold text-white tabular-nums">{v}</div>
-                <div className="text-[11px] text-white/45 truncate">{sub}</div>
+                <div className="text-[11px] text-white/45 leading-snug">{sub}</div>
               </div>
             ))}
           </div>

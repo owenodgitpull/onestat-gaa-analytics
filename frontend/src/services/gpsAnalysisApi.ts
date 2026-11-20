@@ -207,7 +207,12 @@ export function backBehindBall(tr: { n_lost: number; already_back: number; caugh
   const caught = tr.caught_short ?? Math.max(0, tr.n_lost - tr.already_back)
   const got = Math.max(0, caught - (tr.not_recovered_in_15s || 0))
   if (!tr.n_lost) return { value: '–', sub: 'no turnovers lost with GPS' }
-  if (!caught) return { value: 'All back', sub: `already back on all ${tr.n_lost} turnovers lost` }
-  const med = tr.median_recovery_s != null && got ? ` · median ${tr.median_recovery_s.toFixed(0)} s for the ${got} that got back` : ''
-  return { value: `${got} of ${caught}`, sub: `caught short, back within 15 s${med} · ${tr.already_back} of ${tr.n_lost} already back` }
+  if (!caught) return { value: `${tr.n_lost} of ${tr.n_lost}`, sub: `back in time · already back every time we lost it` }
+  // the headline is the plain answer - of the times we lost it, how often were 11 back in time (already there, or
+  // got there within 15 s); the parts underneath. It led with "0 of 3" (the caught-short ones only), which read backwards.
+  const med = tr.median_recovery_s != null && got ? ` (${tr.median_recovery_s.toFixed(0)} s)` : ''
+  return {
+    value: `${tr.already_back + got} of ${tr.n_lost}`,
+    sub: `back in time · ${tr.already_back} already back, ${got} of ${caught} caught short got back within 15 s${med}`,
+  }
 }
