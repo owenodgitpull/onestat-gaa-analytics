@@ -790,57 +790,61 @@ export default function AnalyticsDashboard() {
                       {activeTooltip === card.key && createPortal(
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveTooltip(null)} />
-                          <div className="relative w-full max-w-sm bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
-                            {/* Header */}
-                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-gradient-to-r from-orange-600/15 to-amber-600/15">
-                              <h3 className="text-sm font-bold text-white">{card.label}</h3>
-                              <button onClick={() => setActiveTooltip(null)} className="p-1 rounded-lg hover:bg-white/10 transition-colors">
+                          <div className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl">
+                            {/* Header: the figure, then how it moved, in one glance */}
+                            <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-white/10">
+                              <div className="min-w-0">
+                                <h3 className="text-sm font-bold text-white">{card.label}</h3>
+                                <div className="mt-1 flex items-baseline gap-2 flex-wrap">
+                                  <span className={`text-2xl font-bold tabular-nums ${valueColor}`}>{displayValue}</span>
+                                  {card.trend && <span className="text-xs text-white/60 tabular-nums">last {card.trend.window}: {card.trend.recent} · season {card.trend.season}{card.trend.good === true ? ' · better' : card.trend.good === false ? ' · worse' : ' · about the same'}</span>}
+                                </div>
+                              </div>
+                              <button onClick={() => setActiveTooltip(null)} aria-label="Close" className="p-1 rounded-lg hover:bg-white/10 transition-colors shrink-0">
                                 <X size={16} className="text-white/60" />
                               </button>
                             </div>
                             <div className="p-5 space-y-4">
-                              {/* What is this metric */}
-                              <div>
-                                <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">What it measures</div>
-                                <div className="text-sm text-white/90 leading-relaxed">{KPI_EXPLANATIONS[card.key]?.what}</div>
-                              </div>
-                              {/* How it's calculated — only for non-obvious metrics */}
-                              {KPI_EXPLANATIONS[card.key]?.formula && (
-                                <div>
-                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">How it's calculated</div>
-                                  <div className="text-sm text-white/60 leading-relaxed">{KPI_EXPLANATIONS[card.key]?.formula}</div>
-                                </div>
-                              )}
-                              {card.breakdown && card.breakdown.length > 0 && (
-                                <div>
-                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">How quickly they get back</div>
-                                  <div className="rounded-lg border border-white/10 divide-y divide-white/5">
-                                    {card.breakdown.map(r => (
-                                      <div key={r.label} className="flex items-center justify-between px-3 py-1.5 text-sm">
-                                        <span className="text-white/75">{r.label}</span><span className="text-white font-semibold tabular-nums">{r.value}</span>
-                                      </div>
-                                    ))}
+                              {/* the read first: what the AI makes of it */}
+                              {card.insight
+                                ? <p className="text-sm text-emerald-200 leading-relaxed rounded-lg bg-emerald-500/10 px-3 py-2">{card.insight}</p>
+                                : <p className="text-xs text-white/40">The AI read is being written - check back in a minute.</p>}
+                              <p className="text-sm text-white/85 leading-relaxed">{KPI_EXPLANATIONS[card.key]?.what}</p>
+                              {card.breakdown && card.breakdown.length > 0 && (() => {
+                                // a strip, not a six-row table: the counts already back at the moment fold into one chip
+                                const rows = card.breakdown!.map(r => ({ n: (r.label.match(/^(\d+)/) || [])[1], v: r.value, label: r.label }))
+                                const zero = rows.filter(r => r.v === '0 s' && r.n)
+                                const rest = rows.filter(r => !(r.v === '0 s' && r.n))
+                                return (
+                                  <div>
+                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-white/45 mb-1.5">Middle time to get this many back</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {zero.length > 0 && (
+                                        <span className="rounded-lg bg-white/5 border border-white/10 px-2.5 py-1 text-xs text-white/70 tabular-nums">
+                                          {zero.length > 1 ? `${zero[0].n}-${zero[zero.length - 1].n}` : zero[0].n} back · already there
+                                        </span>
+                                      )}
+                                      {rest.map(r => (
+                                        <span key={r.label} className="rounded-lg bg-white/5 border border-white/10 px-2.5 py-1 text-xs text-white tabular-nums">
+                                          {r.n ? `${r.n} back` : r.label} · <span className="font-semibold">{r.v}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                    {card.breakdown_note && <p className="text-[11px] text-white/45 mt-1.5 leading-snug">{card.breakdown_note}</p>}
                                   </div>
-                                  {card.breakdown_note && <div className="text-[11px] text-white/45 mt-1.5 leading-snug">{card.breakdown_note}</div>}
+                                )
+                              })()}
+                              {/* the method and the colour, folded away */}
+                              <details className="group rounded-lg border border-white/10">
+                                <summary className="px-3 py-2 text-xs font-medium text-white/70 cursor-pointer select-none hover:text-white">How it's worked out</summary>
+                                <div className="px-3 pb-3 space-y-2 text-xs text-white/60 leading-relaxed">
+                                  {KPI_EXPLANATIONS[card.key]?.formula && <p>{KPI_EXPLANATIONS[card.key]?.formula}</p>}
+                                  <p>
+                                    The colour compares your own team only: the last {card.trend?.window ?? 3} matches against the season so far.
+                                    {' '}<span className="text-emerald-300">Green</span> = better, <span className="text-amber-300">amber</span> = about the same, <span className="text-red-300">red</span> = worse.
+                                  </p>
                                 </div>
-                              )}
-                              {/* what the colour means: the team against itself, never anyone else */}
-                              <div>
-                                <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">The colour</div>
-                                <div className="text-sm text-white/60 leading-relaxed">
-                                  Compared only with your own team: your last {card.trend?.window ?? 3} matches against your season so far.
-                                  {' '}<span className="text-emerald-300">Green</span> = better, <span className="text-amber-300">amber</span> = about the same, <span className="text-red-300">red</span> = worse.
-                                  {card.trend ? ` Here: ${card.trend.recent} recently vs ${card.trend.season} over the season.` : ''}
-                                </div>
-                              </div>
-                              {/* AI team insight */}
-                              <div className="pt-3 border-t border-white/10">
-                                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400/60 mb-1.5">AI Insight</div>
-                                {card.insight
-                                  ? <div className="text-sm text-emerald-300/90 italic leading-relaxed">{card.insight}</div>
-                                  : <div className="text-sm text-white/25 italic">Unavailable right now — check back later</div>
-                                }
-                              </div>
+                              </details>
                             </div>
                           </div>
                         </div>,

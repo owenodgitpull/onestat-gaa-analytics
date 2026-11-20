@@ -238,7 +238,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v10"  # (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v11"  # (v11): kickout trend split by whose kickout; (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def _fresh_kpi_insights(db: AsyncSession, club_id, data_fp: str, result: dict, background_tasks=None) -> None:
@@ -820,10 +820,17 @@ class SeasonDashboardService:
         }
 
         match_kickouts = {}
+        # the same counts split by whose kickout it was (Owen 2026-11-20: the chart added ours and theirs together, so
+        # nobody could tell which it showed). own = our keeper's restarts (legacy kickout types are ours too).
+        OPP_SIDE = set(OPP_KICKOUT_TYPES) | {EventType.OPP_KICKOUT_SIDELINE}
+        blank = lambda: {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0, "won_sideline": 0, "lost_sideline": 0}
+        by_side = {}
         for e in all_kickout_events:
             mid = e.match_id
             if mid not in match_kickouts:
-                match_kickouts[mid] = {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0, "won_sideline": 0, "lost_sideline": 0}
+                match_kickouts[mid] = blank()
+                by_side[mid] = {"own": blank(), "opp": blank()}
+            before = dict(match_kickouts[mid])
 
             # Detailed types encode who won in the name, legacy types use team field
             if e.event_type == EventType.OWN_KICKOUT_SIDELINE:
@@ -846,6 +853,9 @@ class SeasonDashboardService:
                 if e.event_type == EventType.BREAKING_BALL_LOST and e.team != Team.OWN:
                     continue
                 match_kickouts[mid]["lost_break"] += 1
+            side = by_side[mid]["opp" if e.event_type in OPP_SIDE else "own"]
+            for k, v in match_kickouts[mid].items():
+                side[k] += v - before[k]
 
         results = []
         for mid in match_ids:
@@ -862,6 +872,8 @@ class SeasonDashboardService:
                 "lost_break": ko["lost_break"],
                 "won_sideline": ko["won_sideline"],     # their kickout went over the sideline
                 "lost_sideline": ko["lost_sideline"],   # ours went over the sideline
+                # won/lost from OUR side: on "opp" (their kickouts) won = we won their kickout
+                "by_side": by_side.get(mid, {"own": blank(), "opp": blank()}),
                 "won_clean_pct": round((ko["won_clean"] / total * 100) if total > 0 else 0, 1),
                 "won_break_pct": round((ko["won_break"] / total * 100) if total > 0 else 0, 1),
                 "lost_clean_pct": round((ko["lost_clean"] / total * 100) if total > 0 else 0, 1),

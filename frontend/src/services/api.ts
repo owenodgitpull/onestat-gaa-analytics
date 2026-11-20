@@ -871,6 +871,8 @@ export interface KickoutTrendMatch {
   /** their kickout went over the sideline (ours) / ours did (theirs) */
   won_sideline?: number;
   lost_sideline?: number;
+  /** the same counts split by whose kickout (won/lost from OUR side: on opp, won = we won their kickout) */
+  by_side?: Record<'own' | 'opp', { won_clean: number; won_break: number; lost_clean: number; lost_break: number; won_sideline: number; lost_sideline: number }>;
   won_clean_pct: number;
   won_break_pct: number;
   lost_clean_pct: number;
