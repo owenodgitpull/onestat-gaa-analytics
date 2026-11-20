@@ -94,12 +94,13 @@ function Section({ title, children, note }: { title: string; children: ReactNode
   )
 }
 
-function Table({ head, rows, align }: { head: ReactNode[]; rows: ReactNode[][]; align?: ('l' | 'r')[] }) {
+function Table({ head, rows, align, tips, note }: { head: ReactNode[]; rows: ReactNode[][]; align?: ('l' | 'r')[]; tips?: (string | undefined)[]; note?: ReactNode }) {
   return (
+    <div>
     <div className="overflow-x-auto rounded-xl border border-white/10">
       <table className="w-full text-sm">
         <thead className="bg-white/5 text-white/50 text-[11px] uppercase tracking-wide">
-          <tr>{head.map((h, i) => <th key={i} className={`px-3 py-2 font-semibold whitespace-nowrap ${align?.[i] === 'r' ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr>
+          <tr>{head.map((h, i) => <th key={i} title={tips?.[i]} className={`px-3 py-2 font-semibold whitespace-nowrap ${tips?.[i] ? 'cursor-help underline decoration-dotted decoration-white/30 underline-offset-4' : ''} ${align?.[i] === 'r' ? 'text-right' : 'text-left'}`}>{h}</th>)}</tr>
         </thead>
         <tbody className="divide-y divide-white/5">
           {rows.length === 0 ? <tr><td colSpan={head.length} className="px-3 py-4 text-white/50 text-center">Nothing to show</td></tr> :
@@ -107,8 +108,18 @@ function Table({ head, rows, align }: { head: ReactNode[]; rows: ReactNode[][]; 
         </tbody>
       </table>
     </div>
+    {note && <p className="text-[11px] text-white/50 mt-1.5 leading-snug">{note}</p>}
+    </div>
   )
 }
+
+// one short reading of the shape columns, on hover (headers) and as a line under the table (tablets have no hover)
+const SHAPE_TIPS = {
+  compactOut: 'Without the ball: average distance of our defending 11 from their centre, once settled (the 3 kept up left out). Smaller = tighter.',
+  compactIn: 'With the ball: average distance of all 14 outfielders from their centre. Bigger = more spread to attack.',
+  lengthOut: 'Without the ball: deepest to most advanced of our defending 11, along the pitch. Shorter = tighter.',
+}
+const SHAPE_NOTE = 'Compact = average distance from the team centre (smaller = tighter). No ball: our defending 11, once settled; ball: all 14. Length = deepest to most advanced of the 11.'
 
 const tooltipStyle = { background: '#0b1226', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, fontSize: 12 }
 const axisTick = { fill: 'rgba(255,255,255,0.45)', fontSize: 11 }
@@ -128,6 +139,8 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
       </div>
       <Section title="By half">
         <Table head={['Period', 'Distance', 'High-speed', 'Compact (no ball)', 'Compact (ball)', 'Length (no ball)']} align={['l', 'r', 'r', 'r', 'r', 'r']}
+          tips={[undefined, 'All our tracked outfielders added together', 'Added together, above 5.5 m/s (about 20 km/h)', SHAPE_TIPS.compactOut, SHAPE_TIPS.compactIn, SHAPE_TIPS.lengthOut]}
+          note={SHAPE_NOTE}
           rows={Object.entries(s.by_half).map(([h, v]) => [PERIOD[h] || h, n1(v.team_distance_m / 1000, ' km'), n1(v.team_hsr_m / 1000, ' km'), n1(v.compactness_out, ' m'), n1(v.compactness_in, ' m'), n1(v.length_out, ' m')])} />
       </Section>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
