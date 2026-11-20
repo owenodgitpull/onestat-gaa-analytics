@@ -238,7 +238,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v11"  # (v11): kickout trend split by whose kickout; (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v12"  # (v12): turnover differential per game; (v11): kickout trend split by whose kickout; (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def _fresh_kpi_insights(db: AsyncSession, club_id, data_fp: str, result: dict, background_tasks=None) -> None:
@@ -2951,8 +2951,10 @@ class SeasonDashboardService:
             {
                 "key": "turnover_diff",
                 "label": "Turnover Differential",
-                "value": turnover_diff,
-                "format": "signed_int",
+                # per game, like its "last 3" (it showed the season total, +6, beside a per-game last 3 of 1.7)
+                "value": round(turnover_diff / n, 1) if n else 0,
+                "format": "signed_decimal",
+                "detail": f"a game · {t_won} won, {t_lost} lost over {n} matches ({turnover_diff:+d})",
                 "color": color(turnover_diff, lambda v: v > 0, lambda v: v < 0),
                 "trend": make_trend(turnover_diff / n if n > 0 else 0, recent_to_diff),
             },

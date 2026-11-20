@@ -65,6 +65,10 @@ for (const entry of KPI_REGISTRY) {
 // whichever club's KPI selection / AI-regen count happened to be saved
 // last. See useDashboardLayout.ts for the matching chart-layout fix and
 // the fuller incident note.
+// a signed card's trend figures keep their sign (+1.7 a game), like the card itself
+function fmtTrend(card: { format: string }, v: number): string {
+  return (card.format === 'signed_int' || card.format === 'signed_decimal') && v > 0 ? `+${v}` : `${v}`
+}
 const SECTION_NAMES: Record<string, string> = { 'kpi-overview': 'Season Overview', 'my-charts': 'My Charts', 'kickout-patterns': 'Kickout patterns' }
 const KPI_STORAGE_KEY_BASE = 'gaa-visible-kpis'
 function loadVisibleKpis(clubId: string): string[] {
@@ -588,7 +592,7 @@ export default function AnalyticsDashboard() {
                     displayValue = `${card.value}%`
                   } else if (card.format === 'seconds') {
                     displayValue = `${card.value} s`
-                  } else if (card.format === 'signed_int') {
+                  } else if (card.format === 'signed_int' || card.format === 'signed_decimal') {
                     displayValue = card.value > 0 ? `+${card.value}` : `${card.value}`
                   } else {
                     displayValue = `${card.value}`
@@ -618,7 +622,7 @@ export default function AnalyticsDashboard() {
                                 <h3 className="text-sm font-bold text-white">{card.label}</h3>
                                 <div className="mt-1 flex items-baseline gap-2 flex-wrap">
                                   <span className={`text-2xl font-bold tabular-nums ${valueColor}`}>{displayValue}</span>
-                                  {card.trend && <span className="text-xs text-white/60 tabular-nums">last {card.trend.window}: {card.trend.recent} · season {card.trend.season}{card.trend.good === true ? ' · better' : card.trend.good === false ? ' · worse' : ' · about the same'}</span>}
+                                  {card.trend && <span className="text-xs text-white/60 tabular-nums">last {card.trend.window}: {fmtTrend(card, card.trend.recent)} · season {fmtTrend(card, card.trend.season)}{card.trend.good === true ? ' · better' : card.trend.good === false ? ' · worse' : ' · about the same'}</span>}
                                 </div>
                               </div>
                               <button onClick={() => setActiveTooltip(null)} aria-label="Close" className="p-1 rounded-lg hover:bg-white/10 transition-colors shrink-0">
@@ -677,11 +681,11 @@ export default function AnalyticsDashboard() {
                       {card.detail && <div className="text-[11px] text-white/55 mt-1.5 leading-snug">{card.detail}</div>}
                       {card.trend && card.trend.direction !== 'stable' && (
                         <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${(card.trend.good ?? card.trend.direction === 'up') ? 'text-emerald-400' : 'text-red-400'}`}
-                          title={`Last ${card.trend.window} matches ${card.trend.recent} vs season ${card.trend.season} — ${(card.trend.good ?? card.trend.direction === 'up') ? 'better' : 'worse'}`}>
+                          title={`Last ${card.trend.window} matches ${fmtTrend(card, card.trend.recent)} vs season ${fmtTrend(card, card.trend.season)} — ${(card.trend.good ?? card.trend.direction === 'up') ? 'better' : 'worse'}`}>
                           {card.trend.direction === 'up'
                             ? <TrendingUp size={12} />
                             : <TrendingDown size={12} />}
-                          <span>Last {card.trend.window}: {card.trend.recent}</span>
+                          <span>Last {card.trend.window}: {fmtTrend(card, card.trend.recent)}</span>
                         </div>
                       )}
                       {card.trend && card.trend.direction === 'stable' && (

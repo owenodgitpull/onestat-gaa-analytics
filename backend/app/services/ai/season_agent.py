@@ -1245,7 +1245,7 @@ Generate a 1-2 sentence insight for the `possession_funnel` key comparing our fu
 Generate a SHORT, punchy insight for each KPI card.
 
 ## CRITICAL metric interpretations — get these right:
-- turnover_diff: POSITIVE = GOOD (we win more than we lose). Turnovers lost include unforced errors and kick passes intercepted.
+- turnover_diff: PER GAME (won minus lost a game), POSITIVE = GOOD (we win more than we lose). Turnovers lost include unforced errors and kick passes intercepted.
 - kickout_retention: OUR OWN kickout retention %. A kickout over the sideline counts as lost.
 - opp_kickout_win: % of the OPPONENT'S kickouts that WE win. 35% = we won 35% of theirs.
   Do NOT confuse with kickout_retention. Do NOT say we "win 65%" when the value is 35%. Their kickout over the sideline counts as ours.

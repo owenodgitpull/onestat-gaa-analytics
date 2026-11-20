@@ -19,7 +19,7 @@ const COLLAPSED = 3
 function fmt(c: KPICardItem, v: number): string {
   if (c.format === 'percent') return `${v}%`
   if (c.format === 'seconds') return `${v} s`
-  if (c.format === 'signed_int') return v > 0 ? `+${v}` : `${v}`
+  if (c.format === 'signed_int' || c.format === 'signed_decimal') return v > 0 ? `+${v}` : `${v}`
   return `${v}`
 }
 
@@ -31,7 +31,7 @@ function fromCards(cards: KPICardItem[]): Item[] {
     const change = t && t.season ? Math.abs((t.recent - t.season) / t.season) : 0
     return {
       id: `kpi:${c.key}`, group, source: c.label, figure: fmt(c, c.value),
-      sub: t ? `last ${t.window}: ${t.recent} · season ${t.season}` : undefined,
+      sub: t ? `last ${t.window}: ${fmt(c, t.recent)} · season ${fmt(c, t.season)}` : undefined,
       text: c.insight!, weight: change,
     }
   })

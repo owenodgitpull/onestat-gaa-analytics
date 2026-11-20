@@ -72,7 +72,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       turnover_diff: {
         what: 'Turnovers won minus lost — positive means we\'re winning more ball than giving it away',
-        formula: 'Turnovers won − Turnovers lost. Lost = turnovers lost, unforced errors, kick passes intercepted, and their interceptions and tackles won; won is the same from their side. A positive number means we\'re coming out on top in the battle for possession.',
+        formula: '(Turnovers won − Turnovers lost) ÷ matches played, so it sits beside its last-3 figure. Lost = turnovers lost, unforced errors, kick passes intercepted, and their interceptions and tackles won; won is the same from their side. A positive number means we\'re coming out on top in the battle for possession.',
       },
       fouls_per_game: {
         what: 'Average fouls committed per match — fewer means less frees conceded to opposition',
