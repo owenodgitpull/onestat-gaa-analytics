@@ -10,6 +10,23 @@ export interface KpiExplanation {
 
 /** What each GPS number means, how it is worked out, and what limits it. Keyed by the tile label. */
 export const GPS_KPI_INFO: Record<string, KpiExplanation> = {
+  // the "After we lost the ball" table, one per column
+  'Goal-side at once': {
+    what: 'How many of our outfielders were already between the ball and our goal the moment we lost it.',
+    how: 'At the turnover, count our outfielders at least 2 m nearer our goal than the ball, out of those on the pitch with a unit (9 of 14 = 9 were back).',
+  },
+  'Back in': {
+    what: 'How long it took to get all but 3 of our outfielders (at most 11) back behind the ball.',
+    how: 'Every second after the turnover we count who is at least 2 m goal-side of the ball. It counts as back once the target is reached and held for 5 s. "Already back" = enough were there at once; "not in 15 s" = they never got there within 15 seconds.',
+  },
+  'Retreat 10 s': {
+    what: 'How far the team as a whole dropped back towards our goal in the 10 seconds after losing it.',
+    how: "The team's average position along the pitch at the turnover, minus the same 10 seconds later, in metres. Bigger = the team got back further.",
+  },
+  'Sprinted': {
+    what: 'Which of our players hit high speed in the 10 seconds after we lost it.',
+    how: 'Above 5.5 m/s (about 20 km/h) at any point in those 10 seconds. Tap the number to see who did and who did not.',
+  },
   'Team distance': {
     what: 'Total ground covered by all our tracked outfielders while they were on the pitch.',
     how: 'Each player\'s GPS distance, counted only between the moments he came on and went off (substitutions, black cards and red cards from the tagged events), added up for the team.',
@@ -103,7 +120,7 @@ export const GPS_KPI_INFO: Record<string, KpiExplanation> = {
 }
 
 /** The round info button for a KPI tile; opens a small explainer. */
-export function KpiInfoButton({ label, info }: { label: string; info?: KpiExplanation }) {
+export function KpiInfoButton({ label, info, inline }: { label: string; info?: KpiExplanation; inline?: boolean }) {
   const [open, setOpen] = useState(false)
   const e = info ?? GPS_KPI_INFO[label]
   if (!e) return null
@@ -113,12 +130,12 @@ export function KpiInfoButton({ label, info }: { label: string; info?: KpiExplan
         type="button"
         aria-label={`About ${label}`}
         onClick={(ev) => { ev.stopPropagation(); setOpen(true) }}
-        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors"
+        className={`${inline ? 'inline-flex align-middle ml-1 w-5 h-5' : 'absolute top-1 right-1 w-6 h-6 flex'} rounded-full bg-white/10 hover:bg-white/25 items-center justify-center transition-colors normal-case`}
       >
         <Info size={12} className="text-white/70" />
       </button>
       {open && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={label}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 normal-case tracking-normal text-left font-normal" role="dialog" aria-modal="true" aria-label={label} onClick={(ev) => ev.stopPropagation()}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="relative w-full max-w-sm bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-gradient-to-r from-emerald-600/15 to-teal-600/15">

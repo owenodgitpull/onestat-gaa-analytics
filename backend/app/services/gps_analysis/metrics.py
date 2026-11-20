@@ -232,7 +232,10 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
             back_ids = [pid for i, pid in enumerate(g.pids) if V[i, j0] and V[i, j10] and g.X[i, j10] < bx10 - GOAL_SIDE_MARGIN_M]
             lost.append({
                 "on_ids": on_ids, "back_10s_ids": back_ids,
-                "video_ms": t0, "half": b.half, "lost_by": name_of(inp, a.player_id), "spot_x": r1(spot[0]), "spot_y": r1(spot[1]),
+                # who lost it: the turnover TAG's player when it names one of ours (the deliberate call), else the
+                # last carrier - the carry chain can disagree (Down 1H 34:53: tag Roarty, last carry Murphy)
+                "video_ms": t0, "half": b.half,
+                "lost_by": name_of(inp, tev.player_id if (tev is not None and tev.team == "team_a" and tev.player_id) else a.player_id), "spot_x": r1(spot[0]), "spot_y": r1(spot[1]),
                 "how": (tev.event_type.replace("_", " ").lower() if tev is not None else "pass intercepted / lost" if a.ended_by == "pass" else "turnover"),
                 "players_on": n_on, "target": target, "goal_side_at_0": goal_side[0], "goal_side": goal_side, "recovery_s": rec,
                 "already_back": goal_side[0] >= target,
@@ -248,7 +251,8 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
             fwd.sort(key=lambda r: -r["gain_m"])
             shot = next((e for e in inp.events if e.team == "team_a" and e.event_type in SHOT_TYPES and t0 <= e.video_ms <= nxt_own), None)
             won.append({
-                "video_ms": t0, "half": b.half, "won_by": name_of(inp, b.player_id), "spot_x": r1(spot[0]), "spot_y": r1(spot[1]),
+                "video_ms": t0, "half": b.half,
+                "won_by": name_of(inp, tev.player_id if (tev is not None and tev.team == "team_a" and tev.player_id) else b.player_id), "spot_x": r1(spot[0]), "spot_y": r1(spot[1]),
                 "players_on": n_on, "advance_10s_m": r1(cxs[10] - cxs[0]), "forward_runners": fwd, "n_forward_runners": len(fwd),
                 "outcome": ("score" if shot and shot.event_type in ("POINT_SCORED", "GOAL_SCORED") else "shot") if shot else "no shot",
             })

@@ -258,7 +258,11 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
         <Tile label="Turnovers won" value={t.summary.n_won} sub={`median ${n1(t.summary.median_forward_runners)} broke forward · ${t.summary.won_led_to_score} led to a score`} cmp={{ k: 'turnovers_won', v: t.summary.n_won, hib: true, dec: 0 }} />
       </div>
       <Section title="After we lost the ball" note={`"Back in" (a team measure) = seconds until the target number of our tracked outfielders (all but three, at most 11) were at least 2 m goal-side of the ball and stayed there for 5 s, or until the move ended. "Already back" = that many were goal-side when it was lost.`}>
-        <Table head={['When', 'Lost by', 'How', 'Goal-side at once', 'Back in', 'Retreat 10 s', 'Sprinted (>5.5 m/s)', 'Then']} align={['l', 'l', 'l', 'r', 'r', 'r', 'l', 'l']}
+        <Table head={['When', 'Lost by', 'How',
+          <span key="g">Goal-side at once<KpiInfoButton inline label="Goal-side at once" /></span>,
+          <span key="b">Back in<KpiInfoButton inline label="Back in" /></span>,
+          <span key="r">Retreat 10 s<KpiInfoButton inline label="Retreat 10 s" /></span>,
+          <span key="s">Sprinted (&gt;5.5 m/s)<KpiInfoButton inline label="Sprinted" /></span>, 'Then']} align={['l', 'l', 'l', 'r', 'r', 'r', 'l', 'l']}
           rows={t.lost.map((x, i) => [
             <PlayAt key="p" ms={x.video_ms} periods={periods} onOpen={onOpen} />, x.lost_by || '–', x.how, `${x.goal_side_at_0} of ${x.players_on}`,
             x.already_back ? <span className="text-white/50">already back</span> : x.recovery_s == null ? <span className="text-amber-300">not in 15 s</span> : `${x.recovery_s} s`, n1(x.retreat_10s_m, ' m'),
