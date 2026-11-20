@@ -65,6 +65,7 @@ for (const entry of KPI_REGISTRY) {
 // whichever club's KPI selection / AI-regen count happened to be saved
 // last. See useDashboardLayout.ts for the matching chart-layout fix and
 // the fuller incident note.
+const SECTION_NAMES: Record<string, string> = { 'kpi-overview': 'Season Overview', 'my-charts': 'My Charts', 'kickout-patterns': 'Kickout patterns' }
 const KPI_STORAGE_KEY_BASE = 'gaa-visible-kpis'
 function loadVisibleKpis(clubId: string): string[] {
   try {
@@ -466,6 +467,14 @@ export default function AnalyticsDashboard() {
     setActiveSectionId(event.active.id as string)
   }
 
+  const moveSection = (id: string, by: -1 | 1) => {
+    const order = [...layout.sectionOrder]
+    const i = order.indexOf(id), j = i + by
+    if (i < 0 || j < 0 || j >= order.length) return
+    ;[order[i], order[j]] = [order[j], order[i]]
+    reorderSections(order)
+  }
+
   const handleSectionDragEnd = (event: DragEndEvent) => {
     setActiveSectionId(null)
     const { active, over } = event
@@ -513,198 +522,9 @@ export default function AnalyticsDashboard() {
   const pinnedChartIds = layout.pinnedAiCharts.map(c => c.id)
 
   // Section renderers
-  const renderSection = (sectionId: string) => {
-    switch (sectionId) {
-      case 'my-charts':
-        return (
-          <MyChartsSection
-            chartOrder={layout.chartOrder}
-            hiddenCharts={layout.hiddenCharts}
-            pinnedAiCharts={layout.pinnedAiCharts}
-            hasGpsData={hasGpsData}
-            renderProps={chartRenderProps}
-            onReorderCharts={reorderCharts}
-            onHideChart={hideChart}
-            onShowChart={showChart}
-            onUnpinChart={handleUnpinChart}
-          />
-        )
-      case 'kickout-patterns':
-        // pattern finding works best across matches: its season home (the match Kickouts tab shows it too)
-        return hasGpsData ? <KickoutPatterns team={teamName} /> : null
-      default:
-        return null
-    }
-  }
-
-  return (
-    <div className="space-y-8">
-      {/* View Mode Toggle */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div data-tour="view-mode-toggle" className="flex bg-white/10 rounded-xl p-1">
-          <button
-            onClick={() => setViewMode('season')}
-            className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
-              viewMode === 'season'
-                ? 'text-[#0a1a10]'
-                : 'text-white/60 hover:text-white'
-            }`}
-            style={viewMode === 'season' ? { background: 'var(--gradient-primary)' } : {}}
-          >
-            <BarChart3 size={16} />
-            <span className="md:hidden">Stats</span>
-            <span className="hidden md:inline">Season Stats</span>
-          </button>
-          {canEdit && (
-            <button
-              onClick={() => setViewMode('health')}
-              className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
-                viewMode === 'health'
-                  ? 'text-[#0a1a10]'
-                  : 'text-white/60 hover:text-white'
-              }`}
-              style={viewMode === 'health' ? { background: 'var(--gradient-primary)' } : {}}
-            >
-              <Heart size={16} />
-              <span className="md:hidden">Squad</span>
-              <span className="hidden md:inline">Squad Conditioning</span>
-            </button>
-          )}
-          <button
-            onClick={() => setViewMode('ai')}
-            className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
-              viewMode === 'ai'
-                ? 'text-[#0a1a10]'
-                : 'text-white/60 hover:text-white'
-            }`}
-            style={viewMode === 'ai' ? { background: 'var(--gradient-primary)' } : {}}
-          >
-            <Sparkles size={16} />
-            <span className="md:hidden">AI</span>
-            <span className="hidden md:inline">AI Insights</span>
-          </button>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Live Match / Next Match card */}
-          {liveMatch ? (
-            <div
-              onClick={() => navigate(`/match/${liveMatch.id}`)}
-              className="glass-card-live cursor-pointer"
-            >
-              <div className="glass-card-live-inner px-4 py-2 flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
-                  </span>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-red-400">Live</span>
-                </div>
-                <span className="text-sm font-bold text-white whitespace-nowrap">
-                  vs {liveMatch.opponent}
-                </span>
-                <span className="text-sm font-semibold text-emerald-300">
-                  {liveMatch.team_goals}-{String(liveMatch.team_points).padStart(2, '0')} / {liveMatch.opponent_goals}-{String(liveMatch.opponent_points).padStart(2, '0')}
-                </span>
-                {liveMatch.current_phase && (
-                  <span className="text-xs text-white/50 font-medium">
-                    {(liveMatch.current_phase === 'first_half' || liveMatch.current_phase?.startsWith('stopped_first')) ? '1st Half' : liveMatch.current_phase === 'half_time' ? 'HT' : '2nd Half'}
-                  </span>
-                )}
-                <ChevronRight size={16} className="text-white/40" />
-              </div>
-            </div>
-          ) : nextMatch ? (
-            <div
-              onClick={() => navigate(`/match-prep/${nextMatch.id}`)}
-              className="bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 rounded-xl px-4 py-2 cursor-pointer hover:from-emerald-600/30 hover:to-cyan-600/30 border border-emerald-500/30 hover:border-emerald-500/50 transition-all flex items-center gap-2 group"
-            >
-              <Calendar size={14} className="text-emerald-400 flex-shrink-0" />
-              <span className="text-xs text-emerald-400/80 font-semibold uppercase tracking-wide">Next</span>
-              <span className="text-sm font-bold text-white whitespace-nowrap">
-                {nextMatch.opponent} ({nextMatch.venue === 'home' ? 'H' : nextMatch.venue === 'away' ? 'A' : 'N'})
-              </span>
-              <ChevronRight size={16} className="text-emerald-400/60 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all ml-auto" />
-            </div>
-          ) : (
-            <div className="bg-white/10 rounded-xl px-4 py-2 border border-white/10 flex items-center gap-2">
-              <Calendar size={14} className="text-white/30 flex-shrink-0" />
-              <span className="text-xs text-white/50 font-semibold uppercase tracking-wide">Next Match</span>
-              <span className="text-sm text-white/30">No fixture set</span>
-            </div>
-          )}
-          {(viewMode === 'season' || viewMode === 'ai') && (
-            <>
-              {viewMode === 'season' && (
-                <button
-                  onClick={() => setShowResetConfirm(true)}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all touch-manipulation"
-                  title="Reset layout"
-                >
-                  <LayoutGrid size={16} />
-                </button>
-              )}
-              <button
-                onClick={viewMode === 'ai' ? () => { fetchAICharts(true); fetchSuggestions() } : fetchDashboard}
-                disabled={viewMode === 'ai' && regenLimitReached}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all disabled:opacity-30 disabled:pointer-events-none"
-                title={viewMode === 'ai' && regenLimitReached ? 'Daily regeneration limit reached' : 'Refresh data'}
-              >
-                <RefreshCw size={16} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Insight Alerts — above all tabs */}
-      <InsightAlertsPanel dashboard="season" onAlertClick={() => setViewMode('ai')} />
-
-      {/* Conditional View */}
-      {viewMode === 'health' ? (
-        <SquadHealthView />
-      ) : viewMode === 'ai' ? (
-        (seasonDashboard?.possession_funnel?.season_totals?.possessions ?? 0) === 0 ? (
-          <div className="glass-card p-10 text-center max-w-lg mx-auto">
-            <Sparkles size={36} className="text-cyan-400/60 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">No Match Data Yet</h3>
-            <p className="text-white/50 text-sm">
-              AI-powered charts, trend analysis, and tactical recommendations will appear here once you tag match events via live recording or video analysis.
-            </p>
-          </div>
-        ) : <>
-        {/* Every insight already on the season dashboard, on one collapsible board above the AI charts */}
-        <InsightsBoard
-          cards={seasonDashboard?.kpi_cards?.cards || []}
-          funnelInsight={seasonDashboard?.possession_funnel?.insight}
-          aiCharts={aiCharts}
-          hasGps={hasGpsData}
-        />
-        <AiInsightsSection
-          aiCharts={aiCharts}
-          pinnedChartIds={pinnedChartIds}
-          loadingAICharts={loadingAICharts}
-          replacingChartId={replacingChartId}
-          canPin={canPin}
-          onDismissChart={handleDismissChart}
-          onPinChart={handlePinChart}
-          onRegenerateAll={() => fetchAICharts(true)}
-          onLoadMore={loadMoreCharts}
-          loadingMore={loadingMore}
-          loadMoreError={loadMoreError}
-          loadMoreDone={loadMoreDone}
-          regenLimitReached={regenLimitReached}
-          isPinned={isPinned}
-          aiChartsSummary={aiChartsSummary}
-          suggestions={suggestions}
-          loadingSuggestions={loadingSuggestions}
-        />
-        </>
-      ) : (
-        <>
-      {/* Weekly Brief — only show when there's match data */}
-      {season_summary.matches_played > 0 && <WeeklyBriefCard />}
-
-      {/* 1. Season Overview — KPI Cards (always at top, not draggable) */}
+  // Season Overview (the KPI cards) is a section like the others, so it can be moved (Owen 2026-11-20: kickout
+  // patterns could never go above it)
+  const seasonOverview = (
       <div>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-bold flex items-center gap-2.5 text-white">
@@ -978,6 +798,200 @@ export default function AnalyticsDashboard() {
           </>
         )}
       </div>
+  )
+
+  const renderSection = (sectionId: string) => {
+    switch (sectionId) {
+      case 'my-charts':
+        return (
+          <MyChartsSection
+            chartOrder={layout.chartOrder}
+            hiddenCharts={layout.hiddenCharts}
+            pinnedAiCharts={layout.pinnedAiCharts}
+            hasGpsData={hasGpsData}
+            renderProps={chartRenderProps}
+            onReorderCharts={reorderCharts}
+            onHideChart={hideChart}
+            onShowChart={showChart}
+            onUnpinChart={handleUnpinChart}
+          />
+        )
+      case 'kpi-overview':
+        return seasonOverview
+      case 'kickout-patterns':
+        // pattern finding works best across matches: its season home (the match Kickouts tab shows it too)
+        return hasGpsData ? <KickoutPatterns team={teamName} /> : null
+      default:
+        return null
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* View Mode Toggle */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div data-tour="view-mode-toggle" className="flex bg-white/10 rounded-xl p-1">
+          <button
+            onClick={() => setViewMode('season')}
+            className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
+              viewMode === 'season'
+                ? 'text-[#0a1a10]'
+                : 'text-white/60 hover:text-white'
+            }`}
+            style={viewMode === 'season' ? { background: 'var(--gradient-primary)' } : {}}
+          >
+            <BarChart3 size={16} />
+            <span className="md:hidden">Stats</span>
+            <span className="hidden md:inline">Season Stats</span>
+          </button>
+          {canEdit && (
+            <button
+              onClick={() => setViewMode('health')}
+              className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
+                viewMode === 'health'
+                  ? 'text-[#0a1a10]'
+                  : 'text-white/60 hover:text-white'
+              }`}
+              style={viewMode === 'health' ? { background: 'var(--gradient-primary)' } : {}}
+            >
+              <Heart size={16} />
+              <span className="md:hidden">Squad</span>
+              <span className="hidden md:inline">Squad Conditioning</span>
+            </button>
+          )}
+          <button
+            onClick={() => setViewMode('ai')}
+            className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
+              viewMode === 'ai'
+                ? 'text-[#0a1a10]'
+                : 'text-white/60 hover:text-white'
+            }`}
+            style={viewMode === 'ai' ? { background: 'var(--gradient-primary)' } : {}}
+          >
+            <Sparkles size={16} />
+            <span className="md:hidden">AI</span>
+            <span className="hidden md:inline">AI Insights</span>
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Live Match / Next Match card */}
+          {liveMatch ? (
+            <div
+              onClick={() => navigate(`/match/${liveMatch.id}`)}
+              className="glass-card-live cursor-pointer"
+            >
+              <div className="glass-card-live-inner px-4 py-2 flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-red-400">Live</span>
+                </div>
+                <span className="text-sm font-bold text-white whitespace-nowrap">
+                  vs {liveMatch.opponent}
+                </span>
+                <span className="text-sm font-semibold text-emerald-300">
+                  {liveMatch.team_goals}-{String(liveMatch.team_points).padStart(2, '0')} / {liveMatch.opponent_goals}-{String(liveMatch.opponent_points).padStart(2, '0')}
+                </span>
+                {liveMatch.current_phase && (
+                  <span className="text-xs text-white/50 font-medium">
+                    {(liveMatch.current_phase === 'first_half' || liveMatch.current_phase?.startsWith('stopped_first')) ? '1st Half' : liveMatch.current_phase === 'half_time' ? 'HT' : '2nd Half'}
+                  </span>
+                )}
+                <ChevronRight size={16} className="text-white/40" />
+              </div>
+            </div>
+          ) : nextMatch ? (
+            <div
+              onClick={() => navigate(`/match-prep/${nextMatch.id}`)}
+              className="bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 rounded-xl px-4 py-2 cursor-pointer hover:from-emerald-600/30 hover:to-cyan-600/30 border border-emerald-500/30 hover:border-emerald-500/50 transition-all flex items-center gap-2 group"
+            >
+              <Calendar size={14} className="text-emerald-400 flex-shrink-0" />
+              <span className="text-xs text-emerald-400/80 font-semibold uppercase tracking-wide">Next</span>
+              <span className="text-sm font-bold text-white whitespace-nowrap">
+                {nextMatch.opponent} ({nextMatch.venue === 'home' ? 'H' : nextMatch.venue === 'away' ? 'A' : 'N'})
+              </span>
+              <ChevronRight size={16} className="text-emerald-400/60 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all ml-auto" />
+            </div>
+          ) : (
+            <div className="bg-white/10 rounded-xl px-4 py-2 border border-white/10 flex items-center gap-2">
+              <Calendar size={14} className="text-white/30 flex-shrink-0" />
+              <span className="text-xs text-white/50 font-semibold uppercase tracking-wide">Next Match</span>
+              <span className="text-sm text-white/30">No fixture set</span>
+            </div>
+          )}
+          {(viewMode === 'season' || viewMode === 'ai') && (
+            <>
+              {viewMode === 'season' && (
+                <button
+                  onClick={() => setShowResetConfirm(true)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all touch-manipulation"
+                  title="Reset layout"
+                >
+                  <LayoutGrid size={16} />
+                </button>
+              )}
+              <button
+                onClick={viewMode === 'ai' ? () => { fetchAICharts(true); fetchSuggestions() } : fetchDashboard}
+                disabled={viewMode === 'ai' && regenLimitReached}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                title={viewMode === 'ai' && regenLimitReached ? 'Daily regeneration limit reached' : 'Refresh data'}
+              >
+                <RefreshCw size={16} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Insight Alerts — above all tabs */}
+      <InsightAlertsPanel dashboard="season" onAlertClick={() => setViewMode('ai')} />
+
+      {/* Conditional View */}
+      {viewMode === 'health' ? (
+        <SquadHealthView />
+      ) : viewMode === 'ai' ? (
+        (seasonDashboard?.possession_funnel?.season_totals?.possessions ?? 0) === 0 ? (
+          <div className="glass-card p-10 text-center max-w-lg mx-auto">
+            <Sparkles size={36} className="text-cyan-400/60 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">No Match Data Yet</h3>
+            <p className="text-white/50 text-sm">
+              AI-powered charts, trend analysis, and tactical recommendations will appear here once you tag match events via live recording or video analysis.
+            </p>
+          </div>
+        ) : <>
+        {/* Every insight already on the season dashboard, on one collapsible board above the AI charts */}
+        <InsightsBoard
+          cards={seasonDashboard?.kpi_cards?.cards || []}
+          funnelInsight={seasonDashboard?.possession_funnel?.insight}
+          aiCharts={aiCharts}
+          hasGps={hasGpsData}
+        />
+        <AiInsightsSection
+          aiCharts={aiCharts}
+          pinnedChartIds={pinnedChartIds}
+          loadingAICharts={loadingAICharts}
+          replacingChartId={replacingChartId}
+          canPin={canPin}
+          onDismissChart={handleDismissChart}
+          onPinChart={handlePinChart}
+          onRegenerateAll={() => fetchAICharts(true)}
+          onLoadMore={loadMoreCharts}
+          loadingMore={loadingMore}
+          loadMoreError={loadMoreError}
+          loadMoreDone={loadMoreDone}
+          regenLimitReached={regenLimitReached}
+          isPinned={isPinned}
+          aiChartsSummary={aiChartsSummary}
+          suggestions={suggestions}
+          loadingSuggestions={loadingSuggestions}
+        />
+        </>
+      ) : (
+        <>
+      {/* Weekly Brief — only show when there's match data */}
+      {season_summary.matches_played > 0 && <WeeklyBriefCard />}
 
       {/* 2. Draggable sections */}
       <DndContext
@@ -989,7 +1003,9 @@ export default function AnalyticsDashboard() {
         <SortableContext items={layout.sectionOrder} strategy={verticalListSortingStrategy}>
           <div className="space-y-8">
             {layout.sectionOrder.map(sectionId => (
-              <SortableSection key={sectionId} id={sectionId}>
+              <SortableSection key={sectionId} id={sectionId} label={SECTION_NAMES[sectionId] || sectionId}
+                onMoveUp={layout.sectionOrder.indexOf(sectionId) > 0 ? () => moveSection(sectionId, -1) : undefined}
+                onMoveDown={layout.sectionOrder.indexOf(sectionId) < layout.sectionOrder.length - 1 ? () => moveSection(sectionId, 1) : undefined}>
                 {renderSection(sectionId)}
               </SortableSection>
             ))}
@@ -1000,7 +1016,7 @@ export default function AnalyticsDashboard() {
           {activeSectionId && (
             <div className="opacity-60 rounded-2xl ring-2 ring-emerald-500/50 bg-slate-900/80 p-4">
               <div className="text-white/80 font-semibold text-sm capitalize">
-                {activeSectionId.replace(/-/g, ' ')}
+                {SECTION_NAMES[activeSectionId] || activeSectionId.replace(/-/g, ' ')}
               </div>
             </div>
           )}

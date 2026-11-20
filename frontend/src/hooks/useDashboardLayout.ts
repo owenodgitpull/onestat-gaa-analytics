@@ -46,6 +46,7 @@ export const DEFAULT_CHART_ORDER = [
 ]
 
 export const DEFAULT_SECTION_ORDER = [
+  'kpi-overview',
   'my-charts',
   'kickout-patterns',
 ]
@@ -71,7 +72,7 @@ const DEFAULT_VISIBLE_CHARTS = [
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   const hiddenCharts = DEFAULT_CHART_ORDER.filter(id => !DEFAULT_VISIBLE_CHARTS.includes(id))
   return {
-    version: 8,
+    version: 9,
     chartOrder: [...DEFAULT_VISIBLE_CHARTS, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
     hiddenCharts,
     sectionOrder: [...DEFAULT_SECTION_ORDER],
@@ -146,6 +147,13 @@ function migrateLayout(layout: DashboardLayout): { layout: DashboardLayout; need
   if (migrated.version === 7) {
     migrated.version = 8
     if (!(migrated.sectionOrder || []).includes('kickout-patterns')) migrated.sectionOrder = [...(migrated.sectionOrder || []), 'kickout-patterns']
+    needsSave = true
+  }
+
+  // v8 -> v9: the KPI overview became a movable section (2026-11-20); it starts at the top, where it always was
+  if (migrated.version === 8) {
+    migrated.version = 9
+    migrated.sectionOrder = ['kpi-overview', ...(migrated.sectionOrder || []).filter((s: string) => s !== 'kpi-overview')]
     needsSave = true
   }
 
