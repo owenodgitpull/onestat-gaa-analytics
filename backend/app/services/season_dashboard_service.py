@@ -238,7 +238,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v12"  # (v12): turnover differential per game; (v11): kickout trend split by whose kickout; (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v13"  # (v13): basis line per card; (v12): turnover differential per game; (v11): kickout trend split by whose kickout; (v10): GPS turnovers straight off a won kickout no longer dropped; (v9): kickouts over the sideline count as lost; turnovers incl. unforced errors + intercepted kick passes  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def _fresh_kpi_insights(db: AsyncSession, club_id, data_fp: str, result: dict, background_tasks=None) -> None:
@@ -2551,8 +2551,10 @@ class SeasonDashboardService:
             )
             return res.scalar() or 0
 
-        pts_conceded_from_play = round(await _opp_from_play_pts(match_ids) / n, 1)
-        frees_in_range_pg = round(await _frees_in_range(match_ids) / n, 1)
+        _ocp_total = await _opp_from_play_pts(match_ids)
+        _fir_total = await _frees_in_range(match_ids)
+        pts_conceded_from_play = round(_ocp_total / n, 1)
+        frees_in_range_pg = round(_fir_total / n, 1)
 
         # --- Clean sheet rate (goals) ---
         clean_sheets = sum(1 for m in matches if m.opponent_goals == 0)
@@ -2635,7 +2637,8 @@ class SeasonDashboardService:
                 )
             )
         )
-        goal_chances = round((goal_chances_result.scalar() or 0) / n, 1)
+        _gc_total = goal_chances_result.scalar() or 0
+        goal_chances = round(_gc_total / n, 1)
 
         # --- Opp kickout win % ---
         # their kickout over the sideline is one they lost, so ours
@@ -3175,6 +3178,47 @@ class SeasonDashboardService:
             cards.append({"key": "already_back_pct", "label": "Already Back %", "value": bbb["season_back_pct"], "format": "percent",
                           "color": "amber", "trend": make_trend(bbb["season_back_pct"], bbb["recent_back_pct"]),
                           "detail": f"{bbb['back']} of {bbb['lost']} turnovers lost"})
+
+        # The counts behind each figure, one short line for the info pop-up (Owen 2026-11-20: "include one line with the
+        # numbers behind the %, like 79 of 123"). Season counts, the same ones the figure is worked out from.
+        _fpm = [pm for pm in funnel.get("per_match", []) if pm["match_id"] in {str(i) for i in match_ids}]
+        _f_poss = sum(r["possessions"] for r in _fpm)
+        _f_pts = sum(_pts_by_match.get(r["match_id"], 0) for r in _fpm)
+        _st, _ot = funnel.get("season_totals", {}), funnel.get("opponent_totals", {})
+        _ms = f"{n} match{'es' if n != 1 else ''}"
+        _conceded = sum((m.opponent_goals * 3) + m.opponent_points for m in matches)
+        _ue_share = f", {total_unforced_errors} of them unforced errors" if total_unforced_errors else ""
+        basis = {
+            "productivity": f"{_f_pts} points from {_f_poss} possessions",
+            "turnover_diff": f"{t_won} won, {t_lost} lost over {_ms}",
+            "kickout_retention": f"{own_ko_won} kept of {own_ko_total} kickouts",
+            "shot_efficiency": f"{_st.get('scores', 0)} scores from {_st.get('shots', 0)} shots",
+            "fouls_per_game": f"{total_fouls} fouls over {_ms}",
+            "avg_scored": f"{total_points_scored} points over {_ms}",
+            "avg_conceded": f"{_conceded} points over {_ms}",
+            "score_per_possession": f"{season_scores} scores from {season_possessions} possessions",
+            "opp_score_per_possession": f"{opp_scores} scores from {opp_possessions} of their possessions",
+            "turnover_to_score": f"{_ts} scores from {_tw} turnovers won",
+            "turnovers_conceded": f"{t_lost} over {_ms}{_ue_share}",
+            "pts_conceded_from_play": f"{_ocp_total} points from play over {_ms}",
+            "frees_in_scoring_range": f"{_fir_total} frees inside our 45 over {_ms}",
+            "clean_sheet_rate": f"{clean_sheets} of {_ms} without conceding a goal",
+            "goals_conceded_pg": f"{sum(m.opponent_goals for m in matches)} goals over {_ms}",
+            "opp_inside_45": f"{_ot.get('attacks', 0)} entries over {len(_fpm)} matches",
+            "own_inside_45": f"{_st.get('attacks', 0)} entries over {len(_fpm)} matches",
+            "from_play_score_pct": f"{from_play_pts} of {total_points_scored} points from play",
+            "free_conversion": f"{frees_scored} scored of {free_total} frees and 45s",
+            "goal_scoring_rate": f"{sum(m.team_goals for m in matches)} goals over {_ms}",
+            "goal_chances_created": f"{_gc_total} goal chances over {_ms}",
+            "opp_kickout_win": f"{opp_ko_won} won of {opp_ko_total} of their kickouts",
+            "card_rate": f"{total_cards} cards over {_ms}",
+            "mins_14_men": f"{int(mins_14_men)} player-minutes in the sin bin or sent off over {_ms}",
+            "unforced_errors_pg": f"{total_unforced_errors} over {_ms}",
+            "ball_recovery_avg_min": f"{sum(1 for r in recovery_ev_rows if r[4])} balls lost over {_ms}, timed to the next regain",
+        }
+        for c in cards:
+            if c["key"] in basis:
+                c["basis"] = basis[c["key"]]
 
         # Is the movement good? "up" was always drawn green, so more unforced errors, fouls or goals conceded over the
         # last 3 showed as a green arrow. direction stays the real movement; good says whether it helps us.

@@ -420,6 +420,8 @@ export default function AnalyticsDashboard() {
   // Auto-rotate KPI cards: flip one flippable card every 4s, pause on touch/click
   const kpiPairingsRef = useRef(kpiPairings)
   kpiPairingsRef.current = kpiPairings
+  const activeTooltipRef = useRef<string | null>(null)
+  activeTooltipRef.current = activeTooltip
 
   useEffect(() => {
     if (!seasonDashboard?.kpi_cards || viewMode !== 'season') return
@@ -428,7 +430,8 @@ export default function AnalyticsDashboard() {
 
     const scheduleNext = () => {
       autoRotateTimer.current = setTimeout(() => {
-        if (autoRotatePaused.current) {
+        // never flip while an info pop-up is open: the pop-up belongs to the card face and went with it
+        if (autoRotatePaused.current || activeTooltipRef.current) {
           scheduleNext()
           return
         }
@@ -613,7 +616,7 @@ export default function AnalyticsDashboard() {
                         <Info size={14} className="text-white/70" />
                       </button>
                       {activeTooltip === card.key && createPortal(
-                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
                           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveTooltip(null)} />
                           <div className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl">
                             {/* Header: the figure, then how it moved, in one glance */}
@@ -631,6 +634,7 @@ export default function AnalyticsDashboard() {
                                     return <span className="text-xs text-white/65 tabular-nums">{move} {fmtTrend(card, t.recent)}{u} over the last {t.window} matches, against {fmtTrend(card, t.season)}{u} for the season: {verdict}</span>
                                   })()}
                                 </div>
+                                {(card.basis || card.detail) && <div className="text-xs text-white/50 mt-0.5 tabular-nums">{card.basis || card.detail}</div>}
                               </div>
                               <button onClick={() => setActiveTooltip(null)} aria-label="Close" className="p-1 rounded-lg hover:bg-white/10 transition-colors shrink-0">
                                 <X size={16} className="text-white/60" />

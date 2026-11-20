@@ -967,6 +967,8 @@ export interface KPICardItem {
   insight?: string;
   /** a short line under the value */
   detail?: string | null;
+  /** the counts behind the figure, one line for the info pop-up ("79 kept of 123 kickouts") */
+  basis?: string | null;
   /** rows for the info pop-up, e.g. { label: '11 of 14 outfielders back', value: '5 s' } */
   breakdown?: { label: string; value: string }[] | null;
   breakdown_note?: string | null;
