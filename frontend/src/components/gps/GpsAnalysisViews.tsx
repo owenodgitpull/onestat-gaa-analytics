@@ -119,7 +119,7 @@ const SHAPE_TIPS = {
   compactIn: 'With the ball: average distance of all 14 outfielders from the middle of the group. Bigger = more spread to attack.',
   lengthOut: 'Without the ball: deepest to most advanced of our defending 11, along the pitch. Shorter = tighter.',
 }
-const SHAPE_NOTE = 'Compact = average distance of each player from the middle of the group (their average spot, not the pitch centre); smaller = tighter. No ball: our defending 11, once settled; ball: all 14. Length = deepest to most advanced of the 11.'
+const SHAPE_NOTE = 'Compact = average distance of each player from the middle of the group (their average spot, not the pitch centre); smaller = tighter. No ball: our defending 11, once settled; ball: all 14. Length = deepest to most advanced of the 11. Both measured from GPS about 10 times a second, then averaged over the half.'
 
 const tooltipStyle = { background: '#0b1226', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, fontSize: 12 }
 const axisTick = { fill: 'rgba(255,255,255,0.45)', fontSize: 11 }
