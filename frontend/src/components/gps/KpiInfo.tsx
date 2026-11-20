@@ -25,17 +25,17 @@ export const GPS_KPI_INFO: Record<string, KpiExplanation> = {
   },
   'Compact without ball': {
     what: 'How tightly our defensive block packs when they have the ball. Smaller = tighter, harder to play through.',
-    how: 'Without the ball we measure the defensive block: every outfielder except the 3 furthest forward (the rules keep 3 up in their half, and counting them would drag the middle upfield). Find the middle of those players and measure how far, on average, each one is from it. Only settled defence counts - from 6 seconds after we lose the ball - so the scramble straight after a turnover or restart is left out. The small number underneath is with the ball, all 14 outfielders (we spread out when attacking, which is normal).',
+    how: 'Without the ball we measure the defensive block: every outfielder except the 3 furthest forward (the rules keep 3 up in their half, and counting them would drag the middle upfield). Find the middle of those players and measure how far, on average, each one is from it. We only start counting 6 seconds after we lose the ball, once the defence has had time to get set - the scramble back straight after a turnover would make any team look loose. The small number underneath is with the ball, all 14 outfielders (we spread out when attacking, which is normal).',
     accuracy: 'Our players: GPS, to a couple of metres. Who has the ball comes from your tagged carries. Goalkeeper and players without a unit are not counted.',
   },
   'Compactness': {
     what: 'How tightly packed our team is. Smaller = tighter.',
-    how: 'With the ball: all our outfield players - find the middle of the group and the average distance of each player from it. Without the ball: the same for the defensive block only (all but the 3 furthest forward, who the rules keep up the pitch), in settled defence from 6 seconds after we lose it.',
+    how: 'With the ball: all our outfield players - find the middle of the group and the average distance of each player from it. Without the ball: the same for the defensive block only (all but the 3 furthest forward, who the rules keep up the pitch), and only from 6 seconds after we lose it, once the defence has had time to get set.',
     accuracy: 'Our players: GPS, to a couple of metres. Who has the ball comes from your tagged carries.',
   },
   'Length': {
     what: 'How long our team is from back to front, along the pitch.',
-    how: 'Every second, the distance between our deepest and most advanced outfielder along the pitch. With the ball: all 14. Without it: the defensive block (leaving out the 3 kept up the pitch), in settled defence from 6 seconds after we lose it.',
+    how: 'Every second, the distance between our deepest and most advanced outfielder along the pitch. With the ball: all 14. Without it: the defensive block (leaving out the 3 kept up the pitch), and only from 6 seconds after we lose it, once the defence has had time to get set.',
     accuracy: 'One player well ahead of or behind the rest stretches it. No goalkeeper.',
   },
   'Width': {
