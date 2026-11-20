@@ -17,6 +17,7 @@ import SeasonExpectedPoints from '@/components/charts/SeasonExpectedPoints'
 import TransitionSpeedChart from '@/components/charts/TransitionSpeedChart'
 import PressTriggerChart from '@/components/charts/PressTriggerChart'
 import DynamicChart from '@/components/DynamicChart'
+import KickoutPatterns from '@/components/gps/KickoutPatterns'
 import type { SeasonDashboardData, DashboardData, AIChartSpec, SeasonExpectedPointsData, AttackingThirdsData } from '@/services/api'
 
 // Fallback shape when seasonDashboard has loaded but expected_points_season
@@ -59,6 +60,8 @@ export interface ChartRenderProps {
   dashboardData: DashboardData
   pinnedAiChart?: AIChartSpec
   onUnpin?: (chartId: string) => void
+  /** the logged-in club's name, for charts that label our side */
+  teamName?: string
 }
 
 export const CANONICAL_CHARTS: ChartRegistryEntry[] = [
@@ -193,6 +196,17 @@ export const CANONICAL_CHARTS: ChartRegistryEntry[] = [
     colSpan: 2,
     render: ({ seasonDashboard }) =>
       seasonDashboard?.kpi_sparkline_grid ? <KPISparklineGrid data={seasonDashboard.kpi_sparkline_grid} /> : null,
+  },
+  {
+    // a full-width chart in My Charts, so it moves one chart at a time (as its own section it could only jump the whole
+    // chart grid - Owen 2026-11-20)
+    id: 'kickout-patterns',
+    label: 'Kickout Patterns',
+    description: 'Player setups that go with winning or losing kickouts, ours and theirs, across every GPS match',
+    category: 'Kickouts',
+    colSpan: 2,
+    requiresGps: true,
+    render: ({ teamName }) => <KickoutPatterns team={teamName || 'Our'} />,
   },
   {
     id: 'season-hmld',

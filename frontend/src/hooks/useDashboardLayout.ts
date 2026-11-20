@@ -43,12 +43,12 @@ export const DEFAULT_CHART_ORDER = [
   'season-hmld',
   'transition-speed',
   'press-trigger',
+  'kickout-patterns',
 ]
 
 export const DEFAULT_SECTION_ORDER = [
   'kpi-overview',
   'my-charts',
-  'kickout-patterns',
 ]
 
 export interface DashboardLayout {
@@ -67,12 +67,13 @@ const DEFAULT_VISIBLE_CHARTS = [
   'territory-distribution',
   'shot-map',
   'kickout-landing-zones',
+  'kickout-patterns',
 ]
 
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   const hiddenCharts = DEFAULT_CHART_ORDER.filter(id => !DEFAULT_VISIBLE_CHARTS.includes(id))
   return {
-    version: 9,
+    version: 10,
     chartOrder: [...DEFAULT_VISIBLE_CHARTS, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
     hiddenCharts,
     sectionOrder: [...DEFAULT_SECTION_ORDER],
@@ -154,6 +155,20 @@ function migrateLayout(layout: DashboardLayout): { layout: DashboardLayout; need
   if (migrated.version === 8) {
     migrated.version = 9
     migrated.sectionOrder = ['kpi-overview', ...(migrated.sectionOrder || []).filter((s: string) => s !== 'kpi-overview')]
+    needsSave = true
+  }
+
+  // v9 -> v10: kickout patterns moved from its own section into My Charts (a full-width chart), so it can sit between
+  // charts. It keeps its place: where it was below the charts it goes last; above them, first.
+  if (migrated.version === 9) {
+    migrated.version = 10
+    const so = migrated.sectionOrder || []
+    const wasAbove = so.indexOf('kickout-patterns') > -1 && so.indexOf('kickout-patterns') < so.indexOf('my-charts')
+    migrated.sectionOrder = so.filter((s: string) => s !== 'kickout-patterns')
+    if (!migrated.chartOrder.includes('kickout-patterns')) {
+      migrated.chartOrder = wasAbove ? ['kickout-patterns', ...migrated.chartOrder] : [...migrated.chartOrder, 'kickout-patterns']
+    }
+    migrated.hiddenCharts = (migrated.hiddenCharts || []).filter((c: string) => c !== 'kickout-patterns')
     needsSave = true
   }
 

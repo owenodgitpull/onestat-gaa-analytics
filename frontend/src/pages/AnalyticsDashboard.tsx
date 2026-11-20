@@ -517,6 +517,7 @@ export default function AnalyticsDashboard() {
   const chartRenderProps: ChartRenderProps = {
     seasonDashboard,
     dashboardData,
+    teamName,
   }
 
   const pinnedChartIds = layout.pinnedAiCharts.map(c => c.id)
