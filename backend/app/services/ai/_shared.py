@@ -1400,6 +1400,8 @@ from app.services.ai.gps_tools import TOOL_DEFS as _GPS_TOOL_DEFS  # noqa: E402
 TOOLS.extend(_GPS_TOOL_DEFS)
 from app.services.ai.player_kpi_tools import TOOL_DEFS as _PLAYER_KPI_TOOL_DEFS  # noqa: E402
 TOOLS.extend(_PLAYER_KPI_TOOL_DEFS)
+from app.services.ai.match_lookup import TOOL_DEFS as _MATCH_LOOKUP_TOOL_DEFS  # noqa: E402
+TOOLS.extend(_MATCH_LOOKUP_TOOL_DEFS)
 
 
 def get_tools_subset(tool_names: list[str]) -> list[dict]:
@@ -1445,7 +1447,25 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
     if not club_id and tool_name not in ("search_web_gaa_news", "display_starting_lineup", "create_data_table"):
         return safe_json({"error": "No club context for this request; refusing to read data."})
 
-    if tool_name == "get_match_event_log":
+    # A match can be named instead of its UUID ("Kerry 23 May", "Dublin", "latest") - the agent never needs the user
+    # to paste an ID from the app's URL (Owen 2026-11-21). Resolved here once, for every tool.
+    if isinstance(tool_input, dict) and tool_name != "list_matches":
+        from app.services.ai.match_lookup import resolve_match_ref
+        for key in ("match_id", "exclude_match_id"):
+            v = tool_input.get(key)
+            if isinstance(v, str) and v.strip() and v.strip().lower() not in ("all", "season", "none", "null"):
+                mid, err = await resolve_match_ref(db, club_id, v)
+                if err:
+                    return safe_json(err)
+                tool_input = {**tool_input, key: mid}
+            elif isinstance(v, str) and v.strip().lower() in ("all", "season", "none", "null", ""):
+                tool_input = {k: x for k, x in tool_input.items() if k != key}
+
+    if tool_name == "list_matches":
+        from app.services.ai.match_lookup import list_matches
+        return await list_matches(db, club_id, **tool_input)
+
+    elif tool_name == "get_match_event_log":
         return await get_match_events(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_summary":
         return await get_match_summary(db, **tool_input, club_id=club_id)

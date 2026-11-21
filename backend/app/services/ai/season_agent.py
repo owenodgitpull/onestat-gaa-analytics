@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Tools available to the season agent (dashboard/KPI tasks)
 SEASON_TOOLS = [
+    "list_matches",
     "get_team_season_totals",
     "get_all_players_season_stats",
     "get_player_season_stats",
@@ -78,6 +79,7 @@ SEASON_TOOLS = [
 
 # Tools for player-level tasks (season story, insights, challenges)
 PLAYER_TOOLS = [
+    "list_matches",
     "search_players",
     "get_player_season_stats",
     "get_player_gps_stats",
