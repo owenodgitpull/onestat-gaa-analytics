@@ -443,8 +443,8 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
               <Users size={13} /> Names
             </button>
             <button onClick={() => setShowCarry(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showCarry ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showCarry}
-              title="Show who had the ball, as you recorded it during the match">
-              <CircleDot size={13} /> Ball carrying
+              title="Highlight the player carrying the ball, from your carry tags recorded during the match">
+              <CircleDot size={13} /> Carrier
             </button>
             <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
               title="Line the dots and the ball up with the video, then save">
@@ -486,7 +486,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                 {shownTheirBall && (
                   <g>
                     <circle cx={sc.x(shownTheirBall.x)} cy={sc.y(shownTheirBall.y)} r={22} fill="url(#gpsDotTheirs)" stroke="rgba(255,255,255,0.9)" strokeWidth={3} />
-                    <text x={sc.x(shownTheirBall.x)} y={sc.y(shownTheirBall.y) + 58} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{showNames && carry?.opposition_player ? carry.opposition_player : `${ctx.opponent || 'Opposition'} ball`}</text>
+                    <text x={sc.x(shownTheirBall.x)} y={sc.y(shownTheirBall.y) + 58} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{showNames && carry?.opposition_player ? carry.opposition_player : `${ctx.opponent || 'Opposition'} carrier`}</text>
                   </g>
                 )}
                 {dots.map(d => {
@@ -495,7 +495,6 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                   return (
                     <g key={d.pid}>
                       {isCarrier && <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={50} fill="none" stroke="#fff" strokeWidth={6} />}
-                      {isCarrier && <circle cx={sc.x(d.x) + 40} cy={sc.y(d.y) - 40} r={16} fill="#ffffff" stroke="#0b1226" strokeWidth={4} />}
                       <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={34} fill="url(#gpsDotOurs)" stroke={isCarrier ? '#ffffff' : 'rgba(255,255,255,0.75)'} strokeWidth={3} />
                       <text x={sc.x(d.x)} y={sc.y(d.y) + 12} textAnchor="middle" fontSize={34} fontWeight={800} fill="#fff" stroke="rgba(4,40,28,0.55)" strokeWidth={3} paintOrder="stroke" style={{ fontVariantNumeric: 'tabular-nums' }}>{n ?? ''}</text>
                       {(showNames || isCarrier) && (
@@ -535,15 +534,15 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             ? <>{ctx.stadium ? `${ctx.stadium} · ` : ''}{L} × {W} m, drawn to scale. Players are placed by GPS.</>
             : <>Pitch size not set for this match, so the standard 145 × 90 m is used. Pick the ground in Edit Match Details to draw it to scale.</>}
         </p>
-        {showCarry && <p className="mt-1 px-1 text-[11px] text-white/50">Ball carrying is on: this was your ball carrying recorded during the match, tagged by hand, so it can run a little ahead of or behind the GPS.</p>}
+        {showCarry && <p className="mt-1 px-1 text-[11px] text-white/50">Carrier highlight is on: the ball carrier comes from the carries you tagged during the match, so it can run a little ahead of or behind the GPS dots.</p>}
         <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
           {status.busy ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : status.error ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}
           <span>{status.text}</span>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/55">
           <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: COLOR_OURS }} /> {team} player (shirt number)</span>
-          {showCarry && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-white" /> has the ball (tagged)</span>}
-          {showCarry && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: COLOR_THEIRS }} /> {ctx.opponent || 'Opposition'} ball (tagged)</span>}
+          {showCarry && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-white" /> ball carrier (tagged)</span>}
+          {showCarry && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: COLOR_THEIRS }} /> {ctx.opponent || 'Opposition'} carrier (tagged, no GPS)</span>}
           <span className="flex items-center gap-1.5"><Tag size={11} /> tagged event, 3 s</span>
         </div>
       </div>
