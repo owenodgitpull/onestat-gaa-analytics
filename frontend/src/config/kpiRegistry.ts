@@ -58,7 +58,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
       },
       shot_efficiency: {
         what: 'Percentage of shots that result in scores — shows how clinical we are in front of the posts',
-        formula: '(Scores ÷ Total shots) × 100. Includes points, goals, and 2-pointers.',
+        formula: '(Scores ÷ Total shots) × 100. Includes points, goals, and 2-pointers. The colour compares your own team only: the last 3 matches against the season so far. Green = better, amber = about the same, red = worse.',
       },
     },
   },
@@ -72,7 +72,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       turnover_diff: {
         what: 'Turnovers won minus lost — positive means we\'re winning more ball than giving it away',
-        formula: '(Turnovers won − Turnovers lost) ÷ matches played, so it sits beside its last-3 figure. Lost = turnovers lost, unforced errors, kick passes intercepted, and their interceptions and tackles won; won is the same from their side. A positive number means we\'re coming out on top in the battle for possession.',
+        formula: '(Turnovers won − Turnovers lost) ÷ matches played, so it sits beside its last-3 figure. Lost = turnovers lost, unforced errors, kick passes intercepted, and their interceptions and tackles won; won is the same from their side. A positive number means we\'re coming out on top in the battle for possession. The colour compares your own team only: the last 3 matches against the season so far. Green = better, amber = about the same, red = worse.',
       },
       fouls_per_game: {
         what: 'Average fouls committed per match — fewer means less frees conceded to opposition',

@@ -506,6 +506,24 @@ export default function MatchResult() {
       .sort((a, b) => b.totalValue - a.totalValue)
   }, [eventsData, players])
 
+  // Turnover leaderboard: own players, turnovers won and lost as tagged (same two event types as the team figures above)
+  const turnoverBoard = useMemo(() => {
+    if (!eventsData?.events || !players) return []
+    const byPlayer: Record<string, { won: number; lost: number }> = {}
+    for (const e of eventsData.events as any[]) {
+      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
+      if (team !== 'own' || !e.player_id) continue
+      if (e.event_type !== 'turnover_won' && e.event_type !== 'turnover_lost') continue
+      const pid = String(e.player_id)
+      if (!byPlayer[pid]) byPlayer[pid] = { won: 0, lost: 0 }
+      if (e.event_type === 'turnover_won') byPlayer[pid].won++
+      else byPlayer[pid].lost++
+    }
+    return Object.entries(byPlayer)
+      .map(([pid, b]) => ({ playerId: pid, name: players.find((p: any) => p.id === pid)?.name || 'Unknown', ...b }))
+      .sort((x, y) => y.won - x.won || x.lost - y.lost || x.name.localeCompare(y.name))
+  }, [eventsData, players])
+
   // Filter events for pitch display
   const filteredEvents = useMemo(() => {
     if (!eventsData?.events) return []
@@ -824,6 +842,44 @@ export default function MatchResult() {
             </div>
           </div>
         )}
+
+        {/* Turnovers by player */}
+        {turnoverBoard.length > 0 && (() => {
+          const top = turnoverBoard[0]
+          const leaders = turnoverBoard.filter(t => t.won === top.won).map(t => t.name)
+          return (
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-2">
+                <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">Turnovers by player</div>
+                {top.won > 0 && (
+                  <div className="text-sm text-white/70">
+                    Most won: <span className="text-white font-medium">{leaders.join(', ')}</span> ({top.won})
+                  </div>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[280px]">
+                  <thead>
+                    <tr className="text-xs text-white/40">
+                      <th className="text-left font-medium py-1 pr-3">Player</th>
+                      <th className="text-right font-medium py-1 px-3">Won</th>
+                      <th className="text-right font-medium py-1 pl-3">Lost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {turnoverBoard.map(t => (
+                      <tr key={t.playerId} className="border-t border-white/5">
+                        <td className="py-1 pr-3 text-white/80">{t.name}</td>
+                        <td className="py-1 px-3 text-right tabular-nums text-emerald-300">{t.won}</td>
+                        <td className="py-1 pl-3 text-right tabular-nums text-red-300">{t.lost}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* No events indicator */}
         {!hasEvents && (
