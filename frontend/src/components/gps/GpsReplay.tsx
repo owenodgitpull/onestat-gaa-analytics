@@ -10,8 +10,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Tag, Users, SlidersHorizontal, CircleDot } from 'lucide-react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import GpsSyncEditor from './GpsSyncEditor'
+import { useQuery } from '@tanstack/react-query'
+import GpsCarrierFixer from './GpsCarrierFixer'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
 import { useVideoSession } from '../../hooks/useVideoSessions'
 import { api, type GpsWindow } from '../../services/api'
@@ -99,7 +99,6 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   }, [refetchSession])
 
   const player = useRef<VideoPlayerHandle>(null)
-  const queryClient = useQueryClient()
   const [now, setNow] = useState<number>(initialMs ?? ctx.periods[0]?.video_start_ms ?? 0)
   const [windows, setWindows] = useState<Record<number, WinState>>({})
   const raw = true      // always the pitch as filmed, so the dots run the same way as the video and swap ends at half-time
@@ -126,13 +125,9 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   }, [])
   useEffect(() => { onTimeChange?.(now) }, [now, onTimeChange])
 
-  // "Edit sync": unsaved shifts. dotShift[half] = player dots drawn this many ms later; tagShift = every tag drawn later
-  const savedTagShift = ctx.sync?.tag_lag?._manual?.shift_ms ?? 0
+  // "Fix carrier" panel. The whole-match tag shift saved earlier (if any) still applies; there is no longer a way to change it
+  const tagShift = ctx.sync?.tag_lag?._manual?.shift_ms ?? 0
   const [editOpen, setEditOpen] = useState(false)
-  const [dotShift, setDotShift] = useState<Record<number, number>>({})
-  const [tagShift, setTagShift] = useState<number>(savedTagShift)
-  useEffect(() => { setTagShift(savedTagShift) }, [savedTagShift])
-  const halfNow = halfAt(ctx.periods, now)
 
   // Each carry's real start, lined up from our players' GPS by the analysis (the tap delay varies a lot carry to
   // carry, so one fixed delay left the ball behind). Until it arrives, or where a carry does not match, the fixed delay.
@@ -143,7 +138,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const leadAt = useCallback((videoMs: number) => (alignQ.data?.replay?.lead_ms ?? {})[String(halfAt(ctx.periods, videoMs))] ?? 0, [alignQ.data, ctx.periods])
   const lead = leadAt(now)
   const pitchMs = now + lead
-  const posMs = pitchMs - (dotShift[halfNow] ?? 0)   // the synced-clock time whose positions are drawn now
+  const posMs = pitchMs   // the synced-clock time whose positions are drawn now
 
   // "Who just got the ball?" pins: carry id -> the video time it really starts. Saved at once; display only.
   const savedPins = ctx.sync?.tag_lag?._pins
@@ -422,14 +417,9 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             ))}
           </select>
         </div>
-        {editOpen && (
-          <GpsSyncEditor matchId={matchId} ctx={ctx} half={halfNow} dotShifts={dotShift} tagShift={tagShift} savedTagShift={savedTagShift}
-            tagNote={tagNote} onJumpToTag={nextCarry ? () => { player.current?.pause(); seek(Math.max(0, nextCarry.video_ms - lead - 3000)) } : undefined}
-            leadMs={lead} leadFrom={alignQ.data?.replay?.lead_from?.[String(halfNow)]} timingLoading={alignQ.isLoading}
+        {editOpen && showCarry && (
+          <GpsCarrierFixer tagNote={tagNote} onJumpToTag={nextCarry ? () => { player.current?.pause(); seek(Math.max(0, nextCarry.video_ms - lead - 3000)) } : undefined}
             ballChoices={ballChoices} pinState={pinState} onPin={pinCarry} onUnpin={unpinCarry} pinCount={Object.keys(pins).length}
-            onDotShift={v => setDotShift(d => ({ ...d, [halfNow]: v }))} onTagShift={setTagShift}
-            onReset={() => { setDotShift({}); setTagShift(savedTagShift) }}
-            onSaved={() => { setDotShift({}); setWindows({}); queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('gps') }) }}
             onClose={() => setEditOpen(false)} />
         )}
       </div>
@@ -445,10 +435,12 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
               title="Highlight the player carrying the ball, from your carry tags recorded during the match">
               <CircleDot size={13} /> Carrier
             </button>
-            <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
-              title="Line the dots and the ball up with the video, then save">
-              <SlidersHorizontal size={13} /> Edit sync
-            </button>
+            {showCarry && (
+              <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
+                title="Fix who has the ball at a moment the carrier looks wrong">
+                <SlidersHorizontal size={13} /> Fix carrier
+              </button>
+            )}
           </div>
         </div>
         <div className="rounded-xl overflow-hidden border border-white/10">

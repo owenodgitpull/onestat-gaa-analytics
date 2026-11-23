@@ -70,7 +70,7 @@ export function makeScale(lengthM: number, widthM: number, warp = false, measure
 
 export type PitchScale = ReturnType<typeof makeScale>
 
-export default function GpsPitch({ lengthM, widthM, children, className = '', label, onPointerDown, dim = false, half, warp = true, fit = true, measured = false }: {
+export default function GpsPitch({ lengthM, widthM, children, className = '', label, onPointerDown, dim = false, half, warp = true, fit = true, measured = true }: {
   lengthM: number; widthM: number; children?: (s: PitchScale) => ReactNode; className?: string; label?: string
   /** darken the grass so a colour scale on top (heat map) keeps its low end visible */
   dim?: boolean
@@ -80,7 +80,7 @@ export default function GpsPitch({ lengthM, widthM, children, className = '', la
   warp?: boolean
   /** cap the height so the whole pitch fits on screen (the replay passes false) */
   fit?: boolean
-  /** draw the pitch to the ground's measured size instead of the shared artwork (the replay) */
+  /** draw the pitch to the ground's measured size (default, every GPS view). false = the shared artwork with its warp */
   measured?: boolean
   onPointerDown?: (e: React.PointerEvent<SVGSVGElement>) => void
 }) {

@@ -12,7 +12,7 @@ import {
   gpsAnalysisApi, type GpsMatchAnalysis, type GpsShapeSeries, type GpsHeatmap, backBehindBall, type GpsKickout, type GpsKoSpots, type GpsKoZone, type GpsReplayContext,
   periodClock, COLOR_OURS, COLOR_THEIRS, type GpsSeasonRow,
 } from '../../services/gpsAnalysisApi'
-import GpsPitch, { PitchFrameCaption, pitchMaxWidth, artToRealX, ART_WARP } from './GpsPitch'
+import GpsPitch, { PitchFrameCaption, pitchMaxWidth, artToRealX } from './GpsPitch'
 import KickoutPlayOn from './KickoutPlayOn'
 import KickoutPatterns from './KickoutPatterns'
 import { useReportMode } from '../../contexts/ReportModeContext'
@@ -787,7 +787,7 @@ export function HeatmapView({ matchId, ctx, team }: { matchId: string; ctx: GpsR
   const q = useQuery<GpsHeatmap>({ queryKey: ['gps-analysis', matchId, 'heat', playerId, half, state], queryFn: () => gpsAnalysisApi.heatmap(matchId, { playerId: playerId || undefined, half: half || undefined, state }) })
   const tracked = ctx.tracked.filter(pid => ctx.on_pitch[pid]).sort((x, y) => (ctx.players[x]?.name || '').localeCompare(ctx.players[y]?.name || ''))
   const total = useMemo(() => (q.data?.seconds.flat() || []).reduce((t, v) => t + v, 0), [q.data])
-  const img = useMemo(() => q.data ? heatImage(q.data.seconds, q.data.cell_m, q.data.pitch_length_m, q.data.pitch_width_m, ART_WARP) : null, [q.data])
+  const img = useMemo(() => q.data ? heatImage(q.data.seconds, q.data.cell_m, q.data.pitch_length_m, q.data.pitch_width_m, false) : null, [q.data])
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
