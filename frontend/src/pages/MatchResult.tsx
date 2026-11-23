@@ -506,23 +506,40 @@ export default function MatchResult() {
       .sort((a, b) => b.totalValue - a.totalValue)
   }, [eventsData, players])
 
-  // Turnover leaderboard: own players, turnovers won and lost as tagged (same two event types as the team figures above)
-  const turnoverBoard = useMemo(() => {
-    if (!eventsData?.events || !players) return []
-    const byPlayer: Record<string, { won: number; lost: number }> = {}
+  // "By player" container under the score: wides, turnovers, restarts won. Own players only, counted from the tagged events.
+  const byPlayer = useMemo(() => {
+    const empty = { wides: [], turnovers: [], restarts: [] } as { wides: any[]; turnovers: any[]; restarts: any[] }
+    if (!eventsData?.events || !players) return empty
+    const wide: Record<string, number> = {}
+    const to: Record<string, { won: number; lost: number }> = {}
+    const rs: Record<string, { sideline: number; throwIn: number; kickouts: number }> = {}
+    const WIDES = new Set(['wide', 'wide_free'])
+    const KO_WON = new Set(['own_kickout_won', 'own_kickout_won_break', 'opp_kickout_won', 'opp_kickout_won_break', 'kickout_won'])
     for (const e of eventsData.events as any[]) {
+      if (!e.player_id) continue
       const team = e.team || (e.is_home_team ? 'own' : 'opponent')
-      if (team !== 'own' || !e.player_id) continue
-      if (e.event_type !== 'turnover_won' && e.event_type !== 'turnover_lost') continue
       const pid = String(e.player_id)
-      if (!byPlayer[pid]) byPlayer[pid] = { won: 0, lost: 0 }
-      if (e.event_type === 'turnover_won') byPlayer[pid].won++
-      else byPlayer[pid].lost++
+      const t = e.event_type as string
+      if (team === 'own' && WIDES.has(t)) wide[pid] = (wide[pid] || 0) + 1
+      if (team === 'own' && (t === 'turnover_won' || t === 'turnover_lost')) {
+        to[pid] = to[pid] || { won: 0, lost: 0 }
+        if (t === 'turnover_won') to[pid].won++; else to[pid].lost++
+      }
+      const isSide = t === 'sideline_ball', isThrow = t === 'throw_in', isKo = KO_WON.has(t)
+      if (isSide || isThrow || isKo) {
+        rs[pid] = rs[pid] || { sideline: 0, throwIn: 0, kickouts: 0 }
+        if (isSide) rs[pid].sideline++; else if (isThrow) rs[pid].throwIn++; else rs[pid].kickouts++
+      }
     }
-    return Object.entries(byPlayer)
-      .map(([pid, b]) => ({ playerId: pid, name: players.find((p: any) => p.id === pid)?.name || 'Unknown', ...b }))
-      .sort((x, y) => y.won - x.won || x.lost - y.lost || x.name.localeCompare(y.name))
+    const nm = (pid: string) => players.find((p: any) => p.id === pid)?.name || 'Unknown'
+    return {
+      wides: Object.entries(wide).map(([pid, n]) => ({ playerId: pid, name: nm(pid), n })).sort((x, y) => y.n - x.n || x.name.localeCompare(y.name)),
+      turnovers: Object.entries(to).map(([pid, v]) => ({ playerId: pid, name: nm(pid), ...v })).sort((x, y) => y.won - x.won || x.lost - y.lost || x.name.localeCompare(y.name)),
+      restarts: Object.entries(rs).map(([pid, v]) => ({ playerId: pid, name: nm(pid), ...v, n: v.sideline + v.throwIn + v.kickouts }))
+        .sort((x, y) => y.n - x.n || x.name.localeCompare(y.name)),
+    }
   }, [eventsData, players])
+  const [byPlayerTab, setByPlayerTab] = useState<'wides' | 'turnovers' | 'restarts'>('turnovers')
 
   // Filter events for pitch display
   const filteredEvents = useMemo(() => {
@@ -843,44 +860,6 @@ export default function MatchResult() {
           </div>
         )}
 
-        {/* Turnovers by player */}
-        {turnoverBoard.length > 0 && (() => {
-          const top = turnoverBoard[0]
-          const leaders = turnoverBoard.filter(t => t.won === top.won).map(t => t.name)
-          return (
-            <div className="mt-4 pt-4 border-t border-white/10">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-2">
-                <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">Turnovers by player</div>
-                {top.won > 0 && (
-                  <div className="text-sm text-white/70">
-                    Most won: <span className="text-white font-medium">{leaders.join(', ')}</span> ({top.won})
-                  </div>
-                )}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[280px]">
-                  <thead>
-                    <tr className="text-xs text-white/40">
-                      <th className="text-left font-medium py-1 pr-3">Player</th>
-                      <th className="text-right font-medium py-1 px-3">Won</th>
-                      <th className="text-right font-medium py-1 pl-3">Lost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {turnoverBoard.map(t => (
-                      <tr key={t.playerId} className="border-t border-white/5">
-                        <td className="py-1 pr-3 text-white/80">{t.name}</td>
-                        <td className="py-1 px-3 text-right tabular-nums text-emerald-300">{t.won}</td>
-                        <td className="py-1 pl-3 text-right tabular-nums text-red-300">{t.lost}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )
-        })()}
-
         {/* No events indicator */}
         {!hasEvents && (
           <div className="mt-4 pt-4 border-t border-white/10">
@@ -1031,6 +1010,45 @@ export default function MatchResult() {
           </div>
         </div>
       </div>
+
+      {hasEvents && (byPlayer.wides.length > 0 || byPlayer.turnovers.length > 0 || byPlayer.restarts.length > 0) && (
+        <div className="glass-card p-4 md:p-5 mt-4">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="text-xs text-white/40 font-semibold uppercase tracking-wide mr-2">By player</div>
+            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="By player">
+              {([['wides', 'Wides'], ['turnovers', 'Turnovers'], ['restarts', 'Restarts won']] as const).map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={byPlayerTab === k} onClick={() => setByPlayerTab(k)}
+                  className={`px-3 min-h-[36px] rounded-lg text-sm border transition-colors ${byPlayerTab === k ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-semibold' : 'bg-white/5 border-white/10 text-white/60 hover:text-white'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {byPlayerTab === 'wides' && (byPlayer.wides.length
+              ? byPlayer.wides.map(w => (
+                <div key={w.playerId} className="text-sm text-white/70 whitespace-nowrap"><span className="text-white font-medium">{w.name}</span> {w.n}</div>))
+              : <div className="text-sm text-white/40">No wides tagged to a player.</div>)}
+            {byPlayerTab === 'turnovers' && (byPlayer.turnovers.length
+              ? byPlayer.turnovers.map(t => (
+                <div key={t.playerId} className="text-sm text-white/70 whitespace-nowrap">
+                  <span className="text-white font-medium">{t.name}</span>{' '}
+                  <span className="text-emerald-300">{t.won} won</span> <span className="text-white/30">/</span> <span className="text-red-300">{t.lost} lost</span>
+                </div>))
+              : <div className="text-sm text-white/40">No turnovers tagged to a player.</div>)}
+            {byPlayerTab === 'restarts' && (byPlayer.restarts.length
+              ? byPlayer.restarts.map(r => (
+                <div key={r.playerId} className="text-sm text-white/70 whitespace-nowrap">
+                  <span className="text-white font-medium">{r.name}</span> {r.n}
+                  <span className="text-white/40 text-xs"> ({[r.kickouts ? `${r.kickouts} kickout${r.kickouts > 1 ? 's' : ''}` : '', r.throwIn ? `${r.throwIn} throw-in${r.throwIn > 1 ? 's' : ''}` : '', r.sideline ? `${r.sideline} sideline` : ''].filter(Boolean).join(', ')})</span>
+                </div>))
+              : <div className="text-sm text-white/40">No restarts won tagged to a player.</div>)}
+          </div>
+          {byPlayerTab === 'turnovers' && byPlayer.turnovers[0]?.won > 0 && (
+            <div className="mt-3 text-xs text-white/50">Most turnovers won: <span className="text-white/80 font-medium">{byPlayer.turnovers.filter(t => t.won === byPlayer.turnovers[0].won).map(t => t.name).join(', ')}</span> ({byPlayer.turnovers[0].won})</div>
+          )}
+        </div>
+      )}
 
       {showGpsTracks && matchId && match && (
         <GpsTracksModal matchId={matchId} matchDate={match.match_date} onClose={() => setShowGpsTracks(false)}
