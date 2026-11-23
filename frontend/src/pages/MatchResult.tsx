@@ -1013,7 +1013,7 @@ export default function MatchResult() {
       </div>
 
       {hasEvents && (byPlayer.wides.length > 0 || byPlayer.turnovers.length > 0 || byPlayer.restarts.length > 0) && (
-        <div className="glass-card p-4 md:p-5 mt-4">
+        <div className="glass-card p-4 md:p-5 mt-4 mb-4">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <div className="text-xs text-white/40 font-semibold uppercase tracking-wide mr-2">By player</div>
             <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="By player">

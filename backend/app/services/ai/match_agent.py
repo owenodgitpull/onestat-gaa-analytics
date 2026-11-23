@@ -565,6 +565,7 @@ INSTRUCTIONS:
 2. ALWAYS call get_match_summary and get_match_event_log first with the match ID provided. Then call get_match_ball_carrying_and_passing with the same match ID to retrieve ball carrying, passing network, and possession chain data — this is REQUIRED, not optional.
 3. Do NOT ask the user for match IDs or clarification — you already have the match ID.
 4. Structure: follow the numbered section list in the request exactly - it is the one list of sections and their order. Phase Analysis and How the Game Was Won / Lost are always in it{", and so is Off the Ball" if has_tracking else ""}.
+4a. LENGTH — the manager reads this on a phone between sessions. The tables and charts already show the numbers, so the prose only says what they MEAN. Budget: the whole report about 1,200 words (1,500 at most with extra time); one-sentence verdict first; each section 2-4 sentences, 120 words maximum; Phase Analysis keeps its table and adds at most 3 sentences; Off the Ball at most 4 short paragraphs of 2 sentences. Never restate a figure the table or the section above already gave - refer to it ("the table shows...") or leave it out. Pick the 2-3 figures that explain the match in each section, not every figure the tool returned. No scene-setting, no summary of what you are about to say, no closing recap. Cut any sentence a manager could not act on or learn from. A shorter report that is accurate beats a longer one.
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
@@ -835,7 +836,7 @@ INSTRUCTIONS:
         response = await asyncio.to_thread(
             client.messages.create,
             model="claude-sonnet-5-5",
-            max_tokens=8192,
+            max_tokens=16384,
             system=cached_system,
             tools=cached_tools,
             messages=messages,
@@ -884,7 +885,7 @@ INSTRUCTIONS:
             response = await asyncio.to_thread(
                 client.messages.create,
                 model="claude-sonnet-5-5",
-                max_tokens=8192,
+                max_tokens=16384,
                 system=cached_system,
                 tools=cached_tools,
                 messages=messages,
@@ -909,7 +910,7 @@ INSTRUCTIONS:
             response = await asyncio.to_thread(
                 client.messages.create,
                 model="claude-sonnet-5-5",
-                max_tokens=8192,
+                max_tokens=16384,
                 system=cached_system,
                 tools=cached_tools,
                 messages=messages,

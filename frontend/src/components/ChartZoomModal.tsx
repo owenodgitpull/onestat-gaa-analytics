@@ -14,9 +14,11 @@ interface ChartZoomModalProps {
   children: ReactNode
   /** Optional title shown in the modal header */
   title?: string
+  /** Shown on top of the inline card only (not in the enlarged view), e.g. a "What is this?" note */
+  overlay?: ReactNode
 }
 
-export default function ChartZoomModal({ children, title }: ChartZoomModalProps) {
+export default function ChartZoomModal({ children, title, overlay }: ChartZoomModalProps) {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
@@ -24,6 +26,7 @@ export default function ChartZoomModal({ children, title }: ChartZoomModalProps)
       {/* Inline chart with expand button — always visible for touch */}
       <div className="relative h-full">
         {children}
+        {overlay}
         <button
           className="absolute bottom-2 right-2 p-2 rounded-lg bg-black/50 text-white/70 active:bg-white/20 z-10 touch-manipulation"
           title="Expand chart"

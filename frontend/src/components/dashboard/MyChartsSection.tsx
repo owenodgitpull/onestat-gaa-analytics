@@ -190,7 +190,7 @@ export default function MyChartsSection({
                   onHide={!isAiPinned ? () => onHideChart(chartId) : undefined}
                   onUnpin={isAiPinned && aiChartId ? () => onUnpinChart(aiChartId) : undefined}
                 >
-                  <ChartZoomModal title={entry.label}>
+                  <ChartZoomModal title={entry.label} overlay={(CHART_EXPLAINERS[chartId] || entry.description) ? <ChartWhatIsThis text={CHART_EXPLAINERS[chartId] || entry.description!} /> : undefined}>
                     {rendered ?? (
                       <div className="glass-card p-6 flex items-center justify-center min-h-[200px]">
                         <p className="text-white/40 text-sm">
@@ -199,9 +199,6 @@ export default function MyChartsSection({
                       </div>
                     )}
                   </ChartZoomModal>
-                  {(CHART_EXPLAINERS[chartId] || entry.description) && (
-                    <ChartWhatIsThis text={CHART_EXPLAINERS[chartId] || entry.description!} />
-                  )}
                 </SortableChartCard>
               )
             })}

@@ -109,14 +109,26 @@ const components: Components = {
       </th>
     )
   },
-  td: ({ children, style }) => (
-    <td
-      className="px-3 py-2 md:px-4 md:py-2.5 text-[11px] md:text-sm text-white/80 whitespace-nowrap"
-      style={style ?? {}}
-    >
-      {children}
-    </td>
-  ),
+  td: ({ children, style }) => {
+    // "93% {{bar:93}}" cells (the phase table) draw the figure with a thin neutral bar. Size only, no good/bad colour.
+    const txt = Array.isArray(children) ? children.map(c => (typeof c === 'string' ? c : '')).join('') : typeof children === 'string' ? children : ''
+    const m = txt.match(/^\s*(.*?)\s*\{\{bar:(\d{1,3})\}\}\s*$/)
+    return (
+      <td
+        className="px-3 py-2 md:px-4 md:py-2.5 text-[11px] md:text-sm text-white/80 whitespace-nowrap"
+        style={style ?? {}}
+      >
+        {m ? (
+          <span className="inline-flex items-center justify-end gap-2">
+            <span>{m[1]}</span>
+            <span className="inline-block w-14 h-1.5 rounded-full bg-white/10 overflow-hidden" aria-hidden="true">
+              <span className="block h-full rounded-full bg-sky-400/70" style={{ width: `${Math.min(100, Number(m[2]))}%` }} />
+            </span>
+          </span>
+        ) : children}
+      </td>
+    )
+  },
 
   // Blockquote
   blockquote: ({ children }) => (

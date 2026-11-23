@@ -145,8 +145,16 @@ def jim_table(rows_: list, restarts_text: str) -> str:
     """The Phase Analysis table, in Jim's order. Same columns and computed cells as before; restarts (no possession chain)
     are the line under it."""
     et = any(p.half and p.half >= 3 for _, _, sel in rows_ for p in sel)
-    lines = ["| Phase | Possessions | Finished | Became a shot | Scored | Points | 1st half | 2nd half |" + (" Extra time |" if et else ""),
-             "|---|---|---|---|---|---|---|---|" + ("---|" if et else "")]
+    lines = ["| Phase | Possessions | Finished | Became a shot | Scored | Points | Shot rate | Conversion | Pts / poss | 1st half | 2nd half |" + (" Extra time |" if et else ""),
+             "|---|---|---|---|---|---|---|---|---|---|---|" + ("---|" if et else "")]
+
+    def pct(num, den):
+        # Plain facts only: the share, plus a bar the app draws from {bar:N}. No colour judgement. Under 5 = "-".
+        if den < 5:
+            return "-"
+        v = round(100 * num / den)
+        return f"{v}% {{{{bar:{v}}}}}"
+
     for phase, name, sel in rows_:
         if not sel:
             continue
@@ -154,7 +162,10 @@ def jim_table(rows_: list, restarts_text: str) -> str:
         h1 = _stats_row([p for p in sel if p.half == 1])
         h2 = _stats_row([p for p in sel if p.half == 2])
         e3 = _stats_row([p for p in sel if (p.half or 0) >= 3])
-        lines.append(f"| {phase}: {name} | {m['possessions']} | {m['finished']} | {m['became_a_shot']} | {m['scored']} | {m['points']} | "
+        fin = m["finished"]
+        ppp = f"{m['points'] / fin:.2f}" if fin >= 5 else "-"
+        lines.append(f"| {phase}: {name} | {m['possessions']} | {fin} | {m['became_a_shot']} | {m['scored']} | {m['points']} | "
+                     f"{pct(m['became_a_shot'], fin)} | {pct(m['scored'], m['became_a_shot'])} | {ppp} | "
                      f"{_half_cell(h1)} | {_half_cell(h2)} |" + (f" {_half_cell(e3)} |" if et else ""))
     return "\n".join(lines) + (f"\n\n{restarts_text}" if restarts_text else "")
 
