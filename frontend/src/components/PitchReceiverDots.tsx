@@ -1,5 +1,6 @@
 import type { JerseyPlayer } from './JerseyNumberStrip'
 import { rankLikelyReceivers } from '@/utils/likelyReceivers'
+import { pctToSvgX } from '@/utils/pitchFrame'
 
 interface PitchReceiverDotsProps {
   players: JerseyPlayer[]
@@ -20,7 +21,7 @@ const LIKELY_COUNT = 5
 const DOT_R_DIM = 38
 const DOT_R_BRIGHT = 54
 
-const toSvgX = (pctX: number) => (pctX / 100) * 1960 + 183
+const toSvgX = (pctX: number, pctY = 50) => pctToSvgX(pctX, pctY)
 const toSvgY = (pctY: number) => (pctY / 100) * 1167 + 123
 
 /**
@@ -67,7 +68,7 @@ export default function PitchReceiverDots({
         const isLikely = likelyIds.has(r.player.playerId)
         const isActive = r.player.playerId === activeCarrierId
         const hasJersey = r.player.jerseyNumber != null
-        const cx = toSvgX(r.x)
+        const cx = toSvgX(r.x, r.y)
         const cy = toSvgY(r.y)
         const radius = isLikely ? DOT_R_BRIGHT : DOT_R_DIM
 

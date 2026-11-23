@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { humanEventType } from '@/utils/eventLabels'
 import { BallPosition, PossessionTeam } from '@/types'
+import { pctToSvgX, svgToPctX, getPitchFrame, fortyFiveLinePct } from '@/utils/pitchFrame'
+import MeasuredPitchArt, { stretchedScale } from '@/components/gps/MeasuredPitchArt'
 
 interface PitchEvent {
   id?: string | number
@@ -131,7 +133,8 @@ const getEventColor = (event: PitchEvent): string => {
 }
 
 // Convert pitch percentage to SVG coordinates
-const toSvgX = (pctX: number) => (pctX / 100) * 1960 + 183
+// (x is converted by utils/pitchFrame: the old straight formula unless the match has a saved ground; pass y where known)
+const toSvgX = (pctX: number, pctY = 50) => pctToSvgX(pctX, pctY)
 const toSvgY = (pctY: number) => (pctY / 100) * 1167 + 123
 
 
@@ -194,7 +197,7 @@ export default function GAAPitch({
     if (!ctm) return null
     const svgPt = pt.matrixTransform(ctm.inverse())
 
-    const x = ((svgPt.x - 183) / 1960) * 100
+    const x = svgToPctX(svgPt.x, svgPt.y)
     const y = ((svgPt.y - 123) / 1167) * 100
 
     return {
@@ -329,7 +332,7 @@ export default function GAAPitch({
     if (!trail || trail.length < 2) return null
 
     // Build SVG path string
-    const pathPoints = trail.map(p => `${toSvgX(p.x)},${toSvgY(p.y)}`)
+    const pathPoints = trail.map(p => `${toSvgX(p.x, p.y)},${toSvgY(p.y)}`)
     const pathD = `M ${pathPoints.join(' L ')}`
 
     return (
@@ -352,7 +355,7 @@ export default function GAAPitch({
           return (
             <circle
               key={i}
-              cx={toSvgX(p.x)}
+              cx={toSvgX(p.x, p.y)}
               cy={toSvgY(p.y)}
               r={radius}
               fill={trailColor}
@@ -415,12 +418,14 @@ export default function GAAPitch({
         <rect width="2332" height="1446" fill="#2d5016" />
 
         {/* Use the EXACT pitch from the SVG file */}
-        <image
-          href="/pitch-svg.svg"
-          width="2332"
-          height="1446"
-          preserveAspectRatio="xMidYMid meet"
-        />
+        {getPitchFrame()
+          ? <MeasuredPitchArt s={stretchedScale(getPitchFrame()!.L, getPitchFrame()!.W)} svgW={2332} svgH={1446} labels={false} />
+          : <image
+              href="/pitch-svg.svg"
+              width="2332"
+              height="1446"
+              preserveAspectRatio="xMidYMid meet"
+            />}
 
         {/* Sideline highlight — pulses both touchlines (top and bottom edges
             of the playing area) while a kickout-over-the-sideline tap is
@@ -470,9 +475,9 @@ export default function GAAPitch({
           // 45 dots off the true line toward the 40m arc).
           const isFortyFive = event.event_type === 'forty_five' || event.event_type === 'forty_five_missed'
           const displayX = isFortyFive
-            ? (event.pitch_x < 50 ? 34 : 66)
+            ? fortyFiveLinePct(event.pitch_x >= 50)
             : event.pitch_x
-          const x = toSvgX(displayX)
+          const x = toSvgX(displayX, event.pitch_y)
           const y = toSvgY(event.pitch_y)
           const color = getEventColor(event)
 
@@ -520,8 +525,8 @@ export default function GAAPitch({
 
         {/* Undo-able big jump: faded ghost where the ball was + arrow + distance. Tap the ghost to put the ball back. */}
         {jumpGhost && (() => {
-          const a = { x: toSvgX(jumpGhost.from.x), y: toSvgY(jumpGhost.from.y) }
-          const b = { x: toSvgX(jumpGhost.to.x), y: toSvgY(jumpGhost.to.y) }
+          const a = { x: toSvgX(jumpGhost.from.x, jumpGhost.from.y), y: toSvgY(jumpGhost.from.y) }
+          const b = { x: toSvgX(jumpGhost.to.x, jumpGhost.to.y), y: toSvgY(jumpGhost.to.y) }
           const dx = b.x - a.x
           const dy = b.y - a.y
           const len = Math.hypot(dx, dy) || 1
@@ -563,7 +568,7 @@ export default function GAAPitch({
             {pulseBall && [0, 0.8].map(delay => (
               <circle
                 key={delay}
-                cx={toSvgX(displayPosition.x)}
+                cx={toSvgX(displayPosition.x, displayPosition.y)}
                 cy={toSvgY(displayPosition.y)}
                 r="30"
                 fill="none"
@@ -578,7 +583,7 @@ export default function GAAPitch({
 
             {/* Shadow */}
             <ellipse
-              cx={toSvgX(displayPosition.x)}
+              cx={toSvgX(displayPosition.x, displayPosition.y)}
               cy={toSvgY(displayPosition.y) + 8}
               rx="21"
               ry="10.5"
@@ -588,7 +593,7 @@ export default function GAAPitch({
             {/* GAA Football — 5% bigger (48 -> 50.4) */}
             <image
               href="/gaelic_football.svg"
-              x={toSvgX(displayPosition.x) - 25.2}
+              x={toSvgX(displayPosition.x, displayPosition.y) - 25.2}
               y={toSvgY(displayPosition.y) - 25.2}
               width="50.4"
               height="50.4"
@@ -596,7 +601,7 @@ export default function GAAPitch({
             />
             {/* Team indicator ring — 5% bigger (28 -> 29.4) */}
             <circle
-              cx={toSvgX(displayPosition.x)}
+              cx={toSvgX(displayPosition.x, displayPosition.y)}
               cy={toSvgY(displayPosition.y)}
               r="29.4"
               fill="none"
@@ -612,7 +617,7 @@ export default function GAAPitch({
             {/* 2-Point Zone Indicator */}
             {isInTwoPointZone(displayPosition.x, displayPosition.y) && (
               <text
-                x={toSvgX(displayPosition.x)}
+                x={toSvgX(displayPosition.x, displayPosition.y)}
                 y={toSvgY(displayPosition.y) - 20}
                 textAnchor="middle"
                 fill="#fbbf24"
@@ -628,7 +633,7 @@ export default function GAAPitch({
             {carrierJerseyNumber != null && (
               <g>
                 <circle
-                  cx={toSvgX(displayPosition.x) + 22}
+                  cx={toSvgX(displayPosition.x, displayPosition.y) + 22}
                   cy={toSvgY(displayPosition.y) - 22}
                   r="18"
                   fill={displayPosition.team === PossessionTeam.OWN ? '#059669' : '#ef4444'}
@@ -636,7 +641,7 @@ export default function GAAPitch({
                   strokeWidth="2"
                 />
                 <text
-                  x={toSvgX(displayPosition.x) + 22}
+                  x={toSvgX(displayPosition.x, displayPosition.y) + 22}
                   y={toSvgY(displayPosition.y) - 17}
                   textAnchor="middle"
                   fill="white"
@@ -655,7 +660,7 @@ export default function GAAPitch({
                 itself, which must stay instant and 1:1 with the finger — that takes
                 priority over the picker being tappable mid-drag (it wasn't meant to be
                 used while dragging anyway). */}
-            {ballAnchoredOverlay && !draggingRef.current && ballAnchoredOverlay(toSvgX(displayPosition.x), toSvgY(displayPosition.y), displayPosition.x, displayPosition.y)}
+            {ballAnchoredOverlay && !draggingRef.current && ballAnchoredOverlay(toSvgX(displayPosition.x, displayPosition.y), toSvgY(displayPosition.y), displayPosition.x, displayPosition.y)}
           </g>
         )}
 

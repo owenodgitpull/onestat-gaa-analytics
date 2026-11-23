@@ -23,6 +23,7 @@
  */
 
 import { isMapEventType } from '../utils/eventMapFilter'
+import { setPitchFrame, frameForMatch, fortyFiveLinePct } from '../utils/pitchFrame'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PauseCircle, ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight, UserPlus, Wrench, ClipboardCheck, Timer } from 'lucide-react'
@@ -840,6 +841,10 @@ export default function VideoTagging() {
   })
   // Half length for THIS match: the match's own setting, else the club's configured default (30 club / 35 inter-county)
   const matchHalfMins = matchData?.half_duration_mins || club?.default_half_duration || 30
+  // A match with a saved ground draws the pitch to its real size (utils/pitchFrame); saved numbers keep the old scale.
+  // Set during render so every child reads it; cleared when leaving, so no other screen inherits it.
+  setPitchFrame(frameForMatch(matchData))
+  useEffect(() => () => setPitchFrame(null), [])
 
   // Tracking mode: derived from session fields, not stored client-side, so
   // it survives a refresh. 'setup' (nothing started) -> 'tracking' (started,
@@ -1682,8 +1687,8 @@ export default function VideoTagging() {
     const currentHalf = calcMatchTime(currentTimeMs).half
     const teamAttackingRight = (currentHalf === 2 || currentHalf === 4) ? !attackingRightFirstHalf : attackingRightFirstHalf
     const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
-    return kickingTeamAttacksRight ? 66 : 34
-  }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
+    return fortyFiveLinePct(kickingTeamAttacksRight)
+  }, [matchData?.attacking_right_first_half, matchData?.stadium_id, calcMatchTime, currentTimeMs])
 
   // Discrete possession-change point — fires on a tap or drag-END commit
   // only (bound to onBallMove, never onDragUpdate's live-drag callback, so

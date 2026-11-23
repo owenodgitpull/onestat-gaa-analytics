@@ -10,13 +10,22 @@
  */
 import type { PitchScale } from './GpsPitch'
 
+/** The scale of the tagging screens' frame: the artwork's play area (183, 123, 1960 x 1167) holds the whole pitch, stretched
+ *  a little more along one axis exactly as the artwork is, so every overlay that places things by % stays where it is. */
+export function stretchedScale(L: number, W: number): Pick<PitchScale, 'x' | 'y' | 'len' | 'sx' | 'sy' | 'lengthM' | 'widthM'> {
+  const sx = 1960 / L, sy = 1167 / W
+  return { x: (m: number) => 183 + m * sx, y: (m: number) => 123 + m * sy, len: (m: number) => m * sx, sx, sy, lengthM: L, widthM: W }
+}
+type ArtScale = Pick<PitchScale, 'x' | 'y' | 'len' | 'sx' | 'sy' | 'lengthM' | 'widthM'>
+
 const LINE = '#f3f5ef'
 const GRASS = '#33671c'
 
-export default function MeasuredPitchArt({ s, svgW, svgH }: { s: PitchScale; svgW: number; svgH: number }) {
+export default function MeasuredPitchArt({ s, svgW, svgH, labels = true }: { s: ArtScale; svgW: number; svgH: number; labels?: boolean }) {
   const L = s.lengthM, W = s.widthM, mid = W / 2
   const lw = 11
   const x = (m: number) => s.x(m), y = (m: number) => s.y(m)
+  const lx = (m: number) => m * s.sx, ly = (m: number) => m * s.sy      // metres -> units across / down
   const half = Math.sqrt(40 * 40 - 20 * 20)      // where the 40 m arc meets the 20 m line, metres either side of centre
   const stripes: number[] = []
   const band = L / 14
@@ -25,16 +34,15 @@ export default function MeasuredPitchArt({ s, svgW, svgH }: { s: PitchScale; svg
   const end = (right: boolean) => {
     const X = (d: number) => x(right ? L - d : d)
     const sweep = right ? 0 : 1
-    const r40 = s.len(40), r13 = s.len(13)
     return (
       <g key={right ? 'r' : 'l'} fill="none" stroke={LINE} strokeWidth={lw}>
         {[13, 20, 45, 65].map(d => <line key={d} x1={X(d)} y1={y(0)} x2={X(d)} y2={y(W)} />)}
-        <rect x={Math.min(X(0), X(4.5))} y={y(mid - 7)} width={s.len(4.5)} height={s.len(14)} />
-        <rect x={Math.min(X(0), X(13))} y={y(mid - 9.5)} width={s.len(13)} height={s.len(19)} />
-        {/* 40 m arc, ending on the 20 m line */}
-        <path d={`M ${X(20)} ${y(mid - half)} A ${r40} ${r40} 0 0 ${sweep} ${X(20)} ${y(mid + half)}`} />
+        <rect x={Math.min(X(0), X(4.5))} y={y(mid - 7)} width={lx(4.5)} height={ly(14)} />
+        <rect x={Math.min(X(0), X(13))} y={y(mid - 9.5)} width={lx(13)} height={ly(19)} />
+        {/* 40 m arc, ending on the 20 m line (an ellipse in a stretched frame, a circle on a to-scale one) */}
+        <path d={`M ${X(20)} ${y(mid - half)} A ${lx(40)} ${ly(40)} 0 0 ${sweep} ${X(20)} ${y(mid + half)}`} />
         {/* 13 m semicircle on the 20 m line */}
-        <path d={`M ${X(20)} ${y(mid - 13)} A ${r13} ${r13} 0 0 ${sweep} ${X(20)} ${y(mid + 13)}`} />
+        <path d={`M ${X(20)} ${y(mid - 13)} A ${lx(13)} ${ly(13)} 0 0 ${sweep} ${X(20)} ${y(mid + 13)}`} />
         {/* goal, drawn tall like the shared artwork's (measured off it): two bars back from the goal line, 148 units apart
             and 158 deep, joined by a cross line 55 units back. Artwork units, not metres, so it looks the same on every pitch. */}
         {(() => {
@@ -60,15 +68,15 @@ export default function MeasuredPitchArt({ s, svgW, svgH }: { s: PitchScale; svg
   return (
     <g aria-hidden="true">
       <rect x={0} y={0} width={svgW} height={svgH} fill={GRASS} />
-      {stripes.map(m => <rect key={m} x={x(m)} y={y(0)} width={s.len(band)} height={s.len(W)} fill="#ffffff" opacity={0.035} />)}
+      {stripes.map(m => <rect key={m} x={x(m)} y={y(0)} width={lx(band)} height={ly(W)} fill="#ffffff" opacity={0.035} />)}
       {end(false)}
       {end(true)}
       {/* halfway: dashed, as on the shared artwork */}
       <line x1={x(L / 2)} y1={y(0)} x2={x(L / 2)} y2={y(W)} stroke={LINE} strokeWidth={lw} strokeDasharray={`${lw * 3.2} ${lw * 2}`} />
-      <rect x={x(0)} y={y(0)} width={s.len(L)} height={s.len(W)} fill="none" stroke={LINE} strokeWidth={lw} />
-      {label(20, '20 m')}
-      {label(45, '45 m')}
-      <text x={x(L / 2)} y={y(0) - 26} fill="rgba(255,255,255,0.6)" fontSize={30} fontWeight={600} textAnchor="middle">halfway</text>
+      <rect x={x(0)} y={y(0)} width={lx(L)} height={ly(W)} fill="none" stroke={LINE} strokeWidth={lw} />
+      {labels && label(20, '20 m')}
+      {labels && label(45, '45 m')}
+      {labels && <text x={x(L / 2)} y={y(0) - 26} fill="rgba(255,255,255,0.6)" fontSize={30} fontWeight={600} textAnchor="middle">halfway</text>}
     </g>
   )
 }

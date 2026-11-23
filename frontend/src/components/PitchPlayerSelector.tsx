@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { Player } from '../types'
 import type { JerseyPlayer } from './JerseyNumberStrip'
 import { rankLikelyReceivers } from '@/utils/likelyReceivers'
+import { pctToCanvasLeftPct } from '@/utils/pitchFrame'
 import { displaySurname } from '../utils/playerName'
 
 interface PitchPlayerSelectorProps {
@@ -40,7 +41,7 @@ const LIKELY_COUNT = 5
 
 // The pitch drawing is 2332x1446 with the play area inset (left 183, top 123, 1960x1167) — same numbers as
 // utils/pitchGeometry. Pitch-% (0-100 along/across the playing area) -> % of the drawing box.
-const pitchLeftPct = (x: number) => ((183 + (x / 100) * 1960) / 2332) * 100
+const pitchLeftPct = (x: number, y = 50) => pctToCanvasLeftPct(x, y)
 const pitchTopPct = (y: number) => ((123 + (y / 100) * 1167) / 1446) * 100
 
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
@@ -299,7 +300,7 @@ export default function PitchPlayerSelector({
           <div
             className="absolute rounded-full transition-opacity duration-300"
             style={{
-              left: `${pitchLeftPct(ballPosition.x)}%`,
+              left: `${pitchLeftPct(ballPosition.x, ballPosition.y)}%`,
               top: `${pitchTopPct(ballPosition.y)}%`,
               width: 22,
               height: 22,
@@ -335,7 +336,7 @@ export default function PitchPlayerSelector({
               key={item.player.id}
               className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center focus:outline-none"
               style={{
-                left: `${pitchLeftPct(attackingRight ? item.x : 100 - item.x)}%`,
+                left: `${pitchLeftPct(attackingRight ? item.x : 100 - item.x, item.y)}%`,
                 top: `${pitchTopPct(item.y)}%`,
                 zIndex: isSuggested ? 4 : isLikely ? 3 : 2,
                 opacity: animateOut ? (isSelected ? 1 : 0) : (animateIn ? restOpacity : 0),

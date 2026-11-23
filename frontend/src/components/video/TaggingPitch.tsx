@@ -36,6 +36,8 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { BallPosition, PossessionTeam } from '@/types'
 import { PITCH, toSvg, fromSvg, getViewBox, getPitchGroupTransform, type PitchOrientation } from '@/utils/pitchGeometry'
+import { getPitchFrame } from '@/utils/pitchFrame'
+import MeasuredPitchArt, { stretchedScale } from '@/components/gps/MeasuredPitchArt'
 
 interface TaggingPitchProps {
   orientation: PitchOrientation
@@ -97,7 +99,7 @@ interface TaggingPitchProps {
 const DRAG_SAMPLE_THRESHOLD = 3
 
 // Convert pitch percentage to native SVG coordinates (pre-rotation — see pitchGeometry.ts)
-const toSvgX = (pctX: number) => toSvg(pctX, 0).x
+const toSvgX = (pctX: number, pctY = 50) => toSvg(pctX, pctY).x
 const toSvgY = (pctY: number) => toSvg(0, pctY).y
 
 export default function TaggingPitch({
@@ -286,7 +288,7 @@ export default function TaggingPitch({
     if (!trail || trail.length < 2) return null
 
     // Build SVG path string
-    const pathPoints = trail.map(p => `${toSvgX(p.x)},${toSvgY(p.y)}`)
+    const pathPoints = trail.map(p => `${toSvgX(p.x, p.y)},${toSvgY(p.y)}`)
     const pathD = `M ${pathPoints.join(' L ')}`
 
     return (
@@ -309,7 +311,7 @@ export default function TaggingPitch({
           return (
             <circle
               key={i}
-              cx={toSvgX(p.x)}
+              cx={toSvgX(p.x, p.y)}
               cy={toSvgY(p.y)}
               r={radius}
               fill={trailColor}
@@ -350,12 +352,14 @@ export default function TaggingPitch({
           <rect width={PITCH.svgW} height={PITCH.svgH} fill="#2d5016" />
 
           {/* Use the EXACT pitch from the SVG file */}
-          <image
-            href="/pitch-svg.svg"
-            width={PITCH.svgW}
-            height={PITCH.svgH}
-            preserveAspectRatio="xMidYMid meet"
-          />
+          {getPitchFrame()
+            ? <MeasuredPitchArt s={stretchedScale(getPitchFrame()!.L, getPitchFrame()!.W)} svgW={PITCH.svgW} svgH={PITCH.svgH} labels={false} />
+            : <image
+                href="/pitch-svg.svg"
+                width={PITCH.svgW}
+                height={PITCH.svgH}
+                preserveAspectRatio="xMidYMid meet"
+              />}
 
           {/* Sideline highlight — pulses both touchlines while a kickout-
               over-the-sideline tap is pending. Purely visual, doesn't affect
@@ -400,8 +404,8 @@ export default function TaggingPitch({
 
           {/* Undo-able big jump: faded ghost where the ball was + arrow + distance. Tap the ghost to put the ball back. */}
           {jumpGhost && (() => {
-            const a = { x: toSvgX(jumpGhost.from.x), y: toSvgY(jumpGhost.from.y) }
-            const b = { x: toSvgX(jumpGhost.to.x), y: toSvgY(jumpGhost.to.y) }
+            const a = { x: toSvgX(jumpGhost.from.x, jumpGhost.from.y), y: toSvgY(jumpGhost.from.y) }
+            const b = { x: toSvgX(jumpGhost.to.x, jumpGhost.to.y), y: toSvgY(jumpGhost.to.y) }
             const dx = b.x - a.x
             const dy = b.y - a.y
             const len = Math.hypot(dx, dy) || 1
@@ -444,7 +448,7 @@ export default function TaggingPitch({
               {pulseBall && [0, 0.8].map(delay => (
                 <circle
                   key={delay}
-                  cx={toSvgX(displayPosition.x)}
+                  cx={toSvgX(displayPosition.x, displayPosition.y)}
                   cy={toSvgY(displayPosition.y)}
                   r="30"
                   fill="none"
@@ -459,7 +463,7 @@ export default function TaggingPitch({
 
               {/* Shadow */}
               <ellipse
-                cx={toSvgX(displayPosition.x)}
+                cx={toSvgX(displayPosition.x, displayPosition.y)}
                 cy={toSvgY(displayPosition.y) + 8}
                 rx="21"
                 ry="10.5"
@@ -469,7 +473,7 @@ export default function TaggingPitch({
               {/* GAA Football — 5% bigger (48 -> 50.4) */}
               <image
                 href="/gaelic_football.svg"
-                x={toSvgX(displayPosition.x) - 25.2}
+                x={toSvgX(displayPosition.x, displayPosition.y) - 25.2}
                 y={toSvgY(displayPosition.y) - 25.2}
                 width="50.4"
                 height="50.4"
@@ -477,7 +481,7 @@ export default function TaggingPitch({
               />
               {/* Team indicator ring — 5% bigger (28 -> 29.4) */}
               <circle
-                cx={toSvgX(displayPosition.x)}
+                cx={toSvgX(displayPosition.x, displayPosition.y)}
                 cy={toSvgY(displayPosition.y)}
                 r="29.4"
                 fill="none"
@@ -493,7 +497,7 @@ export default function TaggingPitch({
               {/* 2-Point Zone Indicator */}
               {isInTwoPointZone(displayPosition.x, displayPosition.y) && (
                 <text
-                  x={toSvgX(displayPosition.x)}
+                  x={toSvgX(displayPosition.x, displayPosition.y)}
                   y={toSvgY(displayPosition.y) - 20}
                   textAnchor="middle"
                   fill="#fbbf24"
@@ -509,7 +513,7 @@ export default function TaggingPitch({
               {carrierJerseyNumber != null && (
                 <g>
                   <circle
-                    cx={toSvgX(displayPosition.x) + 22}
+                    cx={toSvgX(displayPosition.x, displayPosition.y) + 22}
                     cy={toSvgY(displayPosition.y) - 22}
                     r="18"
                     fill={displayPosition.team === PossessionTeam.OWN ? '#059669' : '#ef4444'}
@@ -517,7 +521,7 @@ export default function TaggingPitch({
                     strokeWidth="2"
                   />
                   <text
-                    x={toSvgX(displayPosition.x) + 22}
+                    x={toSvgX(displayPosition.x, displayPosition.y) + 22}
                     y={toSvgY(displayPosition.y) - 17}
                     textAnchor="middle"
                     fill="white"
@@ -536,7 +540,7 @@ export default function TaggingPitch({
                   itself, which must stay instant and 1:1 with the finger — that takes
                   priority over the picker being tappable mid-drag (it wasn't meant to be
                   used while dragging anyway). */}
-              {ballAnchoredOverlay && !draggingRef.current && ballAnchoredOverlay(toSvgX(displayPosition.x), toSvgY(displayPosition.y), displayPosition.x, displayPosition.y)}
+              {ballAnchoredOverlay && !draggingRef.current && ballAnchoredOverlay(toSvgX(displayPosition.x, displayPosition.y), toSvgY(displayPosition.y), displayPosition.x, displayPosition.y)}
             </g>
           )}
 

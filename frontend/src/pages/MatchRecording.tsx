@@ -1,3 +1,4 @@
+import { setPitchFrame, frameForMatch, fortyFiveLinePct } from '@/utils/pitchFrame'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { isMapEventType } from '../utils/eventMapFilter'
 import { humanEventType } from '../utils/eventLabels'
@@ -122,6 +123,10 @@ export default function MatchRecording() {
 
   // Fetch data from backend
   const { data: match, isLoading: matchLoading } = useMatch(matchId, { live: true })
+  // A match with a saved ground draws the pitch to its real size (utils/pitchFrame); saved numbers keep the old scale.
+  // Set during render so every child reads it; cleared when leaving, so no other screen inherits it.
+  setPitchFrame(frameForMatch(match))
+  useEffect(() => () => setPitchFrame(null), [])
   // Half length for THIS match: the match's own setting, else the club's configured default (30 club / 35 inter-county)
   const matchHalfMins = match?.half_duration_mins || club?.default_half_duration || 30
   const { data: matchStats, isLoading: statsLoading } = useMatchStats(matchId, undefined, true)
@@ -3293,7 +3298,7 @@ export default function MatchRecording() {
   // can never drift out of sync with each other again.
   const compute45LineX = (isHomeTeam: boolean): number => {
     const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
-    return kickingTeamAttacksRight ? 66 : 34
+    return fortyFiveLinePct(kickingTeamAttacksRight)
   }
 
   const handleQuickAction = (eventType: EventType) => {

@@ -20,6 +20,8 @@
  * of sync between rendering and hit-testing.
  */
 
+import { pctToSvgX, svgToPctX } from './pitchFrame'
+
 export type PitchOrientation = 'horizontal' | 'vertical'
 
 /** Base pitch/play-area geometry, in the pitch's native (horizontal) orientation. */
@@ -35,7 +37,8 @@ export const PITCH = {
 /** Convert pitch percentage (0-100 length, 0-100 width) to native SVG pixel coordinates. */
 export function toSvg(pctX: number, pctY: number): { x: number; y: number } {
   return {
-    x: PITCH.left + (pctX / 100) * PITCH.playW,
+    // pctToSvgX is the old straight formula unless the match has a saved ground (utils/pitchFrame.ts)
+    x: pctToSvgX(pctX, pctY),
     y: PITCH.top + (pctY / 100) * PITCH.playH,
   }
 }
@@ -43,7 +46,7 @@ export function toSvg(pctX: number, pctY: number): { x: number; y: number } {
 /** Convert native SVG pixel coordinates back to pitch percentage (0-100), clamped. */
 export function fromSvg(svgX: number, svgY: number): { x: number; y: number } {
   return {
-    x: Math.max(0, Math.min(100, ((svgX - PITCH.left) / PITCH.playW) * 100)),
+    x: Math.max(0, Math.min(100, svgToPctX(svgX, svgY))),
     y: Math.max(0, Math.min(100, ((svgY - PITCH.top) / PITCH.playH) * 100)),
   }
 }
