@@ -30,4 +30,4 @@ primary_region = 'lhr'
 
 [[vm]]
   size = 'performance-1x'
-  memory = '4096mb'   # raised for the Jim McGuinness demo (2026-11-20); back to 2048mb after if not needed
+  memory = '2048mb'   # was raised to 4096mb for the Jim McGuinness demo (2026-11-20), put back 2026-11-23
