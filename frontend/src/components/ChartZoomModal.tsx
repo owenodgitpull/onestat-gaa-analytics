@@ -24,7 +24,7 @@ export default function ChartZoomModal({ children, title, overlay }: ChartZoomMo
   return (
     <>
       {/* Inline chart with expand button — always visible for touch */}
-      <div className="relative h-full">
+      <div className={`relative h-full${overlay ? ' [&>.glass-card]:pb-14' : ''}`}>
         {children}
         {overlay}
         <button

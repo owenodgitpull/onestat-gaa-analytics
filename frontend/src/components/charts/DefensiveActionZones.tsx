@@ -142,6 +142,9 @@ export default function DefensiveActionZones({ data }: Props) {
             const h = br.y - tl.y
 
             const thirdColor = THIRD_COLORS[zone.third]
+            // label chips sit on the touchline edge of each zone (left zones top, right zones bottom), away from the
+            // centre line where most of the dots cluster
+            const chipY = zone.label.trim().endsWith('R') ? br.y - 14 - 78 : tl.y + 14
 
             return (
               <g key={zone.id}>
@@ -153,9 +156,9 @@ export default function DefensiveActionZones({ data }: Props) {
                   strokeOpacity="0.4"
                 />
                 {/* one tidy label per zone, top centre: its name then the count; the dots stay readable underneath */}
-                <rect x={tl.x + w / 2 - 150} y={tl.y + 14} width={300} height={78} rx={18} fill="rgba(8,15,25,0.72)" />
-                <text x={tl.x + w / 2 - 22} y={tl.y + 66} textAnchor="end" fill={thirdColor} fontSize="34" fontWeight="bold">{zone.label}</text>
-                <text x={tl.x + w / 2 + 6} y={tl.y + 70} textAnchor="start" fill="white" fontSize="48" fontWeight="bold">{count}</text>
+                <rect x={tl.x + w / 2 - 150} y={chipY} width={300} height={78} rx={18} fill="rgba(8,15,25,0.8)" />
+                <text x={tl.x + w / 2 - 22} y={chipY + 52} textAnchor="end" fill={thirdColor} fontSize="34" fontWeight="bold">{zone.label}</text>
+                <text x={tl.x + w / 2 + 6} y={chipY + 56} textAnchor="start" fill="white" fontSize="48" fontWeight="bold">{count}</text>
               </g>
             )
           })}
@@ -168,11 +171,11 @@ export default function DefensiveActionZones({ data }: Props) {
                 key={i}
                 cx={pos.x}
                 cy={pos.y}
-                r={13}
+                r={24}
                 fill={ACTION_COLORS[e.action_type] || '#888'}
-                opacity={0.8}
-                stroke="rgba(8,15,25,0.85)"
-                strokeWidth={3}
+                opacity={0.92}
+                stroke="rgba(255,255,255,0.9)"
+                strokeWidth={4}
               />
             )
           })}

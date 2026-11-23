@@ -622,7 +622,7 @@ def get_pitch_zone(x: float, y: float) -> str:
 # a version signature a deploy could silently keep serving an old-shaped
 # cached payload (see the season-dashboard/leaderboard caches for the same
 # pattern and the story behind it).
-DASHBOARD_CACHE_VERSION = "v1"
+DASHBOARD_CACHE_VERSION = "v2"
 
 
 @router.get("/dashboard", response_model=DashboardData)
