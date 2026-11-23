@@ -540,6 +540,7 @@ export default function MatchResult() {
     }
   }, [eventsData, players])
   const [byPlayerTab, setByPlayerTab] = useState<'wides' | 'turnovers' | 'restarts'>('turnovers')
+  const [byPlayerAll, setByPlayerAll] = useState(false)
 
   // Filter events for pitch display
   const filteredEvents = useMemo(() => {
@@ -1017,36 +1018,51 @@ export default function MatchResult() {
             <div className="text-xs text-white/40 font-semibold uppercase tracking-wide mr-2">By player</div>
             <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="By player">
               {([['wides', 'Wides'], ['turnovers', 'Turnovers'], ['restarts', 'Restarts won']] as const).map(([k, label]) => (
-                <button key={k} type="button" role="tab" aria-selected={byPlayerTab === k} onClick={() => setByPlayerTab(k)}
+                <button key={k} type="button" role="tab" aria-selected={byPlayerTab === k} onClick={() => { setByPlayerTab(k); setByPlayerAll(false) }}
                   className={`px-3 min-h-[36px] rounded-lg text-sm border transition-colors ${byPlayerTab === k ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-semibold' : 'bg-white/5 border-white/10 text-white/60 hover:text-white'}`}>
                   {label}
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-            {byPlayerTab === 'wides' && (byPlayer.wides.length
-              ? byPlayer.wides.map(w => (
-                <div key={w.playerId} className="text-sm text-white/70 whitespace-nowrap"><span className="text-white font-medium">{w.name}</span> {w.n}</div>))
-              : <div className="text-sm text-white/40">No wides tagged to a player.</div>)}
-            {byPlayerTab === 'turnovers' && (byPlayer.turnovers.length
-              ? byPlayer.turnovers.map(t => (
-                <div key={t.playerId} className="text-sm text-white/70 whitespace-nowrap">
-                  <span className="text-white font-medium">{t.name}</span>{' '}
-                  <span className="text-emerald-300">{t.won} won</span> <span className="text-white/30">/</span> <span className="text-red-300">{t.lost} lost</span>
-                </div>))
-              : <div className="text-sm text-white/40">No turnovers tagged to a player.</div>)}
-            {byPlayerTab === 'restarts' && (byPlayer.restarts.length
-              ? byPlayer.restarts.map(r => (
-                <div key={r.playerId} className="text-sm text-white/70 whitespace-nowrap">
-                  <span className="text-white font-medium">{r.name}</span> {r.n}
-                  <span className="text-white/40 text-xs"> ({[r.kickouts ? `${r.kickouts} kickout${r.kickouts > 1 ? 's' : ''}` : '', r.throwIn ? `${r.throwIn} throw-in${r.throwIn > 1 ? 's' : ''}` : '', r.sideline ? `${r.sideline} sideline` : ''].filter(Boolean).join(', ')})</span>
-                </div>))
-              : <div className="text-sm text-white/40">No restarts won tagged to a player.</div>)}
-          </div>
-          {byPlayerTab === 'turnovers' && byPlayer.turnovers[0]?.won > 0 && (
-            <div className="mt-3 text-xs text-white/50">Most turnovers won: <span className="text-white/80 font-medium">{byPlayer.turnovers.filter(t => t.won === byPlayer.turnovers[0].won).map(t => t.name).join(', ')}</span> ({byPlayer.turnovers[0].won})</div>
-          )}
+          {(() => {
+            // ranked like a leaderboard: most first, top 3 shown, the rest behind a button. Ties share a rank.
+            type Row = { playerId: string; name: string; value: string; note?: string; score: number }
+            const rows: Row[] = byPlayerTab === 'wides'
+              ? byPlayer.wides.map(w => ({ playerId: w.playerId, name: w.name, value: String(w.n), score: w.n }))
+              : byPlayerTab === 'turnovers'
+                ? byPlayer.turnovers.map(t => ({ playerId: t.playerId, name: t.name, value: `${t.won} won`, note: `${t.lost} lost`, score: t.won }))
+                : byPlayer.restarts.map(r => ({
+                  playerId: r.playerId, name: r.name, value: String(r.n), score: r.n,
+                  note: [r.kickouts ? `${r.kickouts} kickout${r.kickouts > 1 ? 's' : ''}` : '', r.throwIn ? `${r.throwIn} throw-in${r.throwIn > 1 ? 's' : ''}` : '', r.sideline ? `${r.sideline} sideline` : ''].filter(Boolean).join(', '),
+                }))
+            if (!rows.length) {
+              return <div className="text-sm text-white/40">{byPlayerTab === 'wides' ? 'No wides tagged to a player.' : byPlayerTab === 'turnovers' ? 'No turnovers tagged to a player.' : 'No restarts won tagged to a player.'}</div>
+            }
+            const ranks = rows.map((r, i) => (i > 0 && rows[i - 1].score === r.score ? 0 : i + 1))
+            for (let i = 1; i < ranks.length; i++) if (ranks[i] === 0) ranks[i] = ranks[i - 1]
+            const shown = byPlayerAll ? rows : rows.slice(0, 3)
+            return (
+              <>
+                <ol className="divide-y divide-white/5">
+                  {shown.map((r, i) => (
+                    <li key={r.playerId} className="flex items-baseline gap-3 py-1.5 text-sm">
+                      <span className={`w-5 text-right tabular-nums ${ranks[i] === 1 ? 'text-amber-300 font-bold' : 'text-white/40'}`}>{ranks[i]}</span>
+                      <span className="text-white font-medium min-w-0 truncate">{r.name}</span>
+                      <span className="ml-auto text-emerald-300 tabular-nums whitespace-nowrap">{r.value}</span>
+                      {r.note && <span className="text-white/40 text-xs whitespace-nowrap">{r.note}</span>}
+                    </li>
+                  ))}
+                </ol>
+                {rows.length > 3 && (
+                  <button type="button" onClick={() => setByPlayerAll(v => !v)} aria-expanded={byPlayerAll}
+                    className="mt-2 min-h-[36px] px-3 -ml-3 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5">
+                    {byPlayerAll ? 'Show top 3' : `Show all ${rows.length}`}
+                  </button>
+                )}
+              </>
+            )
+          })()}
         </div>
       )}
 
