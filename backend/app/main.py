@@ -282,6 +282,8 @@ app.include_router(presentations.router, prefix="/api/v1/presentations", tags=["
 app.include_router(video_compilations.router, prefix="/api/v1/video-compilations", tags=["Video Compilations"])
 app.include_router(dashboard_layout.router, prefix="/api/v1", tags=["Dashboard Layout"])
 app.include_router(admin_reset_match.router, prefix="/api/v1", tags=["Admin"])
+from app.routes import stadiums as stadium_routes  # noqa: E402
+app.include_router(stadium_routes.router, prefix="/api/v1/stadiums", tags=["Stadiums"])
 
 
 if __name__ == "__main__":

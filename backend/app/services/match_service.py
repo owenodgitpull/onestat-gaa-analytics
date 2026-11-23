@@ -86,6 +86,11 @@ class MatchService:
             match_kwargs['pitch_length_m'] = match_data.pitch_length_m
         if match_data.pitch_width_m is not None:
             match_kwargs['pitch_width_m'] = match_data.pitch_width_m
+        if getattr(match_data, 'stadium_id', None) is not None:      # a saved ground: its measured size wins
+            from app.models.stadium import Stadium
+            st = await db.get(Stadium, match_data.stadium_id)
+            if st is not None and st.club_id == club_id:
+                match_kwargs.update(stadium_id=st.id, pitch_length_m=st.pitch_length_m, pitch_width_m=st.pitch_width_m)
         # Half length: an explicit value from the request wins; otherwise the CLUB's default (an inter-county club is 35,
         # a club side 30). This was never copied before, so every created match silently got the column default of 30.
         sent = match_data.model_fields_set
@@ -192,6 +197,14 @@ class MatchService:
         
         # Update fields
         update_data = match_data.model_dump(exclude_unset=True)
+        if update_data.get('stadium_id') is not None:               # a saved ground: its measured size wins
+            from app.models.stadium import Stadium
+            st = await db.get(Stadium, update_data['stadium_id'])
+            if st is None or st.club_id != match.club_id:
+                update_data.pop('stadium_id')
+            else:
+                update_data['pitch_length_m'] = st.pitch_length_m; update_data['pitch_width_m'] = st.pitch_width_m
+        size_before = (match.pitch_length_m, match.pitch_width_m, match.stadium_id)
         for field, value in update_data.items():
             if field == 'weather_conditions':
                 # This is a JSON column, not a SQLAlchemy Enum column like
@@ -213,6 +226,10 @@ class MatchService:
 
         await db.commit()
         await db.refresh(match)
+        if size_before != (match.pitch_length_m, match.pitch_width_m, match.stadium_id):
+            # the pitch changed: the GPS placement was fitted to the old size
+            from app.services.gps_timeseries import service as _gps
+            await _gps.resync_if_synced(db, match)
 
         return match
 

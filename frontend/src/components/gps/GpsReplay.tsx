@@ -9,7 +9,7 @@
  * there is no opposition GPS). Tagged events pop up where they were tagged, for 3 s.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, Tag, Users, Camera, SlidersHorizontal } from 'lucide-react'
+import { Loader2, AlertCircle, Tag, Users, Camera, SlidersHorizontal, CircleDot } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GpsSyncEditor from './GpsSyncEditor'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
@@ -19,8 +19,26 @@ import { pointInSideFrame, ownAttacksRight } from '../../utils/attackDirection'
 import { humanEventType } from '../../utils/eventLabels'
 import { seekLeadForType } from '../../utils/videoSeek'
 import { type GpsReplayContext, periodClock, COLOR_OURS, COLOR_THEIRS, gpsAnalysisApi } from '../../services/gpsAnalysisApi'
-import GpsPitch, { PitchFrameCaption } from './GpsPitch'
-import { insideArc, pullOutOfArc } from '../../utils/gpsKickoutArc'
+import GpsPitch, { PitchFrameCaption, artToRealX } from './GpsPitch'
+
+/**
+ * Kickout: nobody may be inside the 40 m arc (or the 20 m line) at the kicking end. The pitch is drawn to scale now, so
+ * the test is the true arc, and only a dot within GPS error of it (KICKOUT_ARC_MAX_PULL_M) is shown on the line.
+ * Display only. `right` = the x = L goal.
+ */
+function insideArc(x: number, y: number, right: boolean, L: number, W: number): boolean {
+  const d = right ? L - x : x
+  return d < 20 || Math.hypot(d, y - W / 2) < 40
+}
+function pullOutOfArc(x: number, y: number, right: boolean, L: number, W: number): { x: number; y: number } {
+  if (!insideArc(x, y, right, L, W)) return { x, y }
+  const d = right ? L - x : x, dy = y - W / 2
+  const r = Math.hypot(d, dy)
+  let nd = d, ny = y
+  if (r < 40) { const k = (40 + 0.4) / Math.max(r, 0.01); nd = d * k; ny = W / 2 + dy * k }
+  if (nd < 20.4) nd = 20.4
+  return { x: right ? L - nd : nd, y: Math.min(W, Math.max(0, ny)) }
+}
 
 const WINDOW_MS = 120000
 const HZ = 5
@@ -43,7 +61,7 @@ function halfAt(periods: GpsReplayContext['periods'], ms: number): number {
  */
 const DEFAULT_LAG_MS: Record<string, number> = { PASS_HAND: 1200, LONG_KICK_PASS: 1200, POINT_SCORED: 2200, GOAL_SCORED: 2200, TWO_POINT_SCORED: 2200, WIDE: 3400, TURNOVER_LOST: 1600, TURNOVER_WON: 1600, FOUL_COMMITTED: 5600, FREE_WON: 5600 }
 const KICKOUT_ARC_BEFORE_MS = 3000
-const KICKOUT_ARC_MAX_PULL_M = 6
+const KICKOUT_ARC_MAX_PULL_M = 2.5      // GPS error only (it was 6 m to cover the artwork's mis-drawn arc)
 const EVENT_SHOW_MS = 4000
 const SHOT_WORD: Record<string, string> = { POINT_SCORED: 'Point', TWO_POINT_SCORED: '2-pointer', GOAL_SCORED: 'Goal', WIDE: 'Wide' }
 const END_TYPE: Record<string, string> = { score: 'POINT_SCORED', wide: 'WIDE', free: 'FOUL_COMMITTED', turnover: 'TURNOVER_LOST', pass: 'PASS_HAND' }
@@ -87,6 +105,10 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const [raw, setRawState] = useState(() => { try { return localStorage.getItem('gpsReplayFrame') !== 'attack' } catch { return true } })
   const setRaw = (f: (v: boolean) => boolean) => setRawState(v => { const n = f(v); try { localStorage.setItem('gpsReplayFrame', n ? 'camera' : 'attack') } catch { /* private mode */ } return n })
   const [showNames, setShowNames] = useState(false)
+  // Ball carrying (who has the ball, the opposition ball) was tagged by hand during the match: off by default, the GPS
+  // dots are the accurate part (Owen 2026-11-23). Remembered per browser.
+  const [showCarry, setShowCarryState] = useState(() => { try { return localStorage.getItem('gpsReplayCarry') === 'on' } catch { return false } })
+  const setShowCarry = (f: (v: boolean) => boolean) => setShowCarryState(v => { const n = f(v); try { localStorage.setItem('gpsReplayCarry', n ? 'on' : 'off') } catch { /* private mode */ } return n })
   const L = ctx.pitch_length_m, W = ctx.pitch_width_m
 
   // Smooth playhead: read the video element every animation frame while playing (timeupdate is only ~4 Hz)
@@ -197,6 +219,11 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     const p = raw ? { x, y } : pointInSideFrame(x, y, 'own', arfh, h)
     return { x: (p.x / 100) * L, y: (p.y / 100) * W }
   }, [raw, arfh, L, W])
+  /** a TAGGED spot (placed against the shared artwork's lines) -> true metres, so it sits right on the to-scale pitch */
+  const tagToM = useCallback((x: number, y: number, h: number) => {
+    const m = toM(x, y, h)
+    return { x: artToRealX(m.x, m.y, L, W), y: m.y }
+  }, [toM, L, W])
 
   const onPitchNow = useCallback((pid: string) => {
     const iv = ctx.on_pitch[pid]
@@ -332,12 +359,15 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const theirBall = useMemo(() => {
     if (!carry || carry.team !== 'opponent' || carry.start_x == null || carry.start_y == null) return null
     const h = carry.half ?? half
-    const a = toM(carry.start_x, carry.start_y, h)
-    const b = carry.end_x != null && carry.end_y != null ? toM(carry.end_x, carry.end_y, h) : a
+    const a = tagToM(carry.start_x, carry.start_y, h)
+    const b = carry.end_x != null && carry.end_y != null ? tagToM(carry.end_x, carry.end_y, h) : a
     const span = Math.max(1, (carry.end_video_ms ?? carry.end) - carry.video_ms)
     const w = Math.min(1, Math.max(0, (pitchMs - carry.video_ms) / span))
     return { x: a.x + (b.x - a.x) * w, y: a.y + (b.y - a.y) * w }
-  }, [carry, toM, pitchMs, half])
+  }, [carry, tagToM, pitchMs, half])
+  // what is drawn: nothing from the tagged carries unless "Ball carrying" is on
+  const shownCarry = showCarry ? carry : null
+  const shownTheirBall = showCarry ? theirBall : null
 
   const shotPinAt = useMemo(() => {
     const m = new Map<string, number>()
@@ -412,6 +442,10 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             <button onClick={() => setShowNames(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showNames ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showNames}>
               <Users size={13} /> Names
             </button>
+            <button onClick={() => setShowCarry(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showCarry ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showCarry}
+              title="Show who had the ball, as you recorded it during the match">
+              <CircleDot size={13} /> Ball carrying
+            </button>
             <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
               title="Line the dots and the ball up with the video, then save">
               <SlidersHorizontal size={13} /> Edit sync
@@ -423,7 +457,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           </div>
         </div>
         <div className="rounded-xl overflow-hidden border border-white/10">
-          <GpsPitch lengthM={L} widthM={W} label="Player positions" warp={false} fit={false}>
+          <GpsPitch lengthM={L} widthM={W} label="Player positions" warp={false} fit={false} measured>
             {(sc) => (
               <>
                 {/* look: one blurred halo layer under crisp dots (a single filter for all halos, cheap enough to animate on a tablet) */}
@@ -434,14 +468,14 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                 </defs>
                 <g filter="url(#gpsGlow)" aria-hidden="true">
                   {dots.map(d => {
-                    const isCarrier = carry?.team === 'own' && carry.player_id === d.pid
+                    const isCarrier = shownCarry?.team === 'own' && shownCarry.player_id === d.pid
                     return <circle key={d.pid} cx={sc.x(d.x)} cy={sc.y(d.y)} r={isCarrier ? 60 : 44} fill={isCarrier ? '#ffffff' : COLOR_OURS} opacity={isCarrier ? 0.55 : 0.5} />
                   })}
-                  {theirBall && <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={36} fill={COLOR_THEIRS} opacity={0.7} />}
-                  {recentEvents.map(e => { const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half); return <circle key={e.id} cx={sc.x(p.x)} cy={sc.y(p.y)} r={26} fill={e.team === 'team_a' ? COLOR_OURS : COLOR_THEIRS} opacity={0.45 * Math.max(0, 1 - Math.max(0, (pitchMs - e.video_ms) / EVENT_SHOW_MS))} /> })}
+                  {shownTheirBall && <circle cx={sc.x(shownTheirBall.x)} cy={sc.y(shownTheirBall.y)} r={36} fill={COLOR_THEIRS} opacity={0.7} />}
+                  {recentEvents.map(e => { const p = tagToM(e.pitch_x!, e.pitch_y!, e.half ?? half); return <circle key={e.id} cx={sc.x(p.x)} cy={sc.y(p.y)} r={26} fill={e.team === 'team_a' ? COLOR_OURS : COLOR_THEIRS} opacity={0.45 * Math.max(0, 1 - Math.max(0, (pitchMs - e.video_ms) / EVENT_SHOW_MS))} /> })}
                 </g>
                 {recentEvents.map(e => {
-                  const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half)
+                  const p = tagToM(e.pitch_x!, e.pitch_y!, e.half ?? half)
                   const age = Math.max(0, pitchMs - e.video_ms)
                   const ours = e.team === 'team_a'
                   return (
@@ -449,14 +483,14 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                       fill="none" stroke={ours ? '#5ee6b4' : '#ffa463'} strokeWidth={5} strokeLinejoin="round" opacity={Math.max(0.25, 1 - age / EVENT_SHOW_MS)} />
                   )
                 })}
-                {theirBall && (
+                {shownTheirBall && (
                   <g>
-                    <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={22} fill="url(#gpsDotTheirs)" stroke="rgba(255,255,255,0.9)" strokeWidth={3} />
-                    <text x={sc.x(theirBall.x)} y={sc.y(theirBall.y) + 58} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{showNames && carry?.opposition_player ? carry.opposition_player : `${ctx.opponent || 'Opposition'} ball`}</text>
+                    <circle cx={sc.x(shownTheirBall.x)} cy={sc.y(shownTheirBall.y)} r={22} fill="url(#gpsDotTheirs)" stroke="rgba(255,255,255,0.9)" strokeWidth={3} />
+                    <text x={sc.x(shownTheirBall.x)} y={sc.y(shownTheirBall.y) + 58} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{showNames && carry?.opposition_player ? carry.opposition_player : `${ctx.opponent || 'Opposition'} ball`}</text>
                   </g>
                 )}
                 {dots.map(d => {
-                  const isCarrier = carry?.team === 'own' && carry.player_id === d.pid
+                  const isCarrier = shownCarry?.team === 'own' && shownCarry.player_id === d.pid
                   const n = jersey(d.pid)
                   return (
                     <g key={d.pid}>
@@ -472,7 +506,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                 })}
                 {/* event chips last, so no dot or ball covers them: pop in, hold, fade out over EVENT_SHOW_MS */}
                 {recentEvents.map((e, k) => {
-                  const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half)
+                  const p = tagToM(e.pitch_x!, e.pitch_y!, e.half ?? half)
                   const age = Math.max(0, pitchMs - e.video_ms)
                   const ours = e.team === 'team_a'
                   const label = `${humanEventType(e.event_type)}${ours && e.player_id ? ` · ${name(e.player_id).replace(/\s*\(c\)\s*$/i, '').split(' ').slice(-1)[0]}` : !ours && e.opposition_player ? ` · ${e.opposition_player}` : ''}`
@@ -496,14 +530,20 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           </GpsPitch>
         </div>
         <PitchFrameCaption fit={false} raw={raw} team={team} ownRight={ctx.attacking_right_first_half == null ? undefined : ownAttacksRight(arfh, half)} />
+        <p className="mt-1 px-1 text-[11px] text-white/50">
+          {ctx.pitch_measured
+            ? <>{ctx.stadium ? `${ctx.stadium} · ` : ''}{L} × {W} m, drawn to scale. Players are placed by GPS.</>
+            : <>Pitch size not set for this match, so the standard 145 × 90 m is used. Pick the ground in Edit Match Details to draw it to scale.</>}
+        </p>
+        {showCarry && <p className="mt-1 px-1 text-[11px] text-white/50">Ball carrying is on: this was your ball carrying recorded during the match, tagged by hand, so it can run a little ahead of or behind the GPS.</p>}
         <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
           {status.busy ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : status.error ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}
           <span>{status.text}</span>
         </div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/55">
           <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: COLOR_OURS }} /> {team} player (shirt number)</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-white" /> has the ball</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: COLOR_THEIRS }} /> {ctx.opponent || 'Opposition'} ball (tagged)</span>
+          {showCarry && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full border-2 border-white" /> has the ball (tagged)</span>}
+          {showCarry && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: COLOR_THEIRS }} /> {ctx.opponent || 'Opposition'} ball (tagged)</span>}
           <span className="flex items-center gap-1.5"><Tag size={11} /> tagged event, 3 s</span>
         </div>
       </div>

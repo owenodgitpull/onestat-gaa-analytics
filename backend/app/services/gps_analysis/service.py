@@ -138,8 +138,14 @@ async def replay_context(db: AsyncSession, match) -> dict:
     inp = await load_match(db, match, with_tracks=False)
     bounds = period_bounds(inp)
     from app.utils.attack_direction import own_attacks_right
+    from sqlalchemy import text as _text
+    st = (await db.execute(_text("select s.name from stadiums s join matches m on m.stadium_id = s.id where m.id = :m"), {"m": inp.match_id})).first()
+    fit = (inp.sync.get("calibration") or {}).get("fit") or {}
     return {
         "match_id": inp.match_id, "opponent": inp.opponent, "session": inp.session,
+        # the ground and whether its pitch was measured (else the 145 x 90 default), and how the pitch was placed under the GPS
+        "stadium": st[0] if st else None, "pitch_measured": bool(st) or getattr(match, "pitch_length_m", None) is not None,
+        "pitch_placement": {"angle_from": fit.get("angle_from"), "reach_length_m": fit.get("reach_length_m"), "reach_width_m": fit.get("reach_width_m")} if fit else None,
         "attacking_right_first_half": inp.attacking_right_first_half,
         "own_attacks_right_by_half": {str(h): own_attacks_right(inp.attacking_right_first_half, h) for h, _, _ in bounds},
         "periods": [{"half": h, "video_start_ms": a, "video_end_ms": b} for h, a, b in bounds],

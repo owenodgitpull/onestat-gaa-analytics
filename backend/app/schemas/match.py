@@ -28,6 +28,7 @@ class MatchBase(BaseModel):
     # the app-wide 145x90m default.
     pitch_length_m: Optional[float] = Field(None, ge=100, le=160, description="Actual pitch length in metres, if known (GAA regulation 130-145m)")
     pitch_width_m: Optional[float] = Field(None, ge=60, le=100, description="Actual pitch width in metres, if known (GAA regulation 80-90m)")
+    stadium_id: Optional[UUID] = Field(None, description="The ground (a saved stadium): its measured pitch size is used for this match")
 
     # Weather and pitch conditions (optional, for pattern analysis)
     weather_condition: Optional[WeatherCondition] = Field(None, description="Weather during match (legacy single value — auto-synced from weather_conditions[0])")
@@ -74,6 +75,7 @@ class MatchUpdate(BaseModel):
     half_duration_mins: Optional[int] = Field(None, ge=25, le=40)
     pitch_length_m: Optional[float] = Field(None, ge=100, le=160)
     pitch_width_m: Optional[float] = Field(None, ge=60, le=100)
+    stadium_id: Optional[UUID] = None
     # NOTE: MatchUpdate does not inherit MatchBase, so precise_tracking_enabled
     # must be declared here explicitly too — the "Use Simple Scoring" button
     # PUTs this field via api.matches.update() and would otherwise be silently
@@ -150,6 +152,7 @@ class MatchResponse(MatchBase):
     half_duration_mins: int = Field(30, description="Minutes per half (30 for clubs, 35 for inter-county)")
     pitch_length_m: Optional[float] = Field(None, description="Actual pitch length in metres, if known")
     pitch_width_m: Optional[float] = Field(None, description="Actual pitch width in metres, if known")
+    stadium_id: Optional[UUID] = Field(None, description="The saved ground this match was played at")
     opposition_roster: Optional[list] = Field(None, description="List of opposition player names")
     opposition_team_id: Optional[UUID] = Field(None, description="Scouted opposition team (inter-county only)")
     opposition_lineup: Optional[list] = Field(None, description="Opposition lineup incl. subs (inter-county only; set by GET /matches/{id})")

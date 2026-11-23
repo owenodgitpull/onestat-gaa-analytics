@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { X, CalendarDays, Clock, Trophy, Home, Bus, Globe, Trash2, AlertTriangle } from 'lucide-react'
 import { format } from 'date-fns'
 import type { Match } from '../types'
+import StadiumPicker from './StadiumPicker'
 import { api, MATCH_STAGE_OPTIONS } from '@/services/api'
 
 interface EditFixtureModalProps {
@@ -17,6 +18,7 @@ interface EditFixtureModalProps {
     half_duration_mins?: number
     pitch_length_m?: number | null
     pitch_width_m?: number | null
+    stadium_id?: string | null
   }) => Promise<void>
   onDelete?: (id: string) => Promise<void>
   /** Basic details (opponent, date, venue, competition, stage...) stay editable after the match has been played. */
@@ -32,8 +34,7 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete, a
   const [competition, setCompetition] = useState('')
   const [stage, setStage] = useState('')
   const [halfDurationMins, setHalfDurationMins] = useState(30)
-  const [pitchLengthM, setPitchLengthM] = useState('')
-  const [pitchWidthM, setPitchWidthM] = useState('')
+  const [stadiumId, setStadiumId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -58,8 +59,7 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete, a
       setCompetition(fixture.competition || '')
       setStage(fixture.stage || '')
       setHalfDurationMins(fixture.half_duration_mins ?? 30)
-      setPitchLengthM(fixture.pitch_length_m != null ? String(fixture.pitch_length_m) : '')
-      setPitchWidthM(fixture.pitch_width_m != null ? String(fixture.pitch_width_m) : '')
+      setStadiumId(fixture.stadium_id ?? null)
       setShowDeleteConfirm(false)
       setErrors({})
     }
@@ -88,8 +88,8 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete, a
         competition: competition.trim() || null,
         stage: stage || null,
         half_duration_mins: halfDurationMins,
-        pitch_length_m: pitchLengthM ? parseFloat(pitchLengthM) : null,
-        pitch_width_m: pitchWidthM ? parseFloat(pitchWidthM) : null,
+        // a saved ground sets the pitch size on the server; with none picked the match keeps the size it has
+        stadium_id: stadiumId,
       })
       onClose()
     } catch {
@@ -239,47 +239,9 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete, a
             </div>
           </div>
 
-          {/* Ground size — optional. When set, every distance derived from
-              this match's pitch coordinates (Team Volume, Orchestrator
-              carry distance, xP) uses these instead of the app-wide
-              145x90m default. */}
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Ground Size <span className="text-white/40 text-xs font-normal">(optional — leave blank for the standard 145m x 90m)</span>
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="edit-pitch-length" className="block text-xs text-white/50 mb-1">Length (m)</label>
-                <input
-                  id="edit-pitch-length"
-                  type="number"
-                  min={100}
-                  max={160}
-                  step={1}
-                  placeholder="145"
-                  value={pitchLengthM}
-                  onChange={(e) => setPitchLengthM(e.target.value)}
-                  disabled={!isEditable}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent transition-all disabled:opacity-50"
-                />
-              </div>
-              <div>
-                <label htmlFor="edit-pitch-width" className="block text-xs text-white/50 mb-1">Width (m)</label>
-                <input
-                  id="edit-pitch-width"
-                  type="number"
-                  min={60}
-                  max={100}
-                  step={1}
-                  placeholder="90"
-                  value={pitchWidthM}
-                  onChange={(e) => setPitchWidthM(e.target.value)}
-                  disabled={!isEditable}
-                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent transition-all disabled:opacity-50"
-                />
-              </div>
-            </div>
-          </div>
+          {/* Ground: a saved stadium gives this match its real pitch size (GPS, distances, the replay pitch) */}
+          <StadiumPicker value={stadiumId} onChange={(id) => setStadiumId(id)} disabled={!isEditable} idPrefix="edit-stadium"
+            fallbackSize={{ length: fixture.pitch_length_m, width: fixture.pitch_width_m }} />
 
           {/* Competition */}
           <div>

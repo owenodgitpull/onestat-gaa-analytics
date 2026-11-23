@@ -144,6 +144,7 @@ export function useCreateMatch() {
       half_duration_mins?: number;
       pitch_length_m?: number | null;
       pitch_width_m?: number | null;
+      stadium_id?: string | null;
     }) => api.matches.create(data),
     onSuccess: () => {
       // Invalidate matches list to refetch

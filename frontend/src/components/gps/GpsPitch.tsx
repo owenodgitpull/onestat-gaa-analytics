@@ -4,6 +4,7 @@
  * y = 0 top touchline (our LEFT when attacking right) .. widthM. Use the `m` helper to place things.
  */
 import type { ReactNode } from 'react'
+import MeasuredPitchArt from './MeasuredPitchArt'
 
 export const PITCH = { svgW: 2332, svgH: 1446, left: 183, top: 123, playW: 1960, playH: 1167 }
 
@@ -50,10 +51,14 @@ export function artToRealX(x: number, y: number, L: number, W: number) {
   return near ? d : L - d
 }
 
-export function makeScale(lengthM: number, widthM: number, warp = false) {
-  const sx = PITCH.playW / lengthM, sy = PITCH.playH / widthM
-  const on = warp && ART_WARP
+export function makeScale(lengthM: number, widthM: number, warp = false, measured = false) {
+  // measured: the pitch is drawn to the ground's own size (MeasuredPitchArt), one scale both ways, so the picture has the
+  // ground's real shape and true metres land on true lines; no artwork, so no warp
+  const sx = PITCH.playW / lengthM, sy = measured ? sx : PITCH.playH / widthM
+  const on = warp && ART_WARP && !measured
+  const playH = measured ? widthM * sx : PITCH.playH
   return {
+    measured, playH, svgH: measured ? Math.round(playH + 2 * PITCH.top) : PITCH.svgH,
     /** x in true metres; pass the point's y too so spots near the arc land right against it (default: pitch centre) */
     x: (xm: number, ym?: number) => PITCH.left + (on ? realToArtX(xm, ym ?? widthM / 2, lengthM, widthM) : xm) * sx,
     y: (ym: number) => PITCH.top + ym * sy,
@@ -65,7 +70,7 @@ export function makeScale(lengthM: number, widthM: number, warp = false) {
 
 export type PitchScale = ReturnType<typeof makeScale>
 
-export default function GpsPitch({ lengthM, widthM, children, className = '', label, onPointerDown, dim = false, half, warp = true, fit = true }: {
+export default function GpsPitch({ lengthM, widthM, children, className = '', label, onPointerDown, dim = false, half, warp = true, fit = true, measured = false }: {
   lengthM: number; widthM: number; children?: (s: PitchScale) => ReactNode; className?: string; label?: string
   /** darken the grass so a colour scale on top (heat map) keeps its low end visible */
   dim?: boolean
@@ -75,14 +80,17 @@ export default function GpsPitch({ lengthM, widthM, children, className = '', la
   warp?: boolean
   /** cap the height so the whole pitch fits on screen (the replay passes false) */
   fit?: boolean
+  /** draw the pitch to the ground's measured size instead of the shared artwork (the replay) */
+  measured?: boolean
   onPointerDown?: (e: React.PointerEvent<SVGSVGElement>) => void
 }) {
-  const s = makeScale(lengthM, widthM, warp)
+  const s = makeScale(lengthM, widthM, warp, measured)
   const vw = half === 'left' ? Math.round(PITCH.left + PITCH.playW / 2 + 60) : PITCH.svgW
   return (
-    <svg viewBox={`0 0 ${vw} ${PITCH.svgH}`} className={`w-full h-auto block select-none mx-auto ${className}`} style={fit ? { maxWidth: pitchMaxWidth(half) } : undefined} role="img" aria-label={label || 'Pitch'} onPointerDown={onPointerDown}>
-      <image href="/pitch-svg.svg" x={0} y={0} width={PITCH.svgW} height={PITCH.svgH} preserveAspectRatio="none" />
-      {dim && <rect x={0} y={0} width={PITCH.svgW} height={PITCH.svgH} fill="#060a14" opacity={0.72} />}
+    <svg viewBox={`0 0 ${vw} ${s.svgH}`} className={`w-full h-auto block select-none mx-auto ${className}`} style={fit ? { maxWidth: pitchMaxWidth(half) } : undefined} role="img" aria-label={label || 'Pitch'} onPointerDown={onPointerDown}>
+      {measured ? <MeasuredPitchArt s={s} svgW={PITCH.svgW} svgH={s.svgH} />
+        : <image href="/pitch-svg.svg" x={0} y={0} width={PITCH.svgW} height={PITCH.svgH} preserveAspectRatio="none" />}
+      {dim && <rect x={0} y={0} width={PITCH.svgW} height={s.svgH} fill="#060a14" opacity={0.72} />}
       {children?.(s)}
     </svg>
   )

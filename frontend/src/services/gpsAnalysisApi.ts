@@ -18,6 +18,10 @@ export interface GpsReplayContext {
   sync: { status: string; periods: any[]; tag_lag: Record<string, { n: number; median_s: number; p25_s: number; p75_s: number }> & { _manual?: { shift_ms: number }; _pins?: Record<string, number> }; computed_at: string | null; confirmed_at: string | null }
   pitch_length_m: number
   pitch_width_m: number
+  /** the saved ground's name, and whether the pitch size is measured (else the 145 x 90 default) */
+  stadium?: string | null
+  pitch_measured?: boolean
+  pitch_placement?: { angle_from?: string | null; reach_length_m?: number | null; reach_width_m?: number | null } | null
   players: Record<string, { name: string | null; jersey: number | null }>
   starters: string[]
   bench: string[]

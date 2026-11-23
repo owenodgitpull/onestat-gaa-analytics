@@ -98,6 +98,8 @@ export interface Match {
   // default used by every pitch_x/y-derived distance calculation.
   pitch_length_m?: number | null;
   pitch_width_m?: number | null;
+  /** the saved ground (stadium) this match was played at; it sets the two sizes above */
+  stadium_id?: string | null;
   opposition_roster?: string[] | null;
   /** Inter-county only: opposition lineup incl. bench (set on GET /matches/{id}) */
   opposition_lineup?: Array<{

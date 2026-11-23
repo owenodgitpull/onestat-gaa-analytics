@@ -91,12 +91,26 @@ def unit_in_match(coverage: float, on_pitch_share: float, distance_m: float) -> 
         return True
     return coverage >= 0.15 and on_pitch_share >= 0.8 * coverage and distance_m >= 1000
 
+def tag_uv(px, py, cal: dict):
+    """Tagged raw 0-100 spots -> pitch-frame metres (u, v), TRUE metres. Tags are placed against the pitch artwork, whose
+    13 m line, arc and 45 m line are not drawn to scale (its 45 sits at 50.7 m of a 145 m pitch): each spot is read
+    against the drawn lines (gps_analysis.frame.art_to_real) before it meets GPS. The straight scaling this replaces left
+    tags near the 45 up to 6 m from the player's GPS, which the offsets and the tag bias were then fitted to."""
+    from app.services.gps_analysis.frame import art_to_real, ART_WARP
+    L = float(cal.get("pitch_length_m") or 145.0); W = float(cal.get("pitch_width_m") or 90.0)
+    xs = np.atleast_1d(np.asarray(px, dtype=np.float64)) / 100.0 * L; ys = np.atleast_1d(np.asarray(py, dtype=np.float64)) / 100.0 * W
+    if ART_WARP:
+        xs = np.array([art_to_real(float(a), float(b), L, W)[0] for a, b in zip(xs, ys)])
+    u, v = xs - L / 2, ys - W / 2
+    return (u, v) if np.ndim(px) else (float(u[0]), float(v[0]))
+
+
 def _prep(items: List[Tagged], grid: _Grid, half: Optional[int], cal: Optional[dict]):
     sel = [d for d in items if (half is None or d.half == half) and d.player_id in grid.pos]
     prow = np.array([grid.pos[d.player_id] for d in sel], dtype=np.int64)
     vms = np.array([d.video_ms for d in sel], dtype=np.float64)
     if cal is not None:
-        tu, tv = geo.pitch_to_uv(np.array([d.x for d in sel]), np.array([d.y for d in sel]), cal)
+        tu, tv = tag_uv(np.array([d.x for d in sel]), np.array([d.y for d in sel]), cal) if sel else (np.zeros(0), np.zeros(0))
     else:
         tu = tv = None
     return sel, prow, vms, tu, tv
@@ -118,8 +132,10 @@ def _median_dist(grid: _Grid, prow, vms, tu, tv, offsets_ms, min_frac=0.7):
 
 def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged], starters: List[str],
             period_starts: Dict[int, int], period_ends: Dict[int, Optional[int]],
-            pitch_length_m: float = 145.0, pitch_width_m: float = 90.0, log=print) -> dict:
-    """Returns {"calibration", "periods", "tag_lag", "quality"}; raises SyncError when it cannot sync."""
+            pitch_length_m: float = 145.0, pitch_width_m: float = 90.0, log=print, cal_fixed: Optional[dict] = None) -> dict:
+    """Returns {"calibration", "periods", "tag_lag", "quality"}; raises SyncError when it cannot sync.
+    cal_fixed: a calibration whose origin, axis and centre are already known (the whole-match pitch fit, service.run_sync's
+    second pass): pass 2 is skipped; the orientation and the offsets are still found from the tags."""
     if not tracks:
         raise SyncError("no GPS tracks")
     if 1 not in period_starts or period_starts[1] is None:
@@ -148,10 +164,16 @@ def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged
     i0 = max(0, int(grid.idx(w0))); i1 = min(grid.n, int(grid.idx(w1)))
     rows = [grid.pos[p] for p in starters if p in grid.pos] or list(range(len(grid.ids)))
     xs, ys = geo.to_local_m(grid.lat[rows, i0:i1].ravel(), grid.lon[rows, i0:i1].ravel(), origin_lat, origin_lon)
-    try:
-        axis = geo.fit_axis(xs, ys)
-    except ValueError as e:
-        raise SyncError(str(e))
+    if cal_fixed is not None:
+        origin_lat, origin_lon = cal_fixed["origin_lat"], cal_fixed["origin_lon"]
+        axis = {k: cal_fixed[k] for k in ("axis_x", "axis_y", "centre_x_m", "centre_y_m", "extent_u", "extent_v")}
+        if cal_fixed.get("fit"):
+            axis["fit"] = cal_fixed["fit"]
+    else:
+        try:
+            axis = geo.fit_axis(xs, ys)
+        except ValueError as e:
+            raise SyncError(str(e))
     cal = {"origin_lat": origin_lat, "origin_lon": origin_lon, "pitch_length_m": pitch_length_m, "pitch_width_m": pitch_width_m, **axis, "flip_u": False, "flip_v": False}
     log(f"pass2: axis {math.degrees(math.atan2(axis['axis_y'], axis['axis_x'])):.1f} deg, fitted extent {axis['extent_u'][1]-axis['extent_u'][0]:.0f} x {axis['extent_v'][1]-axis['extent_v'][0]:.0f} m from {len(rows)} starters")
     # ---- orientation
@@ -243,7 +265,7 @@ def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged
         if p is None or e.player_id not in grid.pos:
             continue
         off = p["offset_ms"]; prow = grid.pos[e.player_id]
-        x_, y_ = geo.pitch_to_uv(e.x, e.y, cal)
+        x_, y_ = tag_uv(e.x, e.y, cal)
         win = grid.idx(np.arange(e.video_ms + off - 12_000, e.video_ms + off + 6_000, STEP_MS))
         win = win[(win >= 0) & (win < grid.n)]
         if not len(win):

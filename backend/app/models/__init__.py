@@ -29,6 +29,7 @@ from app.models.player_health import (
 )
 from app.models.match_gps import MatchGPSData
 from app.models.match_gps_track import MatchGPSTrack, MatchGPSSync
+from app.models.stadium import Stadium
 from app.models.insight_alert import InsightAlert, AlertCategory, AlertSource
 from app.models.chat_session import ChatSession, ChatSessionMessage
 from app.models.user import User
@@ -102,6 +103,7 @@ __all__ = [
     "MatchGPSData",
     "MatchGPSTrack",
     "MatchGPSSync",
+    "Stadium",
     "InsightAlert",
     "AlertCategory",
     "AlertSource",

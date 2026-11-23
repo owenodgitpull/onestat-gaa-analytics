@@ -21,7 +21,7 @@ MIN_PER_END = 5
 
 
 def fit_ends(tracks: Dict[str, codec.Track], cal: dict, periods: List[dict], kickouts: List[dict],
-             length_fixed: bool = False, log=print) -> Optional[dict]:
+             length_fixed: bool = False, log=print, weight: float = 1.0) -> Optional[dict]:
     """kickouts: [{video_ms, half, end}] of THEIR kickouts; end = 'L' / 'R', the raw-screen goal they kicked from (from the
     attacking direction - a kickout's tagged spot is where it LANDED, so it cannot say which end).
     Returns the new calibration (a copy) with `ends_fit` describing what was measured, or None if too few kickouts."""
@@ -55,11 +55,14 @@ def fit_ends(tracks: Dict[str, codec.Track], cal: dict, periods: List[dict], kic
     dL, dR = float(np.median(ends["L"])), float(np.median(ends["R"]))
     # with the same stand-off a at both ends the true goal lines are at u = -L/2 + dL - a and u = L/2 - dR + a, so the true
     # centre is at u = (dL - dR) / 2 whatever a is
-    shift = (dL - dR) / 2                          # where the true centre sits, in the current u (metres, + = raw right)
-    applied = abs(shift) >= 1.0
+    # weight < 1: the centre already comes from the whole-match fit (geo.fit_rect), an independent estimate about as good
+    # as this one (they agreed to 1-2 m on five matches): move part of the way, i.e. average the two
+    measured = (dL - dR) / 2                       # where the true centre sits, in the current u (metres, + = raw right)
+    applied = abs(measured) >= 1.0
+    shift = measured * weight
     out = dict(cal)
     out["ends_fit"] = {"their_kickouts_left": nL, "their_kickouts_right": nR, "nearest_left_m": round(dL, 1), "nearest_right_m": round(dR, 1),
-                       "pitch_length_m": L, "centre_shift_m": round(shift if applied else 0.0, 1),
+                       "pitch_length_m": L, "measured_shift_m": round(measured, 1), "centre_shift_m": round(shift if applied else 0.0, 1),
                        "applied": applied}
     if not applied:
         log(f"pitch ends: already right (nearest {dL:.1f} m / {dR:.1f} m at their kickouts)")

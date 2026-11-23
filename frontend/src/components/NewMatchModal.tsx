@@ -4,6 +4,7 @@ import { X, Home, Bus, Globe, Circle, Calendar, Thermometer, CalendarCheck, Link
 import { api, MATCH_STAGE_OPTIONS } from '@/services/api'
 import { WEATHER_OPTIONS } from './WeatherPickerPopover'
 import type { Match } from '@/types'
+import StadiumPicker from './StadiumPicker'
 
 interface NewMatchModalProps {
   isOpen: boolean
@@ -17,6 +18,7 @@ interface NewMatchModalProps {
     competition?: string | null
     stage?: string | null
     fixtureId?: string
+    stadium_id?: string | null
   }) => void
 }
 
@@ -28,6 +30,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
     return today.toISOString().split('T')[0]
   })
   const [weatherConditions, setWeatherConditions] = useState<string[]>([])
+  const [stadiumId, setStadiumId] = useState<string | null>(null)
   const [temperature, setTemperature] = useState('')
   const [competition, setCompetition] = useState('')
   const [stage, setStage] = useState('')
@@ -140,12 +143,14 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
       competition: competition.trim() || null,
       stage: stage || null,
       fixtureId: linkedFixture?.id,
+      stadium_id: stadiumId,
     })
 
     resetForm()
   }
 
   const resetForm = () => {
+    setStadiumId(null)
     setOpponent('')
     setVenue('home')
     setMatchDate(new Date().toISOString().split('T')[0])
@@ -326,6 +331,9 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
               </button>
             </div>
           </div>
+
+          {/* Ground: a saved stadium gives this match its real pitch size */}
+          {!linkedFixture && <StadiumPicker value={stadiumId} onChange={(id) => setStadiumId(id)} idPrefix="new-stadium" />}
 
           {/* Competition */}
           <div>

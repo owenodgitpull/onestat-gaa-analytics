@@ -118,14 +118,131 @@ async def their_kickouts(db: AsyncSession, match_id, arfh) -> list:
         "and event_type <> 'OPP_KICKOUT_SIDELINE' and video_timestamp_ms is not null"), {"m": match_id})).all()]
 
 
-async def refit_pitch_ends(db: AsyncSession, match, tracks, cal: dict, periods: list, log=logger.info):
+async def refit_pitch_ends(db: AsyncSession, match, tracks, cal: dict, periods: list, log=logger.info, weight: float = 1.0):
     """Centre the picture between the two goals from the 40 m arc at their kickouts (pitch_fit)."""
     from . import pitch_fit
     try:
-        return pitch_fit.fit_ends(tracks, cal, periods, await their_kickouts(db, match.id, match.attacking_right_first_half), log=log)
+        return pitch_fit.fit_ends(tracks, cal, periods, await their_kickouts(db, match.id, match.attacking_right_first_half), log=log, weight=weight)
     except Exception:
         logger.exception("pitch end fit failed for %s", match.id)
         return None
+
+
+async def on_pitch_points(db: AsyncSession, match, tracks: Dict[str, Track], cal: dict, periods: list, starters: List[str]):
+    """Local-metre positions (2 a second) of every player while he was ON THE PITCH in a synced period: starters from the
+    throw-in, substitutes from when they came on, nobody after going off (a black card: 10 minutes off)."""
+    ps = sorted(periods, key=lambda p: p["video_start_ms"])
+    bounds = []
+    for i, p in enumerate(ps):
+        start = int(p["video_start_ms"]); nxt = int(ps[i + 1]["video_start_ms"]) if i + 1 < len(ps) else None
+        end = int(p.get("video_end_ms") or nxt or start + 40 * 60000)
+        bounds.append((p, start, min(end, nxt) if nxt is not None else end))
+    if not bounds:
+        return np.zeros(0), np.zeros(0)
+    t_end = bounds[-1][2]
+    on_since: Dict[str, Optional[float]] = {pid: bounds[0][1] for pid in (starters or list(tracks))}
+    iv: Dict[str, list] = {}
+
+    def off(pid, t):
+        if on_since.get(pid) is not None:
+            iv.setdefault(pid, []).append((on_since[pid], t))
+        on_since[pid] = None
+
+    back = []
+    for et, pid, sub_in, t in (await db.execute(text(
+            "select event_type, player_id, sub_in_player_id, video_timestamp_ms from video_events where match_id = :m and team = 'team_a' "
+            "and event_type in ('SUB_ON', 'SUBSTITUTION', 'RED_CARD', 'BLACK_CARD') and video_timestamp_ms is not null order by video_timestamp_ms"),
+            {"m": match.id})).all():
+        pid = str(pid) if pid else None; sub_in = str(sub_in) if sub_in else None
+        for bt, bp in [b for b in back if b[0] <= t]:
+            on_since[bp] = bt; back.remove((bt, bp))
+        if et in ("SUB_ON", "SUBSTITUTION") and sub_in:
+            if pid:
+                off(pid, t)
+            on_since[sub_in] = t
+        elif pid:
+            off(pid, t)
+            if et == "BLACK_CARD":
+                back.append((t + 600000, pid))
+    for bt, bp in back:
+        if bt < t_end:
+            on_since[bp] = bt
+    for pid, since in on_since.items():
+        if since is not None:
+            iv.setdefault(pid, []).append((since, t_end))
+    xs, ys = [], []
+    for pid, tr in tracks.items():
+        for a, b in iv.get(pid, []):
+            for p, start, end in bounds:
+                lo, hi = max(a, start), min(b, end)
+                if hi <= lo:
+                    continue
+                idx = tr.index_for_ms(np.arange(lo, hi, 500.0) * (p.get("rate") or 1.0) + p["offset_ms"])
+                idx = idx[idx >= 0]; idx = idx[(tr.flags[idx] & codec.FLAG_BAD_FIX) == 0]
+                x, y = geo.to_local_m(tr.lat[idx], tr.lon[idx], cal["origin_lat"], cal["origin_lon"])
+                xs.append(x); ys.append(y)
+    if not xs:
+        return np.zeros(0), np.zeros(0)
+    return np.concatenate(xs), np.concatenate(ys)
+
+
+async def compute_sync(db: AsyncSession, match, tracks: Dict[str, Track], log=logger.info, size=None, corners=None) -> dict:
+    """The whole sync, nothing stored. Two passes:
+      1  offsets and a first pitch placement from the tags (sync.compute), on the ground's measured pitch size;
+      2  with the offsets known, the pitch is placed from EVERY on-pitch position of the whole match (geo.fit_rect: the
+         angle from the ground's surveyed corners when it has them), then the offsets are found again on that placement.
+    size / corners: overrides for a dry run; otherwise the match's size and its stadium's corners."""
+    L, W = size or (match.pitch_length_m or 145.0, match.pitch_width_m or 90.0)
+    if corners is None and getattr(match, "stadium_id", None):
+        from app.models.stadium import Stadium
+        st = await db.get(Stadium, match.stadium_id)
+        corners = st.corners if st is not None else None
+    _, carries, events, starters, starts, ends = await _tagged_inputs(db, match)
+    out = syncmod.compute(tracks, carries, events, starters, starts, ends, pitch_length_m=L, pitch_width_m=W, log=log)
+    try:
+        cal = out["calibration"]
+        x, y = await on_pitch_points(db, match, tracks, cal, out["periods"], starters)
+        axis = geo.bearing_from_corners(corners, cal["origin_lat"], cal["origin_lon"]) if corners else None
+        fit = geo.fit_rect(x, y, L, W, axis=axis, like=(cal["axis_x"], cal["axis_y"]))
+        fit["fit"]["first_pass"] = {"angle_deg": round(float(np.degrees(np.arctan2(cal["axis_y"], cal["axis_x"]))), 2),
+                                    "centre_moved_m": round(float(np.hypot(fit["centre_x_m"] - cal["centre_x_m"], fit["centre_y_m"] - cal["centre_y_m"])), 1),
+                                    "median_residual_m": out["periods"][0].get("median_residual_m")}
+        log(f"pitch fit: angle {fit['fit']['angle_deg']} deg from {fit['fit']['angle_from']} (first pass {fit['fit']['first_pass']['angle_deg']}), "
+            f"centre moved {fit['fit']['first_pass']['centre_moved_m']} m, players reached {fit['fit']['reach_length_m']} x {fit['fit']['reach_width_m']} m of {L} x {W}")
+        out = syncmod.compute(tracks, carries, events, starters, starts, ends, pitch_length_m=L, pitch_width_m=W, log=log,
+                              cal_fixed={**cal, **fit})
+    except (ValueError, syncmod.SyncError) as e:
+        log(f"pitch fit skipped ({e}); keeping the first placement")
+    return out
+
+
+_BG: set = set()
+
+
+async def resync_if_synced(db: AsyncSession, match) -> bool:
+    """The match's pitch size or ground changed: redo the GPS placement in the background (20-60 s). No-op when the match
+    has no GPS sync."""
+    row = await db.get(MatchGPSSync, match.id)
+    if row is None or not row.periods or row.status in ("pending", "failed"):
+        return False
+    import asyncio
+    match_id = match.id
+
+    async def _job():
+        from app.database import AsyncSessionLocal
+        try:
+            async with AsyncSessionLocal() as s2:
+                m = await s2.get(Match, match_id)
+                if m is not None:
+                    await run_sync(s2, m)
+                    await s2.commit()
+                    logger.info("GPS placement redone for %s after a pitch size change", match_id)
+        except Exception:
+            logger.exception("GPS re-sync after a pitch size change failed for %s", match_id)
+
+    task = asyncio.create_task(_job())
+    _BG.add(task); task.add_done_callback(_BG.discard)
+    return True
 
 
 async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSSync:
@@ -136,9 +253,7 @@ async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSS
     loaded = await load_tracks(db, match.id)
     tracks = {str(r.player_id): t for r, t in loaded}
     try:
-        _, carries, events, starters, starts, ends = await _tagged_inputs(db, match)
-        out = syncmod.compute(tracks, carries, events, starters, starts, ends,
-                              pitch_length_m=match.pitch_length_m or 145.0, pitch_width_m=match.pitch_width_m or 90.0, log=log)
+        out = await compute_sync(db, match, tracks, log=log)
     except syncmod.SyncError as e:
         row.status = "failed"; row.error = str(e); row.computed_at = datetime.utcnow()
         await db.flush()
@@ -148,7 +263,8 @@ async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSS
     for p in out["periods"]:
         if p["half"] in old:
             p["offset_ms"] = old[p["half"]]["offset_ms"]; p["rate"] = old[p["half"]].get("rate", 1.0); p["source"] = "manual"
-    out["calibration"] = await refit_pitch_ends(db, match, tracks, out["calibration"], out["periods"], log) or out["calibration"]
+    out["calibration"] = await refit_pitch_ends(db, match, tracks, out["calibration"], out["periods"], log,
+                                                weight=0.5 if out["calibration"].get("fit") else 1.0) or out["calibration"]
     row.calibration = out["calibration"]; row.periods = out["periods"]
     # keep the user's tag shift and ball pins (replay "Edit sync") through a re-sync
     kept = {k: v for k, v in (row.tag_lag or {}).items() if k in ("_manual", "_pins") and v}

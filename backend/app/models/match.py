@@ -185,6 +185,9 @@ class Match(Base):
     # 145x90m app-wide when these are null. Optional, set at match creation.
     pitch_length_m: Column[Optional[float]] = Column(Float, nullable=True)
     pitch_width_m: Column[Optional[float]] = Column(Float, nullable=True)
+    # The ground this match was played at (app.models.stadium). Picking it copies its measured pitch size into the two
+    # columns above, which is what every reader uses.
+    stadium_id = Column(UUID(as_uuid=True), ForeignKey("stadiums.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Opposition roster (list of player names for opponent scoring attribution)
     opposition_roster = Column(JSON, nullable=True)

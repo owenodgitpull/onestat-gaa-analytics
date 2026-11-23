@@ -203,7 +203,10 @@ def _synthetic_match(offset1_ms=OFF1, offset2_ms=OFF2, angle=0.9, flip_u=True, f
             i = int(gps_rel / 100); su, sv, sp = truth[p]
             if sp[i] < 2.0:  # carries start when running
                 continue
-            px = 50 + su[i] / 145 * 100 + rng.normal(0, 1.5); py = 50 + sv[i] / 90 * 100 + rng.normal(0, 1.5)
+            # a tagger places the spot against the ARTWORK's lines (its 45 is not at 45 m): true metres -> artwork
+            from app.services.gps_analysis.frame import real_to_art
+            ax_, _ = real_to_art(su[i] + 72.5, sv[i] + 45.0, 145.0, 90.0)
+            px = ax_ / 145 * 100 + rng.normal(0, 1.5); py = 50 + sv[i] / 90 * 100 + rng.normal(0, 1.5)
             video_ms = int(((t0 + gps_rel) - off) / rate)
             carries.append(sync.Tagged(p, half, px, py, video_ms))
             events.append(sync.Tagged(p, half, px, py, video_ms + 2000, "POINT_SCORED"))  # tapped 2 s late
