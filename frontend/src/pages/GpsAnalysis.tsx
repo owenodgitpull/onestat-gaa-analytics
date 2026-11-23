@@ -4,8 +4,9 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import Breadcrumbs from '../components/Breadcrumbs'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, Loader2, AlertCircle, LineChart } from 'lucide-react'
+import { Loader2, AlertCircle, LineChart } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useClubName } from '../contexts/ClubContext'
 import { gpsAnalysisApi } from '../services/gpsAnalysisApi'
@@ -76,7 +77,7 @@ export default function GpsAnalysis() {
     <div className="w-full space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <Link to={`/results/${matchId}`} className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ChevronLeft size={16} /> Back to the match</Link>
+          <Breadcrumbs items={[{ label: 'Results', to: '/results' }, { label: `${team} v ${opponent}`, to: `/results/${matchId}` }, { label: 'GPS analysis' }]} />
           <h1 className="text-xl md:text-2xl font-bold text-white mt-1">GPS · {team} v {opponent}</h1>
           {ctx && <div className="flex flex-wrap items-center gap-2 text-xs text-white/55 mt-1">Sync <SyncBadge status={ctx.sync.status} /> <span>{ctx.tracked.filter(pid => ctx.on_pitch[pid]).length} players with a unit played · no goalkeeper or opposition units</span></div>}
         </div>

@@ -5,7 +5,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
+import Breadcrumbs from '../components/Breadcrumbs'
 import { Video, Plus, Trash2, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
 import { useVideoSessions, useDeleteVideoSession } from '../hooks/useVideoSessions'
 import VideoUploadModal from '../components/VideoUploadModal'
@@ -71,13 +72,8 @@ export default function VideoSessionList() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link
-            to={`/results/${matchId}`}
-            className="p-2 text-white/50 hover:text-white transition-colors"
-          >
-            &larr;
-          </Link>
           <div>
+            <Breadcrumbs items={[{ label: 'Results', to: '/results' }, { label: 'Match', to: `/results/${matchId}` }, { label: 'Video analysis' }]} />
             <h1 className="text-2xl font-bold text-white">Video Analysis</h1>
             <p className="text-sm text-white/50">{sessions.length} video session{sessions.length !== 1 ? 's' : ''}</p>
           </div>

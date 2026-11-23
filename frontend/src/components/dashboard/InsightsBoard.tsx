@@ -16,6 +16,15 @@ interface Item { id: string; group: Group; source: string; figure?: string; sub?
 
 const COLLAPSED = 3
 
+/** The point in one short sentence: first sentence, trimmed at a word near 130 characters. The full text stays on hover. */
+function brief(t: string): string {
+  const clean = t.replace(/\s+/g, ' ').trim()
+  const first = (clean.match(/^.*?[.!?](?=\s|$)/) || [clean])[0]
+  if (first.length <= 130) return first
+  const cut = first.slice(0, 130)
+  return cut.slice(0, cut.lastIndexOf(' ')).replace(/[,;:\s]+$/, '') + '…'
+}
+
 function fmt(c: KPICardItem, v: number): string {
   if (c.format === 'percent') return `${v}%`
   if (c.format === 'seconds') return `${v} s`
@@ -61,9 +70,9 @@ function fromSetups(sides: Partial<Record<'own' | 'opp', { patterns: { win: KoPa
 }
 
 const GROUPS: { id: Group; title: string; hint: string; icon: typeof TrendingUp; tone: string }[] = [
-  { id: 'attention', title: 'Needs attention', hint: 'Last 3 matches worse than our season', icon: TrendingDown, tone: 'text-red-300' },
-  { id: 'well', title: 'Going well', hint: 'Last 3 matches better than our season', icon: TrendingUp, tone: 'text-emerald-300' },
-  { id: 'know', title: 'Worth knowing', hint: 'Steady KPIs, chart findings, kickout setups', icon: Minus, tone: 'text-white/70' },
+  { id: 'attention', title: 'Needs attention', hint: 'Last 3 worse than season', icon: TrendingDown, tone: 'text-red-300' },
+  { id: 'well', title: 'Going well', hint: 'Last 3 better than season', icon: TrendingUp, tone: 'text-emerald-300' },
+  { id: 'know', title: 'Worth knowing', hint: 'Steady KPIs, charts, setups', icon: Minus, tone: 'text-white/70' },
 ]
 
 function Tile({ it }: { it: Item }) {
@@ -76,8 +85,8 @@ function Tile({ it }: { it: Item }) {
         </div>
       )}
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-wide text-white/50 font-semibold mb-0.5 truncate">{it.source}</div>
-        <p className="text-sm text-white/90 leading-snug">{it.text}</p>
+        <div className="text-[10px] uppercase tracking-wide text-white/50 font-semibold mb-0.5 leading-snug">{it.source.replace(/^Chart · /, '')}</div>
+        <p className="text-sm text-white/90 leading-snug" title={it.text}>{brief(it.text)}</p>
         {!it.figure && it.sub && <div className="text-[11px] text-white/50 mt-1">{it.sub}</div>}
       </div>
     </li>
@@ -88,7 +97,7 @@ export default function InsightsBoard({ cards, funnelInsight, aiCharts, hasGps }
   cards: KPICardItem[]; funnelInsight?: string | null; aiCharts: AIChartSpec[]; hasGps: boolean
 }) {
   const [open, setOpen] = useState<boolean>(() => {
-    try { return localStorage.getItem('insights-board-open') !== '0' } catch { return true }
+    try { return localStorage.getItem('insights-board-open') === '1' } catch { return false }
   })
   const [all, setAll] = useState(false)
   const ko = useQuery({ queryKey: ['gps-ko-patterns'], queryFn: () => gpsAnalysisApi.kickoutPatterns(), staleTime: 10 * 60 * 1000, retry: false, enabled: hasGps && open })
@@ -111,7 +120,7 @@ export default function InsightsBoard({ cards, funnelInsight, aiCharts, hasGps }
           <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center"><Lightbulb size={18} className="text-white" /></span>
           <span>
             <span className="block text-lg font-bold text-white">Insights</span>
-            <span className="block text-xs text-white/55">{items.length} from across the season dashboard · last 3 matches compared with our own season</span>
+            <span className="block text-xs text-white/55">{items.length} insights · last 3 matches v our season</span>
           </span>
         </span>
         {open ? <ChevronUp size={18} className="text-white/60" /> : <ChevronDown size={18} className="text-white/60" />}

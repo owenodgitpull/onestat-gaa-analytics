@@ -5,6 +5,7 @@
 
 import { useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
+import Breadcrumbs from '../components/Breadcrumbs'
 import { useQuery } from '@tanstack/react-query'
 import { parseLocalDate } from '@/utils/dateUtils'
 import {
@@ -820,10 +821,8 @@ export default function PlayerView() {
   return (
     <div className="space-y-6">
       {/* Header */}
+      <Breadcrumbs items={[{ label: 'Players', to: '/players' }, { label: player.name }]} />
       <div className="flex items-center gap-4">
-        <Link to="/players" className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors">
-          <ChevronLeft size={24} />
-        </Link>
         <div className="flex items-center gap-4 flex-1">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center text-3xl font-bold text-white">
             {player.name.charAt(0)}
