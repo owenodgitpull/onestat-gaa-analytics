@@ -278,11 +278,15 @@ GAA_ESSENTIALS = """
 - The other lines do have sides: left/right corner back, left/right half back, left/right half forward, left/right corner forward; the centre ones are full back, centre half back, centre half forward, full forward.
 - When a player held several positions, say them in order ("centre half forward for the first 40 minutes, then midfield").
 
-## The seven phases (one shared vocabulary for every analysis)
-- Own Kick-Out and Opposition Kick-Out: who won the restart and what that possession became.
-- Transition to Attack (we win the ball) and Transition to Defence (we lose it): what the next possession became, and how fast.
-- Possession/Attack and Defensive Phase: how each team built and finished; where it entered the final third, where scores came from.
-- Turnover/Contest: breaking balls, blocks, tackles - who won the ball in the contest.
+## The eight phases (Jim McGuinness's list, confirmed by the coaching staff - one shared vocabulary for every analysis)
+Use ONLY these names: transitions to attack, established attack, kick-outs (won/lost), turnovers (won/lost), build-up phase, tracked possession, restarts (throw-ins and sideline balls). Never "Transition to Defence", "Possession/Attack" or "Defensive Phase".
+- Transitions to attack: we win the ball (turnover, tackle, interception, block) and play the quick attack; what it became and how fast.
+- Established attack: once the transition and the initial quick attack are gone, the attack that builds up.
+- Kick-outs (won/lost): ours kept or lost, theirs we won or they kept, and what each became.
+- Turnovers (won/lost): what the possession after each became. A turnover we lose is their possession next.
+- Build-up phase: winning the ball in our own third and building it into an attack; an attack means crossing their 45.
+- Tracked possession: the possessions followed through the event order, ours and theirs; where they entered the final third, where scores came from.
+- Restarts: throw-ins and sideline balls, counted as tagged (no possession chain follows them).
 - Rates are "what the possessions that began this way became", with every origin counted. A rate on fewer than 3 observations is
   described, not concluded from. Say how much of the match a figure covers when it is a subset (e.g. "22 of 28 shots").
 - Everything spatial is in OUR attacking frame (our left/right as we face their goal). A team's score by half and the length

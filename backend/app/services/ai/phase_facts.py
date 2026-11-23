@@ -1,5 +1,5 @@
 """
-Phase facts — the seven phases as COMPUTED, quotable facts. Pure functions over tagged events: no DB, no LLM.
+Phase facts — the phases (Jim's eight, see jim_phases.py) as COMPUTED, quotable facts. Pure functions over tagged events: no DB, no LLM.
 
 A "possession" starts at an event that gives a team the ball (a kickout kept/won, a turnover won, a contest won …) and
 is followed through the event ORDER until it ends: in a score, a shot that missed, the ball being lost, a foul, or the
@@ -11,10 +11,10 @@ Timing: where both the origin and the ending event carry `match_clock_s`, the po
 event). Matches recorded before the clock existed fall back to order only and report no seconds.
 
 Phase mapping (see docs/agent-plan-inputs/05-phase-plan-amended.md):
-  own_ko_kept / own_ko_lost            -> Own Kick-Out            (what the kept / lost restart became)
-  opp_ko_won / opp_ko_kept             -> Opposition Kick-Out
+  own_ko_kept / own_ko_lost            -> Kick-outs (ours)           (what the kept / lost restart became)
+  opp_ko_won / opp_ko_kept             -> Kick-outs (theirs)
   turnover_won(_forced)                -> Transition to Attack    (we have it)
-  turnover_lost(_unforced)             -> Transition to Defence   (they have it)
+  turnover_lost(_unforced)             -> Turnovers lost         (they have it)
   contest_won / contest_lost           -> Turnover / Contest
   every possession we / they had       -> Possession-Attack / Defensive
 """

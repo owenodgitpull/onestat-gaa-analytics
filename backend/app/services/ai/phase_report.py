@@ -22,6 +22,7 @@ from app.services.ai.insight_findings import (
     PHASES, build_findings, margin, margin_phrase, tally, top_findings,
 )
 from app.services.ai.report_extras import build_extras
+from app.services.ai import jim_phases as J
 from app.services.ai.phase_facts import SCORE_TYPES as _SCORE_TYPES, points_for as _points_for, when_label, period_bounds, PERIOD_WORDS
 from app.utils.names import their_player_label
 from app.services.ai.phase_facts import (
@@ -38,8 +39,8 @@ GROUP_LABELS = {
     "opp_ko_kept": (PHASES["opp_ko"], "their kickouts they kept — THEIR possession"),
     "turnovers_won": (PHASES["trans_att"], "turnovers we won"),
     "turnovers_lost": (PHASES["trans_def"], "turnovers we lost — THEIR possession"),
-    "contests_won": (PHASES["contest"], "breaking balls we won"),
-    "contests_lost": (PHASES["contest"], "breaking balls we lost — THEIR possession"),
+    "contests_won": (PHASES["contest"], "breaking balls we won (not one of the eight phases)"),
+    "contests_lost": (PHASES["contest"], "breaking balls we lost — THEIR possession (not one of the eight phases)"),
     "all_ours": (PHASES["attack"], "all our tracked possessions"),
     "all_theirs": (PHASES["defence"], "all their tracked possessions"),
 }
@@ -117,6 +118,74 @@ def scorecard_table(phases: dict) -> str:
                      f"{m['scored']} | {m['points']} | {_half_cell(p['first_half'])} | {_half_cell(p['second_half'])} |"
                      + (f" {_half_cell(p.get('extra_time') or {})} |" if et else ""))
     return "\n".join(lines)
+
+
+def jim_rows(ps: list, cls: dict) -> list:
+    """(phase, row name, possessions) in the order of Jim's eight phases. Rows are views of the same possessions, not a split:
+    a turnover we won can also be a build-up, so never add rows across phases."""
+    def by(g):
+        return [p for p in ps if GROUPS[g](p)]
+    return [
+        (J.PHASE_NAMES["transition"], f"Turnovers we won, played inside {J.QUICK_S} s (quick attack)", cls["quick"]),
+        (J.PHASE_NAMES["established"], f"Our possessions that ran past {J.QUICK_S} s", cls["established"]),
+        (J.PHASE_NAMES["kickouts"], "Our kick-outs we kept", by("own_ko_kept")),
+        (J.PHASE_NAMES["kickouts"], "Our kick-outs we lost (their ball)", by("own_ko_lost")),
+        (J.PHASE_NAMES["kickouts"], "Their kick-outs we won", by("opp_ko_won")),
+        (J.PHASE_NAMES["kickouts"], "Their kick-outs they kept (their ball)", by("opp_ko_kept")),
+        (J.PHASE_NAMES["turnovers"], "Turnovers we won", by("turnovers_won")),
+        (J.PHASE_NAMES["turnovers"], "Turnovers we lost (their ball)", by("turnovers_lost")),
+        (J.PHASE_NAMES["buildup"], "Won in our own third", cls["buildup"]),
+        (J.PHASE_NAMES["buildup"], "... and crossed their 45", cls["buildup_crossed"]),
+        (J.PHASE_NAMES["tracked"], "All our tracked possessions", by("all_ours")),
+        (J.PHASE_NAMES["tracked"], "All their tracked possessions", by("all_theirs")),
+    ]
+
+
+def jim_table(rows_: list, restarts_text: str) -> str:
+    """The Phase Analysis table, in Jim's order. Same columns and computed cells as before; restarts (no possession chain)
+    are the line under it."""
+    et = any(p.half and p.half >= 3 for _, _, sel in rows_ for p in sel)
+    lines = ["| Phase | Possessions | Finished | Became a shot | Scored | Points | 1st half | 2nd half |" + (" Extra time |" if et else ""),
+             "|---|---|---|---|---|---|---|---|" + ("---|" if et else "")]
+    for phase, name, sel in rows_:
+        if not sel:
+            continue
+        m = _stats_row(sel)
+        h1 = _stats_row([p for p in sel if p.half == 1])
+        h2 = _stats_row([p for p in sel if p.half == 2])
+        e3 = _stats_row([p for p in sel if (p.half or 0) >= 3])
+        lines.append(f"| {phase}: {name} | {m['possessions']} | {m['finished']} | {m['became_a_shot']} | {m['scored']} | {m['points']} | "
+                     f"{_half_cell(h1)} | {_half_cell(h2)} |" + (f" {_half_cell(e3)} |" if et else ""))
+    return "\n".join(lines) + (f"\n\n{restarts_text}" if restarts_text else "")
+
+
+async def _restarts(db, match, rows) -> dict:
+    """Throw-ins (video tagging: who won them) and sideline balls (match tags: whose throw it was), as tagged."""
+    out = {"throw_ins": {"won_by_us": 0, "won_by_them": 0}, "sideline_balls": {"ours": 0, "theirs": 0}}
+    try:
+        from app.models.video_event import VideoEvent as VE
+        for e in (await db.execute(select(VE).where(VE.match_id == match.id, VE.event_type == "THROW_IN"))).scalars().all():
+            out["throw_ins"]["won_by_us" if e.team == "team_a" else "won_by_them"] += 1
+    except Exception:
+        pass
+    for r_ in rows:
+        et = getattr(r_, "event_type", None)
+        et = et.value if hasattr(et, "value") else str(et)
+        if et == "sideline_ball":
+            tm = getattr(r_, "team", None)
+            tm = tm.value if hasattr(tm, "value") else str(tm)
+            out["sideline_balls"]["ours" if tm.lower() == "own" else "theirs"] += 1
+    return out
+
+
+def restarts_line(rs: dict) -> str:
+    t, sb = rs["throw_ins"], rs["sideline_balls"]
+    parts = []
+    if t["won_by_us"] + t["won_by_them"]:
+        parts.append(f"throw-ins: we won {t['won_by_us']}, they won {t['won_by_them']}")
+    if sb["ours"] + sb["theirs"]:
+        parts.append(f"sideline balls: ours {sb['ours']}, theirs {sb['theirs']}")
+    return ("**Restarts** (counted as tagged, no possession chain follows them): " + "; ".join(parts) + ".") if parts else ""
 
 
 async def _load(db, match_id, club_id):
@@ -252,7 +321,13 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
                 + (f" {n_long} shot{'s' if n_long != 1 else ''} followed a possession timed at over two minutes and "
                    f"{'is' if n_long == 1 else 'are'} left out of the median seconds." if n_long else "")
                 + "*")
-    scorecard_md = scorecard_table(phases) + "\n\n" + footnote
+    cls = J.classify(rows, evs, ps, getattr(match, "attacking_right_first_half", None), hdm)
+    jrows = jim_rows(ps, cls)
+    rs = await _restarts(db, match, rows)
+    scorecard_md = jim_table(jrows, restarts_line(rs)) + "\n\n" + footnote
+    jim = {"phases": [{"phase": ph, "row": nm, **_stats_row(sel)} for ph, nm, sel in jrows if sel],
+           "restarts": rs, "definitions": J.DEFINITIONS,
+           "possessions_without_clock": cls["no_clock"]}
 
     return json.dumps({
         "how_to_read": ("Possessions are followed in event ORDER from the event that gave a team the ball until a score, a missed shot, "
@@ -283,6 +358,7 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         },
         "phases": phases,
         "scorecard_table_markdown": scorecard_md,
+        "jim_eight_phases": jim,
         **extras,
         "margin_by_ten_minutes": blocks,
         "turning_scores": {"scores": turning, "note": "Every score that levelled the match or changed who led, in order. When the "

@@ -133,7 +133,7 @@ def _avg_actions(ce: dict) -> str:
 
 
 def _phase_lines(s: dict, window: int) -> str:
-    """The seven phases as quotable facts: what each way of getting the ball turned into (event ORDER, n everywhere)."""
+    """Jim's eight phases as quotable facts (restarts are counts only, not chains): what each way of getting the ball turned into (event ORDER, n everywhere)."""
     def one(g: str) -> Optional[str]:
         d = s[g]["to_date"]
         if not d["n"]:
@@ -153,16 +153,16 @@ def _phase_lines(s: dict, window: int) -> str:
         return txt
 
     rows = [
-        ("Own Kick-Out — kickouts we kept", "own_ko_kept"),
-        ("Own Kick-Out — kickouts we lost (THEIR possession)", "own_ko_lost"),
-        ("Opposition Kick-Out — we won it", "opp_ko_won"),
-        ("Opposition Kick-Out — they kept it (THEIR possession)", "opp_ko_kept"),
-        ("Turnover/Contest — breaking balls we won", "contests_won"),
-        ("Turnover/Contest — breaking balls we lost (THEIR possession)", "contests_lost"),
-        ("Transition to Attack — turnovers we won", "turnovers_won"),
-        ("Transition to Defence — turnovers we lost (THEIR possession)", "turnovers_lost"),
-        ("Possession/Attack — all our tracked possessions", "all_ours"),
-        ("Defensive Phase — all their tracked possessions", "all_theirs"),
+        ("Kick-outs — ours we kept", "own_ko_kept"),
+        ("Kick-outs — ours we lost (THEIR possession)", "own_ko_lost"),
+        ("Kick-outs — theirs, we won it", "opp_ko_won"),
+        ("Kick-outs — theirs, they kept it (THEIR possession)", "opp_ko_kept"),
+        ("Breaking balls we won (not one of the eight)", "contests_won"),
+        ("Breaking balls we lost (not one of the eight) (THEIR possession)", "contests_lost"),
+        ("Turnovers won (transition to attack)", "turnovers_won"),
+        ("Turnovers lost (THEIR possession)", "turnovers_lost"),
+        ("Tracked possession — all ours", "all_ours"),
+        ("Tracked possession — all theirs", "all_theirs"),
     ]
     lines = []
     for label, g in rows:
@@ -171,7 +171,7 @@ def _phase_lines(s: dict, window: int) -> str:
             lines.append(f"  {label}: {t}")
     if not lines:
         return ""
-    return ("PHASES (what each way of getting the ball became — counted from event ORDER, so no 'within N seconds' claims "
+    return ("PHASES — the staff's list (what each way of getting the ball became — counted from event ORDER, so no 'within N seconds' claims "
             "unless a median-seconds figure is shown; possessions still open are excluded from the rates):\n" + "\n".join(lines))
 
 

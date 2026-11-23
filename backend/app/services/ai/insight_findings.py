@@ -23,14 +23,17 @@ from app.services.ai.phase_facts import (
     Ev, MIN_N, MISS_TYPES, SCORE_TYPES, SHOT_TYPES, Possession, group_stats, points_for, possessions,
 )
 
+# Jim McGuinness's eight phases (confirmed by the coaching staff 2026-11-23): transitions to attack, established attack,
+# kick-outs (won/lost), turnovers (won/lost), build-up phase, tracked possession, restarts (throw-ins, sideline balls).
+# The keys are internal and stay; the words are the ones the staff use. "Scoreboard" is a finding theme, not a phase.
 PHASES = {
-    "own_ko": "Own Kick-Out",
-    "opp_ko": "Opposition Kick-Out",
-    "attack": "Possession/Attack",
-    "defence": "Defensive Phase",
-    "trans_att": "Transition to Attack",
-    "trans_def": "Transition to Defence",
-    "contest": "Turnover/Contest",
+    "own_ko": "Kick-outs (ours)",
+    "opp_ko": "Kick-outs (theirs)",
+    "attack": "Tracked possession (ours)",
+    "defence": "Tracked possession (theirs)",
+    "trans_att": "Turnovers won / Transition to attack",
+    "trans_def": "Turnovers lost",
+    "contest": "Breaking balls",
     "scoreboard": "Scoreboard",
 }
 
