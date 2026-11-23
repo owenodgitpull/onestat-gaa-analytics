@@ -67,6 +67,7 @@ import GpsMatchCard from '../components/gps/GpsMatchCard'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { useVideoSessions } from '../hooks/useVideoSessions'
+import { useVideoEvents } from '../hooks/useVideoEvents'
 import { usePlayers } from '../hooks/usePlayers'
 import { calculateManOfMatch } from '../utils/motm'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
@@ -507,8 +508,11 @@ export default function MatchResult() {
   }, [eventsData, players])
 
   // "By player" container under the score: wides, turnovers, restarts won. Own players only, counted from the tagged events.
+  // Throw-ins and sideline balls are tagged in video tagging, so they come from the video events (not the match events)
+  const { data: videoEvData } = useVideoEvents(videoSessionsData?.sessions?.[0]?.id ?? null)
   const byPlayer = useMemo(() => {
-    const empty = { wides: [], turnovers: [], restarts: [] } as { wides: any[]; turnovers: any[]; restarts: any[] }
+    const restartTotals = { throwUs: 0, throwThem: 0, sideUs: 0, sideThem: 0 }
+    const empty = { wides: [], turnovers: [], restarts: [], restartTotals } as { wides: any[]; turnovers: any[]; restarts: any[]; restartTotals: typeof restartTotals }
     if (!eventsData?.events || !players) return empty
     const wide: Record<string, number> = {}
     const to: Record<string, { won: number; lost: number }> = {}
@@ -531,14 +535,34 @@ export default function MatchResult() {
         if (isSide) rs[pid].sideline++; else if (isThrow) rs[pid].throwIn++; else rs[pid].kickouts++
       }
     }
+    for (const e of (videoEvData?.events ?? []) as any[]) {
+      const t = String(e.event_type || '').toUpperCase()
+      const ours = e.team === 'team_a'
+      if (t === 'THROW_IN') {
+        if (ours) restartTotals.throwUs++; else restartTotals.throwThem++
+        if (ours && e.player_id) {
+          const pid = String(e.player_id)
+          rs[pid] = rs[pid] || { sideline: 0, throwIn: 0, kickouts: 0 }
+          rs[pid].throwIn++
+        }
+      } else if (t === 'SIDELINE_BALL') {
+        if (ours) restartTotals.sideUs++; else restartTotals.sideThem++
+        if (ours && e.player_id) {
+          const pid = String(e.player_id)
+          rs[pid] = rs[pid] || { sideline: 0, throwIn: 0, kickouts: 0 }
+          rs[pid].sideline++
+        }
+      }
+    }
     const nm = (pid: string) => players.find((p: any) => p.id === pid)?.name || 'Unknown'
     return {
+      restartTotals,
       wides: Object.entries(wide).map(([pid, n]) => ({ playerId: pid, name: nm(pid), n })).sort((x, y) => y.n - x.n || x.name.localeCompare(y.name)),
       turnovers: Object.entries(to).map(([pid, v]) => ({ playerId: pid, name: nm(pid), ...v })).sort((x, y) => y.won - x.won || x.lost - y.lost || x.name.localeCompare(y.name)),
       restarts: Object.entries(rs).map(([pid, v]) => ({ playerId: pid, name: nm(pid), ...v, n: v.sideline + v.throwIn + v.kickouts }))
         .sort((x, y) => y.n - x.n || x.name.localeCompare(y.name)),
     }
-  }, [eventsData, players])
+  }, [eventsData, videoEvData, players])
   const [byPlayerTab, setByPlayerTab] = useState<'wides' | 'turnovers' | 'restarts'>('turnovers')
   const [byPlayerAll, setByPlayerAll] = useState(false)
 
@@ -1034,7 +1058,7 @@ export default function MatchResult() {
                 ? byPlayer.turnovers.map(t => ({ playerId: t.playerId, name: t.name, value: `${t.won} won`, note: `${t.lost} lost`, score: t.won }))
                 : byPlayer.restarts.map(r => ({
                   playerId: r.playerId, name: r.name, value: String(r.n), score: r.n,
-                  note: [r.kickouts ? `${r.kickouts} kickout${r.kickouts > 1 ? 's' : ''}` : '', r.throwIn ? `${r.throwIn} throw-in${r.throwIn > 1 ? 's' : ''}` : '', r.sideline ? `${r.sideline} sideline` : ''].filter(Boolean).join(', '),
+                  note: [r.kickouts ? `${r.kickouts} kick-out${r.kickouts > 1 ? 's' : ''}` : '', r.throwIn ? `${r.throwIn} throw-in${r.throwIn > 1 ? 's' : ''}` : '', r.sideline ? `${r.sideline} sideline` : ''].filter(Boolean).join(', '),
                 }))
             if (!rows.length) {
               return <div className="text-sm text-white/40">{byPlayerTab === 'wides' ? 'No wides tagged to a player.' : byPlayerTab === 'turnovers' ? 'No turnovers tagged to a player.' : 'No restarts won tagged to a player.'}</div>
@@ -1054,6 +1078,14 @@ export default function MatchResult() {
                     </li>
                   ))}
                 </ol>
+                {byPlayerTab === 'restarts' && (() => {
+                  const t = byPlayer.restartTotals
+                  const parts = [
+                    t.throwUs + t.throwThem ? `Throw-ins: we won ${t.throwUs}, they won ${t.throwThem}` : '',
+                    t.sideUs + t.sideThem ? `Sideline balls: ours ${t.sideUs}, theirs ${t.sideThem}` : '',
+                  ].filter(Boolean)
+                  return parts.length ? <div className="mt-2 text-xs text-white/50">{parts.join(' · ')}. Throw-ins and sideline balls only show by name where the tagger picked a player.</div> : null
+                })()}
                 {rows.length > 3 && (
                   <button type="button" onClick={() => setByPlayerAll(v => !v)} aria-expanded={byPlayerAll}
                     className="mt-2 min-h-[36px] px-3 -ml-3 rounded-lg text-xs text-white/60 hover:text-white hover:bg-white/5">
