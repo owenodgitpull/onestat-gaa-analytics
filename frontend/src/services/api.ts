@@ -1167,6 +1167,9 @@ export interface TransitionSpeedMatch {
   date: string;
   ball_recovery_min: number | null;
   turnover_to_shot_sec: number | null;
+  turnover_to_score_sec?: number | null;
+  n_turnover_scores?: number | null;
+  competition?: string | null;
 }
 
 export interface TransitionSpeedData {
@@ -1174,6 +1177,10 @@ export interface TransitionSpeedData {
   season_avg: {
     ball_recovery_min: number | null;
     turnover_to_shot_sec: number | null;
+    turnover_to_score_sec?: number | null;
+    n_turnover_scores?: number | null;
+    all_ireland_turnover_to_score_sec?: number | null;
+    n_all_ireland_turnover_scores?: number | null;
   };
 }
 

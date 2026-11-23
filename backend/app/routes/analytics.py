@@ -452,11 +452,18 @@ class TransitionSpeedMatch(BaseModel):
     date: str
     ball_recovery_min: Optional[float] = None
     turnover_to_shot_sec: Optional[float] = None
+    turnover_to_score_sec: Optional[float] = None
+    n_turnover_scores: Optional[int] = None
+    competition: Optional[str] = None
 
 
 class TransitionSpeedSeasonAvg(BaseModel):
     ball_recovery_min: Optional[float] = None
     turnover_to_shot_sec: Optional[float] = None
+    turnover_to_score_sec: Optional[float] = None
+    n_turnover_scores: Optional[int] = None
+    all_ireland_turnover_to_score_sec: Optional[float] = None
+    n_all_ireland_turnover_scores: Optional[int] = None
 
 
 class TransitionSpeedData(BaseModel):
@@ -1358,12 +1365,52 @@ class QuarterBucket(BaseModel):
     errors_count: int
     work_rate_per_match: float
     errors_per_match: float
+    # GPS (matches with synced GPS only): this player's running while on the pitch in this quarter, all matches pooled
+    hsr_m_per_min: Optional[float] = None
+    m_per_min: Optional[float] = None
+    gps_minutes: Optional[float] = None
 
 
 class PlayerQuarterProfile(BaseModel):
     matches_included: int
     quarters: List[QuarterBucket]
     note: str
+    gps_matches: int = 0
+
+
+async def _quarter_gps(db: AsyncSession, club_id, player_uuid) -> tuple:
+    """Per quarter: this player's high-speed metres and metres per minute on the pitch, pooled over every match with
+    synced GPS. Built from the 5-minute blocks of the GPS analysis: first-half blocks before the half-way point of the
+    half are Q1, the rest Q2; second half the same for Q3/Q4. Returns ({q: (hsr_per_min, m_per_min, minutes)}, n_matches)."""
+    from app.services.gps_analysis import service as gps_service
+    from app.services.gps_analysis.loader import synced_matches
+    pid = str(player_uuid)
+    tot = {q: [0.0, 0.0, 0.0] for q in (1, 2, 3, 4)}   # hsr m, distance m, minutes
+    used = 0
+    try:
+        matches = await synced_matches(db, club_id)
+    except Exception:
+        return {}, 0
+    for m in matches:
+        try:
+            res, _, _ = await gps_service.analyse(db, m)
+        except Exception:
+            continue
+        row = next((p for p in res["intensity"]["players"] if p["player_id"] == pid), None)
+        if not row or not row.get("blocks"):
+            continue
+        half_len = float(getattr(m, "half_duration_mins", None) or 30)
+        got = False
+        for b in row["blocks"]:
+            if b["half"] not in (1, 2) or not b.get("minutes"):
+                continue
+            mid = b["block"] * 5 + 2.5
+            q = (1 if mid < half_len / 2 else 2) if b["half"] == 1 else (3 if mid < half_len / 2 else 4)
+            tot[q][0] += b["hsr_m"]; tot[q][1] += b["distance_m"]; tot[q][2] += b["minutes"]
+            got = True
+        used += 1 if got else 0
+    out = {q: (round(v[0] / v[2], 1), round(v[1] / v[2], 1), round(v[2], 1)) for q, v in tot.items() if v[2] >= 5}
+    return out, used
 
 
 async def _compute_quarter_profile(db: AsyncSession, club_id, player_uuid) -> "PlayerQuarterProfile":
@@ -1444,17 +1491,22 @@ async def _compute_quarter_profile(db: AsyncSession, club_id, player_uuid) -> "P
         for q in (1, 2, 3, 4)
     ]
 
-    return PlayerQuarterProfile(
-        matches_included=n_matches,
-        quarters=quarters,
-        note=(
-            "Quarters are proportional to each match's actual half length (not a fixed "
-            "minute count) so matches of different duration line up fairly. Work-rate = "
-            "tackles won + turnovers won + blocks + interceptions. Errors = turnovers lost "
-            "+ unforced errors. Behavioural proxy, not physical GPS output — full-match GPS "
-            "totals only, no quarter/half split captured yet."
-        ),
+    gps, gps_n = await _quarter_gps(db, club_id, player_uuid)
+    for qb in quarters:
+        g = gps.get(int(qb.quarter[1]))
+        if g:
+            qb.hsr_m_per_min, qb.m_per_min, qb.gps_minutes = g
+    note = (
+        "Quarters are proportional to each match's actual half length, so matches of different duration line up. "
+        "Errors = turnovers lost + unforced errors, a plain count per match (tagged events are few, so read it as a "
+        "rough shape, not a statistic). "
     )
+    note += (
+        f"Running = this player's high-speed metres per minute while on the pitch, from the GPS of {gps_n} match{'es' if gps_n != 1 else ''}. "
+        "Compare him with himself: a fall from the first quarter to the last is what to look at."
+        if gps else "No GPS running for this player yet, so the bars show tagged work-rate (tackles won + turnovers won + blocks + interceptions) instead."
+    )
+    return PlayerQuarterProfile(matches_included=n_matches, quarters=quarters, note=note, gps_matches=gps_n)
 
 
 @router.get("/player/{player_id}/quarter-profile", response_model=PlayerQuarterProfile)

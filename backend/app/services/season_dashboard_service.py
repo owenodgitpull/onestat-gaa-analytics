@@ -2831,6 +2831,31 @@ class SeasonDashboardService:
                 r_scores += row.cnt
         recent_shot_eff = round(r_scores / r_shots * 100, 1) if r_shots > 0 else 0
 
+        # --- 2-pointers: scored / attempted. An attempt is a scored 2-pointer or any missed shot taken from beyond the
+        # 2-point arc (same position rule the shot charts use); 45s/65s and goal attempts never count ---
+        from app.services.expected_points_service import ALL_SHOT_TYPES, classify_shot, _normalized_x
+        _tp_rows = (await db.execute(
+            select(MatchEvent.match_id, MatchEvent.event_type, MatchEvent.pitch_x, MatchEvent.half, MatchEvent.minute)
+            .where(and_(MatchEvent.match_id.in_([m.id for m in matches]), MatchEvent.team == Team.OWN,
+                        MatchEvent.event_type.in_(ALL_SHOT_TYPES)))
+        )).all()
+        _mm = {m.id: m for m in matches}
+        _recent_set = set(recent_ids)
+        tp_made = tp_att = r_tp_made = r_tp_att = 0
+        for _r in _tp_rows:
+            _m = _mm.get(_r.match_id)
+            if _m is None or _r.pitch_x is None:
+                continue
+            _nx = _normalized_x(float(_r.pitch_x), Team.OWN, _m.attacking_right_first_half, _r.half, _r.minute, _m.half_duration_mins)
+            _grp, _, _, _made = classify_shot(_r.event_type, _nx)
+            if _grp != "two_point":
+                continue
+            tp_att += 1; tp_made += 1 if _made else 0
+            if _r.match_id in _recent_set:
+                r_tp_att += 1; r_tp_made += 1 if _made else 0
+        two_point_pct = round(tp_made / tp_att * 100, 1) if tp_att else 0
+        recent_two_point_pct = round(r_tp_made / r_tp_att * 100, 1) if r_tp_att else 0
+
         # Recent productivity: the same points-per-10-possessions as the season (it guessed possessions as shots x 1.5)
         recent_productivity = _productivity(recent_ids)
 
@@ -3005,6 +3030,16 @@ class SeasonDashboardService:
                 "format": "percent",
                 "color": color(shot_efficiency, lambda v: v > 50, lambda v: v < 35),
                 "trend": make_trend(shot_efficiency, recent_shot_eff),
+            },
+            {
+                "key": "two_point_pct",
+                "label": "2-Point Accuracy",
+                "value": two_point_pct,
+                "format": "percent",
+                "detail": f"{tp_made} scored from {tp_att} attempts",
+                # own team only: the last matches against the season so far
+                "color": {"up": "green", "down": "red"}.get(make_trend(two_point_pct, recent_two_point_pct)["direction"], "amber"),
+                "trend": make_trend(two_point_pct, recent_two_point_pct),
             },
             {
                 "key": "fouls_per_game",
@@ -3222,6 +3257,7 @@ class SeasonDashboardService:
             "turnover_diff": f"{t_won} won, {t_lost} lost over {_ms}",
             "kickout_retention": f"{own_ko_won} kept of {own_ko_total} kickouts",
             "shot_efficiency": f"{_st.get('scores', 0)} scores from {_st.get('shots', 0)} shots",
+            "two_point_pct": f"{tp_made} scored from {tp_att} attempts",
             "fouls_per_game": f"{total_fouls} fouls over {_ms}",
             "avg_scored": f"{total_points_scored} points over {_ms}",
             "avg_conceded": f"{_conceded} points over {_ms}",
@@ -3406,6 +3442,8 @@ class SeasonDashboardService:
             EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK,
         ])
         SHOT_TYPES = frozenset(ALL_SHOT_TYPES)
+        BALL_TURNOVER = frozenset([EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON])
+        SCORE_TYPES = frozenset(SCORE_EVENTS)
 
         ev_result = await db.execute(
             select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute, MatchEvent.created_at,
@@ -3413,7 +3451,7 @@ class SeasonDashboardService:
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.event_type.in_(list(BALL_LOSS | BALL_WON | SHOT_TYPES)),
+                    MatchEvent.event_type.in_(list(BALL_LOSS | BALL_WON | SHOT_TYPES | SCORE_TYPES)),
                 )
             )
         )
@@ -3435,7 +3473,13 @@ class SeasonDashboardService:
             g = clock_gaps(evs, team, BALL_WON, SHOT_TYPES, 60)
             return round(sum(g) / len(g), 1) if g else None
 
+        def _score_gaps(evs, team) -> list:
+            """Seconds from winning the ball in open play (turnover won, interception, tackle won; not kickouts) to the
+            next score of ours, same period, within 60 s. A shot that misses ends the chain, so only scores are timed."""
+            return clock_gaps(evs, team, BALL_TURNOVER, SCORE_TYPES, 60)
+
         per_match = []
+        all_gaps: list = []
         for mid in match_ids:
             evs = ev_by_match.get(mid, [])
             if not evs:
@@ -3443,9 +3487,15 @@ class SeasonDashboardService:
             m = matches_map[mid]
             recovery_min = _recovery_avg(evs, Team.OWN)
             transition_sec = _transition_avg(evs, Team.OWN)
-            if recovery_min is None and transition_sec is None:
+            sg = _score_gaps(evs, Team.OWN)
+            score_sec = round(sum(sg) / len(sg), 1) if sg else None
+            if recovery_min is None and transition_sec is None and score_sec is None:
                 continue
+            all_gaps.append((mid, sg))
             per_match.append({
+                "competition": m.competition,
+                "turnover_to_score_sec": score_sec,
+                "n_turnover_scores": len(sg),
                 "match_id": str(mid),
                 "opponent": m.opponent,
                 "date": m.match_date.isoformat() if m.match_date else "",
@@ -3460,11 +3510,21 @@ class SeasonDashboardService:
             vals = [m[key] for m in per_match if m[key] is not None]
             return round(sum(vals) / len(vals), 2) if vals else None
 
+        def _pooled(gaps_lists) -> tuple:
+            flat = [x for _, g in gaps_lists for x in g]
+            return (round(sum(flat) / len(flat), 1) if flat else None, len(flat))
+
+        # pooled over every score (not an average of match averages), so a match with one score does not weigh like one with five
+        all_avg, all_n = _pooled(all_gaps)
+        ai = [(mid, g) for mid, g in all_gaps if "all-ireland" in (matches_map[mid].competition or "").lower().replace(" ", "-")]
+        ai_avg, ai_n = _pooled(ai)
         return {
             "per_match": per_match,
             "season_avg": {
                 "ball_recovery_min": _season_avg("ball_recovery_min"),
                 "turnover_to_shot_sec": _season_avg("turnover_to_shot_sec"),
+                "turnover_to_score_sec": all_avg, "n_turnover_scores": all_n,
+                "all_ireland_turnover_to_score_sec": ai_avg, "n_all_ireland_turnover_scores": ai_n,
             },
         }
 

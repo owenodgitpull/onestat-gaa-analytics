@@ -19,7 +19,8 @@ import { LayoutGrid, Library, Crosshair, Shield, BarChart3, Gauge, Eye } from 'l
 import ChartZoomModal from '@/components/ChartZoomModal'
 import SortableChartCard from './SortableChartCard'
 import ChartLibraryModal from './ChartLibraryModal'
-import { CANONICAL_CHARTS, makePinnedAiEntry, type ChartRenderProps, type ChartRegistryEntry } from '@/config/chartRegistry'
+import ChartWhatIsThis from './ChartWhatIsThis'
+import { CHART_EXPLAINERS, CANONICAL_CHARTS, makePinnedAiEntry, type ChartRenderProps, type ChartRegistryEntry } from '@/config/chartRegistry'
 import type { AIChartSpec } from '@/services/api'
 
 // GAA-tactical filter groups over the registry's raw `category` strings
@@ -198,6 +199,9 @@ export default function MyChartsSection({
                       </div>
                     )}
                   </ChartZoomModal>
+                  {(CHART_EXPLAINERS[chartId] || entry.description) && (
+                    <ChartWhatIsThis text={CHART_EXPLAINERS[chartId] || entry.description!} />
+                  )}
                 </SortableChartCard>
               )
             })}

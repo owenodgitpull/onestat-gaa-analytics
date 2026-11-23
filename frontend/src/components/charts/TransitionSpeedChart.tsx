@@ -10,7 +10,7 @@ interface Props {
   data: TransitionSpeedData
 }
 
-type MetricKey = 'ball_recovery_min' | 'turnover_to_shot_sec'
+type MetricKey = 'ball_recovery_min' | 'turnover_to_shot_sec' | 'turnover_to_score_sec'
 
 // Units deliberately differ (minutes vs. seconds) — ball recovery is a
 // slower, multi-minute process (winning the ball back), turnover-to-shot is
@@ -19,6 +19,7 @@ type MetricKey = 'ball_recovery_min' | 'turnover_to_shot_sec'
 const METRICS: { key: MetricKey; label: string; shortLabel: string; unit: string; decimals: number }[] = [
   { key: 'ball_recovery_min', label: 'Ball Recovery Time', shortLabel: 'Recovery', unit: 'min', decimals: 1 },
   { key: 'turnover_to_shot_sec', label: 'Turnover-to-Shot Time', shortLabel: 'Transition', unit: 'sec', decimals: 1 },
+  { key: 'turnover_to_score_sec', label: 'Turnover-to-Score Time', shortLabel: 'To score', unit: 'sec', decimals: 1 },
 ]
 
 function abbrev(name: string): string {
@@ -30,7 +31,7 @@ function abbrev(name: string): string {
   return `${first}.${rest}`
 }
 
-function fmt(val: number | null, decimals: number): string {
+function fmt(val: number | null | undefined, decimals: number): string {
   if (val == null) return '-'
   return val.toFixed(decimals)
 }
@@ -38,7 +39,7 @@ function fmt(val: number | null, decimals: number): string {
 // Lower is better for both these metrics (faster recovery, faster
 // transition) — so the color scale is inverted relative to SeasonHMLDChart's
 // "higher is better" GPS-intensity coloring.
-function barColor(val: number | null, avg: number | null): string {
+function barColor(val: number | null | undefined, avg: number | null | undefined): string {
   if (val == null || avg == null) return 'rgba(255,255,255,0.15)'
   const ratio = val / avg
   if (ratio <= 0.92) return '#10b981'  // emerald — faster than avg
@@ -123,6 +124,14 @@ export default function TransitionSpeedChart({ data }: Props) {
           <p className="text-[10px] text-white/30 mt-0.5">with data</p>
         </div>
       </div>
+      {metric === 'turnover_to_score_sec' && (
+        <p className="text-[11px] text-white/50 leading-snug">
+          Winning the ball in open play (turnover, interception, tackle) to our next score, within 60 s. Pooled over every score: {data.season_avg.n_turnover_scores ?? 0} in all.
+          {data.season_avg.all_ireland_turnover_to_score_sec != null
+            ? <> All-Ireland series: <span className="text-white font-medium">{fmt(data.season_avg.all_ireland_turnover_to_score_sec, 1)}s</span> ({data.season_avg.n_all_ireland_turnover_scores} scores).</>
+            : <> No All-Ireland matches with these scores yet.</>}
+        </p>
+      )}
 
       <div className="flex gap-1">
         {METRICS.map(m => (

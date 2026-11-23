@@ -262,3 +262,26 @@ export function getChartRegistry(): Map<string, ChartRegistryEntry> {
   CANONICAL_CHARTS.forEach(c => map.set(c.id, c))
   return map
 }
+
+/** One plain sentence per season chart, shown by the "What is this?" button under it. */
+export const CHART_EXPLAINERS: Record<string, string> = {
+  'possession-funnel': 'Follows our possessions down the pitch: how many reached an attack, became a shot, and ended in a score, so you can see where we lose the most.',
+  'kickout-trend': 'How our kickouts went in each match: the share we kept clean, won on the break, or lost.',
+  'turnover-leaderboard': 'The players who win us the most ball, counting turnovers won, interceptions and blocks across the season.',
+  'season-expected-points': 'Expected points is what the quality of our shots should have scored. The gap to what we actually scored shows who is finishing above or below the chances they get.',
+  'territory-distribution': 'How much of the match the ball spent in each third of the pitch.',
+  'attacking-thirds': 'Which channel (left, centre or right) our attacks go through once they reach the final third.',
+  'shot-map': 'Every shot we took, placed where it was taken and coloured by what happened.',
+  'shooting-efficiency': 'The share of shots that were scored from each part of the pitch.',
+  'red-zone-list': 'Players whose running load has jumped well above their own usual level, so worth a look before they are overworked.',
+  'workhorse-radar': 'The last match against the season average across the main running measures, for the whole team.',
+  'score-momentum': 'The running score difference through matches, so you can see our best spells and the droughts.',
+  'dead-ball-vs-play': 'Where our scores come from: open play, frees, 45s and penalties.',
+  'defensive-zones': 'Where on the pitch we make blocks, interceptions and tackles, shown on a map.',
+  'kickout-landing-zones': 'Where our kickouts land and how often we win the ball in each area.',
+  'kpi-sparkline-grid': 'The key numbers for the season, each with its trend over the matches so you can see which way it is heading.',
+  'kickout-patterns': 'How our players were set up when we won or lost kickouts, using the GPS matches.',
+  'season-hmld': 'How much high-speed and sprint running the team did per match, from GPS.',
+  'transition-speed': 'How quickly we win the ball back after losing it, how fast we get a shot away after winning it, and how long it takes to turn a won turnover into a score.',
+  'press-trigger': 'How often our high press forced the ball back, and how many passes the opposition got in before it did.',
+}
