@@ -508,6 +508,20 @@ export default function MatchResult() {
   }, [eventsData, players])
 
   // "By player" container under the score: wides, turnovers, restarts won. Own players only, counted from the tagged events.
+  // The report's own Phase Analysis table (plus the restarts line and footnote under it), shown higher up as its own card
+  const phaseTableMd = useMemo(() => {
+    const lines = (postMatchReport?.analysis || '').split(/\r?\n/)
+    const i = lines.findIndex(l => l.trim().startsWith('|') && l.includes('Phase') && l.includes('Possessions') && l.includes('Finished'))
+    if (i < 0) return ''
+    let j = i
+    while (j < lines.length && lines[j].trim().startsWith('|')) j++
+    const out = lines.slice(i, j)
+    for (let k = j; k < Math.min(lines.length, j + 8); k++) {
+      const t = lines[k].trim()
+      if (t.startsWith('**Restarts') || t.startsWith('*These phase counts') || t.startsWith('*The phase counts')) out.push('', t)
+    }
+    return out.join(String.fromCharCode(10))
+  }, [postMatchReport?.analysis])
   // Throw-ins and sideline balls are tagged in video tagging, so they come from the video events (not the match events)
   const { data: videoEvData } = useVideoEvents(videoSessionsData?.sessions?.[0]?.id ?? null)
   const byPlayer = useMemo(() => {
@@ -1095,6 +1109,16 @@ export default function MatchResult() {
               </>
             )
           })()}
+        </div>
+      )}
+
+      {phaseTableMd && (
+        <div className="glass-card p-4 md:p-5 mb-4">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
+            <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">Phase analysis</div>
+            <div className="text-xs text-white/40">What each way of getting the ball turned into. Rows overlap, so never add them up.</div>
+          </div>
+          <div className="max-w-none">{renderAnalysisText(phaseTableMd)}</div>
         </div>
       )}
 
