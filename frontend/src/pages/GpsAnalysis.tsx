@@ -87,7 +87,7 @@ export default function GpsAnalysis() {
         <div className="flex gap-1 min-w-max border-b border-white/10" role="tablist" aria-label="GPS views">
           {TABS.map(t => (
             <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
-              className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.key ? 'border-emerald-400 text-white' : 'border-transparent text-white/60 hover:text-white'}`}>
+              className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-[3px] -mb-px rounded-t-lg transition-colors ${tab === t.key ? 'border-emerald-400 bg-emerald-500/15 text-emerald-200 font-semibold' : 'border-transparent text-white/60 font-medium hover:text-white hover:bg-white/5'}`}>
               {t.label}
             </button>
           ))}

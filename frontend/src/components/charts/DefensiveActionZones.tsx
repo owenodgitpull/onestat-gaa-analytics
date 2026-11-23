@@ -135,7 +135,7 @@ export default function DefensiveActionZones({ data }: Props) {
           {ZONE_DEFS.map(zone => {
             const zoneData = data.zones[zone.id]
             const count = zoneData?.total || 0
-            const opacity = count > 0 ? 0.1 + (count / maxZoneCount) * 0.35 : 0
+            const opacity = count > 0 ? 0.06 + (count / maxZoneCount) * 0.22 : 0
             const tl = toSvg(zone.xMin, zone.yMin)
             const br = toSvg(zone.xMax, zone.yMax)
             const w = br.x - tl.x
@@ -149,34 +149,13 @@ export default function DefensiveActionZones({ data }: Props) {
                   x={tl.x} y={tl.y} width={w} height={h}
                   fill={`rgba(16, 185, 129, ${opacity})`}
                   stroke={thirdColor}
-                  strokeWidth="5"
-                  strokeOpacity="0.75"
+                  strokeWidth="3"
+                  strokeOpacity="0.4"
                 />
-                <text
-                  x={tl.x + w / 2} y={tl.y + 50}
-                  textAnchor="middle" fill={thirdColor} fontSize="36" fontWeight="bold"
-                  style={{ textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}
-                >
-                  {zone.label}
-                </text>
-                {count > 0 && (
-                  <>
-                    <circle
-                      cx={tl.x + w / 2} cy={tl.y + h / 2}
-                      r={40}
-                      fill="none"
-                      stroke="rgba(255,255,255,0.6)"
-                      strokeWidth="3"
-                    />
-                    <text
-                      x={tl.x + w / 2} y={tl.y + h / 2 + 15}
-                      textAnchor="middle" fill="white" fontSize="52" fontWeight="bold"
-                      style={{ textShadow: '0 2px 6px rgba(0,0,0,0.8)' }}
-                    >
-                      {count}
-                    </text>
-                  </>
-                )}
+                {/* one tidy label per zone, top centre: its name then the count; the dots stay readable underneath */}
+                <rect x={tl.x + w / 2 - 150} y={tl.y + 14} width={300} height={78} rx={18} fill="rgba(8,15,25,0.72)" />
+                <text x={tl.x + w / 2 - 22} y={tl.y + 66} textAnchor="end" fill={thirdColor} fontSize="34" fontWeight="bold">{zone.label}</text>
+                <text x={tl.x + w / 2 + 6} y={tl.y + 70} textAnchor="start" fill="white" fontSize="48" fontWeight="bold">{count}</text>
               </g>
             )
           })}
@@ -189,11 +168,11 @@ export default function DefensiveActionZones({ data }: Props) {
                 key={i}
                 cx={pos.x}
                 cy={pos.y}
-                r={18}
+                r={13}
                 fill={ACTION_COLORS[e.action_type] || '#888'}
-                opacity={0.7}
-                stroke="white"
-                strokeWidth={1.5}
+                opacity={0.8}
+                stroke="rgba(8,15,25,0.85)"
+                strokeWidth={3}
               />
             )
           })}

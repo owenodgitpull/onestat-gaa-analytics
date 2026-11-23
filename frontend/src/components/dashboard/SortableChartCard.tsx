@@ -41,7 +41,7 @@ export default function SortableChartCard({
   return (
     <div ref={setNodeRef} style={style} className={`relative group min-h-[340px] h-full${colSpan === 2 ? ' md:col-span-2' : ''}`}>
       {/* Action buttons — visible on hover */}
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -top-3.5 right-4 z-20 flex items-center gap-1 p-0.5 rounded-xl bg-slate-900 border border-white/15 shadow-lg opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         {isAiPinned && onUnpin && (
           <button
             onClick={onUnpin}
