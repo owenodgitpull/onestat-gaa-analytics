@@ -1,7 +1,7 @@
 /**
  * A football pitch drawn to the ground's measured size (Owen 2026-11-23, after Jim McGuinness saw GPS dots a few metres
  * off the lines). Every marking is placed in metres from the goal lines, so it is exact for any length and width:
- *   13 m, 20 m and 45 m lines (and the 65 on a long pitch), halfway line, small rectangle 14 x 4.5 m, large rectangle
+ *   13 m, 20 m and 45 m lines, halfway line (no hurling 65s), small rectangle 14 x 4.5 m, large rectangle
  *   19 x 13 m, goal 6.5 m, penalty spot 11 m, the 13 m semicircle on the 20 m line, and the 40 m arc from the centre of
  *   the goal line to where it meets the 20 m line.
  * The shared artwork (public/pitch-svg.svg) cannot do this: stretching it moves the 45 with the pitch length, and its
@@ -29,7 +29,6 @@ export default function MeasuredPitchArt({ s, svgW, svgH }: { s: PitchScale; svg
     return (
       <g key={right ? 'r' : 'l'} fill="none" stroke={LINE} strokeWidth={lw}>
         {[13, 20, 45].map(d => <line key={d} x1={X(d)} y1={y(0)} x2={X(d)} y2={y(W)} />)}
-        {L / 2 > 66 && <line x1={X(65)} y1={y(0)} x2={X(65)} y2={y(W)} strokeWidth={lw * 0.6} opacity={0.55} />}
         <rect x={Math.min(X(0), X(4.5))} y={y(mid - 7)} width={s.len(4.5)} height={s.len(14)} />
         <rect x={Math.min(X(0), X(13))} y={y(mid - 9.5)} width={s.len(13)} height={s.len(19)} />
         {/* 40 m arc, ending on the 20 m line */}
