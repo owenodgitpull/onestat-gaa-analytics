@@ -9,7 +9,7 @@
  * there is no opposition GPS). Tagged events pop up where they were tagged, for 3 s.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, Tag, Users, Camera, SlidersHorizontal, CircleDot } from 'lucide-react'
+import { Loader2, AlertCircle, Tag, Users, SlidersHorizontal, CircleDot } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GpsSyncEditor from './GpsSyncEditor'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
@@ -102,8 +102,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const queryClient = useQueryClient()
   const [now, setNow] = useState<number>(initialMs ?? ctx.periods[0]?.video_start_ms ?? 0)
   const [windows, setWindows] = useState<Record<number, WinState>>({})
-  const [raw, setRawState] = useState(() => { try { return localStorage.getItem('gpsReplayFrame') !== 'attack' } catch { return true } })
-  const setRaw = (f: (v: boolean) => boolean) => setRawState(v => { const n = f(v); try { localStorage.setItem('gpsReplayFrame', n ? 'camera' : 'attack') } catch { /* private mode */ } return n })
+  const raw = true      // always the pitch as filmed, so the dots run the same way as the video and swap ends at half-time
   const [showNames, setShowNames] = useState(false)
   // Ball carrying (who has the ball, the opposition ball) was tagged by hand during the match: off by default, the GPS
   // dots are the accurate part (Owen 2026-11-23). Remembered per browser.
@@ -449,10 +448,6 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
               title="Line the dots and the ball up with the video, then save">
               <SlidersHorizontal size={13} /> Edit sync
-            </button>
-            <button onClick={() => setRaw(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${!raw ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={!raw}
-              title={raw ? 'Showing the pitch as filmed. Switch so we always attack left to right' : 'Showing us always attacking left to right. Switch back to the pitch as filmed'}>
-              <Camera size={13} /> Always attacking right
             </button>
           </div>
         </div>
