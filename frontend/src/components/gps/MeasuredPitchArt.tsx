@@ -2,7 +2,7 @@
  * A football pitch drawn to the ground's measured size (Owen 2026-11-23, after Jim McGuinness saw GPS dots a few metres
  * off the lines). Every marking is placed in metres from the goal lines, so it is exact for any length and width:
  *   13 m, 20 m, 45 m and 65 m lines (the two solid ones either side of halfway), dashed halfway line, small rectangle 14 x 4.5 m, large rectangle
- *   19 x 13 m, goal 6.5 m, penalty spot 11 m, the 13 m semicircle on the 20 m line, and the 40 m arc from the centre of
+ *   19 x 13 m, tall goal (as the artwork), penalty spot 11 m, the 13 m semicircle on the 20 m line, and the 40 m arc from the centre of
  *   the goal line to where it meets the 20 m line.
  * The shared artwork (public/pitch-svg.svg) cannot do this: stretching it moves the 45 with the pitch length, and its
  * own 45 is drawn at 50.7 m of a 145 m pitch (measured). Tagging and the event charts keep the artwork.
@@ -35,8 +35,18 @@ export default function MeasuredPitchArt({ s, svgW, svgH }: { s: PitchScale; svg
         <path d={`M ${X(20)} ${y(mid - half)} A ${r40} ${r40} 0 0 ${sweep} ${X(20)} ${y(mid + half)}`} />
         {/* 13 m semicircle on the 20 m line */}
         <path d={`M ${X(20)} ${y(mid - 13)} A ${r13} ${r13} 0 0 ${sweep} ${X(20)} ${y(mid + 13)}`} />
-        {/* goal: 6.5 m between the posts, drawn 2 m deep behind the line */}
-        <rect x={Math.min(X(0), X(-2))} y={y(mid - 3.25)} width={s.len(2)} height={s.len(6.5)} strokeWidth={lw * 0.7} />
+        {/* goal, drawn tall like the shared artwork's (measured off it): two bars back from the goal line, 148 units apart
+            and 158 deep, joined by a cross line 55 units back. Artwork units, not metres, so it looks the same on every pitch. */}
+        {(() => {
+          const gx = X(0), d = right ? 1 : -1, hh = 74, back = 158, cross = 55, cy = y(mid)
+          return (
+            <g strokeWidth={7}>
+              <line x1={gx} y1={cy - hh} x2={gx + d * back} y2={cy - hh} />
+              <line x1={gx} y1={cy + hh} x2={gx + d * back} y2={cy + hh} />
+              <line x1={gx + d * cross} y1={cy - hh} x2={gx + d * cross} y2={cy + hh} />
+            </g>
+          )
+        })()}
         <circle cx={X(11)} cy={y(mid)} r={lw * 0.8} fill={LINE} stroke="none" />
       </g>
     )
