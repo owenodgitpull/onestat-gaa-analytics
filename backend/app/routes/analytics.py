@@ -1013,10 +1013,6 @@ async def get_fun_facts(
                 MatchEvent.event_type.in_([EventType.TWO_POINT, EventType.TWO_POINT_FREE]))))).scalar() or 0
             if two:
                 facts.append(f"We have scored {two} two-pointers this season.")
-            tw = (await db.execute(select(func.count()).select_from(MatchEvent).where(and_(
-                MatchEvent.match_id.in_(ids), MatchEvent.team == Team.OWN, MatchEvent.event_type == EventType.TURNOVER_WON)))).scalar() or 0
-            if tw:
-                facts.append(f"We have won {tw} tagged turnovers this season.")
     except Exception:
         pass
     _FUN_FACTS_CACHE[str(user.club_id)] = (_time.time(), facts)
