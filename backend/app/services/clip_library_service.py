@@ -79,6 +79,9 @@ async def search_clips(
         query = query.where(VideoEvent.event_type.in_(TURNOVER_WON_TYPES))
     elif et:
         query = query.where(VideoEvent.event_type == et)
+    if et != "PASS_HAND":
+        # hand passes are 2,400+ of the tagged events: noise in a clip picker or a compilation unless asked for by name
+        query = query.where(VideoEvent.event_type != "PASS_HAND")
     if match_id:
         query = query.where(VideoEvent.match_id == match_id)
     if search:
