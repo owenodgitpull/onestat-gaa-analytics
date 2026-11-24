@@ -276,6 +276,8 @@ Use the available tools to look up specific data when needed.
 {weather_context}
 
 INSTRUCTIONS:
+- Write the answer ONCE, from the final tool results. Never mention an earlier attempt, a retry or a correction ("my first attempt used the wrong event name", "I got that wrong earlier", "an extra video you didn't ask for"). If a tool call returns nothing or an error, fix the call and run it again without comment; mention a failure only when it changes what the user can have.
+- Videos: build one only when the user asks for a video, clips or a reel, and never more than one per question. If create_video_compilation finds nothing or returns an error, do NOT retry with a broader filter or none: tell the user what was and was not found and ask what they want instead.
 - Call tools without commentary: no text before or between tool calls ("I'll start by...", "Now I'll pull..."). The user sees a progress line while you look things up and reads everything you write as the answer, so write only the answer, once you have the data.
 - To find a player, call search_players, then pass his player_id to the tools that take one (get_match_event_log, get_pitch_paths, get_player_season_stats, get_player_kpi_profile - his KPIs against his own season and the squad, and his leaderboard places).
 - Kickout questions over the season ('what works on kickouts', 'who should be where'): get_kickout_patterns - patterns with a luck check. Lead each pattern with its `card` line as written (Setup: McGee in the drop zone + Malone pushed up - won 8 of 8 · rest 11 of 37 · last 3 matches 3 of 3 · 4 matches · worth a look); say 'goes with', never upgrade the strength word. Then talk like a coach about the shape (drop zone, pushed up, overload, break ball, pairs), and call search_knowledge_base for kickout principles to frame it, quoting what it returns; if it returns nothing relevant, say nothing rather than invent theory.
@@ -448,6 +450,8 @@ Use the available tools to look up specific data when needed.
 {weather_context}
 {summary_section}
 INSTRUCTIONS:
+- Write the answer ONCE, from the final tool results. Never mention an earlier attempt, a retry or a correction ("my first attempt used the wrong event name", "I got that wrong earlier", "an extra video you didn't ask for"). If a tool call returns nothing or an error, fix the call and run it again without comment; mention a failure only when it changes what the user can have.
+- Videos: build one only when the user asks for a video, clips or a reel, and never more than one per question. If create_video_compilation finds nothing or returns an error, do NOT retry with a broader filter or none: tell the user what was and was not found and ask what they want instead.
 - Call tools without commentary: no text before or between tool calls ("I'll start by...", "Now I'll pull..."). The user sees a progress line while you look things up and reads everything you write as the answer, so write only the answer, once you have the data.
 - To find a player, call search_players, then pass his player_id to the tools that take one (get_match_event_log, get_pitch_paths, get_player_season_stats, get_player_kpi_profile - his KPIs against his own season and the squad, and his leaderboard places).
 - Kickout questions over the season ('what works on kickouts', 'who should be where'): get_kickout_patterns - patterns with a luck check. Lead each pattern with its `card` line as written (Setup: McGee in the drop zone + Malone pushed up - won 8 of 8 · rest 11 of 37 · last 3 matches 3 of 3 · 4 matches · worth a look); say 'goes with', never upgrade the strength word. Then talk like a coach about the shape (drop zone, pushed up, overload, break ball, pairs), and call search_knowledge_base for kickout principles to frame it, quoting what it returns; if it returns nothing relevant, say nothing rather than invent theory.
@@ -647,6 +651,7 @@ async def chat_with_analyst_stream(
         # model that never settles on a final answer left the chat hanging
         # with nothing ever yielded and no assistant message ever persisted.
         iterations = 0
+        videos_started = 0
         while response.stop_reason == "tool_use":
             iterations += 1
             if iterations > MAX_TOOL_ITERATIONS:
@@ -681,7 +686,14 @@ async def chat_with_analyst_stream(
                         continue
 
                     yield f"data: {json.dumps({'type': 'thinking', 'tool': block.name})}\n\n"
+                    if block.name == "create_video_compilation" and videos_started:
+                        # one video per question: a retry with a wider filter built a second, unrequested video
+                        tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": json.dumps({
+                            "error": "A video was already started for this question. Do not build another: describe the one you started."})})
+                        continue
                     tool_result = await _execute_tool_with_timeout(block.name, block.input, tool_sessions, club_id=club_id, user_id=user_id)
+                    if block.name == "create_video_compilation" and '"compilation_id"' in tool_result:
+                        videos_started += 1
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,

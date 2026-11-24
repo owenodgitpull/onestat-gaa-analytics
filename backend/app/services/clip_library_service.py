@@ -40,6 +40,11 @@ class ClipMatch:
 # clips although 3 were in the reel); "scores" means points (two-pointers included) and goals.
 TWO_POINTER_ALIASES = {"TWO_POINTER", "TWO_POINTERS", "TWO_POINT_SCORED", "TWO_POINT", "2_POINTER", "TWO_POINTER_SCORED"}
 SCORE_ALIASES = {"SCORE", "SCORES", "SCORED", "ALL_SCORES"}
+# "kickouts won" is four tagged types (ours and theirs, clean and break); "turnovers won" is three
+KICKOUT_WON_ALIASES = {"KICKOUT_WON", "KICKOUTS_WON", "KICKOUTS", "WON_KICKOUTS", "KICKOUT_WINS", "KICKOUT"}
+KICKOUT_WON_TYPES = ("OWN_KICKOUT_WON", "OWN_KICKOUT_WON_BREAK", "OPP_KICKOUT_WON", "OPP_KICKOUT_WON_BREAK")
+TURNOVER_WON_ALIASES = {"TURNOVERS_WON", "TURNOVER_WINS", "WON_TURNOVERS", "TURNOVERS"}
+TURNOVER_WON_TYPES = ("TURNOVER_WON", "INTERCEPTION", "TACKLE_WON")
 
 
 async def search_clips(
@@ -68,6 +73,10 @@ async def search_clips(
                             VideoEvent.scoring_context["is_two_pointer"].as_boolean().is_(True))
     elif et in SCORE_ALIASES:
         query = query.where(VideoEvent.event_type.in_(("POINT_SCORED", "GOAL_SCORED")))
+    elif et in KICKOUT_WON_ALIASES:
+        query = query.where(VideoEvent.event_type.in_(KICKOUT_WON_TYPES))
+    elif et in TURNOVER_WON_ALIASES:
+        query = query.where(VideoEvent.event_type.in_(TURNOVER_WON_TYPES))
     elif et:
         query = query.where(VideoEvent.event_type == et)
     if match_id:

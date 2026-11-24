@@ -1356,7 +1356,7 @@ TOOLS = [
     {
         "name": "create_video_compilation",
         "description": (
-            "Build a single downloadable video file by stitching together tagged match clips matching a "
+            "ONLY when the user asks for a video, clips or a reel, and at most once per question. Build a single downloadable video file by stitching together tagged match clips matching a "
             "player and/or event type — e.g. 'show me Conor Greene's wides this season'. Call search_players "
             "FIRST if given a name, then pass its player_id here — never guess a player_id. This is NOT "
             "instant: it starts a background job that can take a few minutes (re-encoding video is the "
@@ -1377,7 +1377,7 @@ TOOLS = [
                 },
                 "event_type": {
                     "type": "string",
-                    "description": "Optional — one of the tagged video event types (e.g. WIDE, POINT_SCORED, GOAL_SCORED, TURNOVER_WON, INTERCEPTION, BLOCK_SHOT), or SCORES (points and goals) or TWO_POINTER (two-pointers only). There is no separate two-pointer event type: a two-pointer is a POINT_SCORED flagged as a two-pointer, so POINT_SCORED and SCORES already include them, and the result's breakdown says how many. Omit to include every event type for the given player."
+                    "description": "Optional — one of the tagged video event types (e.g. WIDE, POINT_SCORED, GOAL_SCORED, TURNOVER_WON, INTERCEPTION, BLOCK_SHOT), or SCORES (points and goals) or TWO_POINTER (two-pointers only), or KICKOUTS_WON (every kick-out the player won, ours and theirs, clean or break), or TURNOVERS_WON (turnover won, interception, tackle won). Required unless `everything` is true. There is no separate two-pointer event type: a two-pointer is a POINT_SCORED flagged as a two-pointer, so POINT_SCORED and SCORES already include them, and the result's breakdown says how many. Omit to include every event type for the given player."
                 },
                 "match_id": {
                     "type": "string",
@@ -1386,6 +1386,10 @@ TOOLS = [
                 "title": {
                     "type": "string",
                     "description": "Optional title for the compilation (e.g. 'Conor Greene — Wides 2026'). Defaults to a generated title from the filters."
+                },
+                "everything": {
+                    "type": "boolean",
+                    "description": "Set true ONLY when the user explicitly asked for every clip of a player or match, of every event type. Never use it to retry after a filtered search found nothing."
                 }
             },
             "required": []
@@ -7239,6 +7243,7 @@ async def create_video_compilation(
     event_type: str | None = None,
     match_id: str | None = None,
     title: str | None = None,
+    everything: bool = False,
     club_id=None,
     user_id=None,
 ) -> str:
@@ -7258,6 +7263,10 @@ async def create_video_compilation(
         match_uuid = uuid_mod.UUID(match_id) if match_id else None
     except ValueError:
         return safe_json({"error": "player_id/match_id must be valid UUIDs — call search_players first if you only have a name."})
+
+    if not event_type and not everything:
+        # an unfiltered search produced an "All Tagged Clips" video nobody asked for after a filtered one found nothing
+        return safe_json({"error": "Say which kind of clips (event_type, e.g. KICKOUTS_WON, TURNOVERS_WON, SCORES, WIDE). Do not search without one unless the user asked for every clip; if nothing matched earlier, tell the user instead of widening the search."})
 
     matches = await search_clips(
         db, club_id, player_id=player_uuid, event_type=event_type, match_id=match_uuid,
