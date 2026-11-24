@@ -949,6 +949,80 @@ async def get_shot_locations(
     return locations
 
 
+_FUN_FACTS_CACHE: dict = {}
+
+
+@router.get("/fun-facts")
+async def get_fun_facts(
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Short true facts about the logged-in team's season and players, for the Analyst's waiting screen. Worked out from
+    the leaderboards and the match records (no AI call, nothing invented); cached for 10 minutes per club."""
+    import time as _time
+    hit = _FUN_FACTS_CACHE.get(str(user.club_id))
+    if hit and _time.time() - hit[0] < 600:
+        return {"facts": hit[1]}
+    facts: list[str] = []
+    try:
+        from app.services.leaderboard_service import LeaderboardService
+        rankings = await LeaderboardService._compute_all_rankings(db, user.club_id, None, None)
+        def top(key):
+            rows = rankings.get(key) or []
+            return rows[0] if rows else None
+        t = top("top_scorer")
+        if t and t.get("value"):
+            facts.append(f"{t['player_name']} leads the scoring this season with {round(t['value'])} points.")
+        t = top("clinical_rating")
+        if t and t.get("value"):
+            facts.append(f"{t['player_name']} has the best shot conversion in the squad: {round(t['value'])}%.")
+        t = top("workhorse")
+        if t and t.get("value"):
+            facts.append(f"{t['player_name']} covers the most ground: {t['value']:.1f} km a match.")
+        t = top("speed_demon")
+        if t and t.get("value"):
+            facts.append(f"{t['player_name']} has the squad's top speed: {t['value']:.2f} m/s ({t['value'] * 3.6:.1f} km/h).")
+        t = top("sprint_king")
+        if t and t.get("value"):
+            facts.append(f"{t['player_name']} sprints the most: about {round(t['value'])} a match.")
+        t = top("the_wall")
+        if t and t.get("value"):
+            facts.append(f"{t['player_name']} leads the defensive work with {round(t['value'])} blocks, interceptions and turnovers won.")
+        t = top("motm_points")
+        if t and t.get("value"):
+            facts.append(f"{t['player_name']} has the most man of the match points: {round(t['value'])}.")
+    except Exception:
+        pass
+    try:
+        matches = (await db.execute(
+            select(Match).options(load_only(Match.id, Match.opponent, Match.team_goals, Match.team_points, Match.opponent_goals, Match.opponent_points))
+            .where(and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == user.club_id))
+        )).scalars().all()
+        if matches:
+            ours = lambda m: m.team_goals * 3 + m.team_points
+            theirs = lambda m: m.opponent_goals * 3 + m.opponent_points
+            w = sum(1 for m in matches if ours(m) > theirs(m)); d = sum(1 for m in matches if ours(m) == theirs(m)); l = len(matches) - w - d
+            facts.append(f"{len(matches)} matches counted this season: {w} won, {d} drawn, {l} lost.")
+            facts.append(f"{sum(ours(m) for m in matches)} points scored across those matches.")
+            best = max(matches, key=lambda m: ours(m) - theirs(m))
+            if ours(best) > theirs(best):
+                facts.append(f"The biggest win was against {best.opponent}, by {ours(best) - theirs(best)}.")
+            ids = [m.id for m in matches]
+            two = (await db.execute(select(func.count()).select_from(MatchEvent).where(and_(
+                MatchEvent.match_id.in_(ids), MatchEvent.team == Team.OWN,
+                MatchEvent.event_type.in_([EventType.TWO_POINT, EventType.TWO_POINT_FREE]))))).scalar() or 0
+            if two:
+                facts.append(f"We have scored {two} two-pointers this season.")
+            tw = (await db.execute(select(func.count()).select_from(MatchEvent).where(and_(
+                MatchEvent.match_id.in_(ids), MatchEvent.team == Team.OWN, MatchEvent.event_type == EventType.TURNOVER_WON)))).scalar() or 0
+            if tw:
+                facts.append(f"We have won {tw} tagged turnovers this season.")
+    except Exception:
+        pass
+    _FUN_FACTS_CACHE[str(user.club_id)] = (_time.time(), facts)
+    return {"facts": facts}
+
+
 @router.get("/player/{player_id}/self-kpis")
 async def get_player_self_kpis(
     player_id: str,

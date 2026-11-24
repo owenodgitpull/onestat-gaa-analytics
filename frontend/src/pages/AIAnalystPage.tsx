@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Send, Bot, Loader2, BarChart3, MessageSquare, ArrowLeft, History } from 'lucide-react'
-import { api, ChatMessage, AIChartSpec, DataTable, ChatSessionSummary } from '@/services/api'
+import { useQuery } from '@tanstack/react-query'
+import { api, fetchAPI, ChatMessage, AIChartSpec, DataTable, ChatSessionSummary } from '@/services/api'
+import { useAuth } from '@/contexts/AuthContext'
+import QuestionPicker from '@/components/analyst/QuestionPicker'
+import AnalystWait, { recordWait } from '@/components/analyst/AnalystWait'
 import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import DynamicChart from '@/components/DynamicChart'
 import DataTableCard from '@/components/DataTableCard'
@@ -43,13 +47,6 @@ type VizItem =
   | { kind: 'chart'; chart: AIChartSpec; id: string }
   | { kind: 'table'; table: DataTable; id: string }
 
-const QUICK_PROMPTS = [
-  { category: 'Match Analysis', prompts: ['How does our GPS output correlate with wins?', 'Compare home vs away results'] },
-  { category: 'Player Performance', prompts: ['Who is in the best form right now?', 'Show me our top scorers'] },
-  { category: 'Tactical Insights', prompts: ['What patterns do we see in different weather?', 'Analyze our scoring zones'] },
-  { category: 'Fitness & GPS', prompts: ['Are any players at workload injury risk?', 'How do fitness levels link to match performance?'] },
-]
-
 function getGreeting(): string {
   const h = new Date().getHours()
   if (h < 12) return 'Good morning'
@@ -64,6 +61,15 @@ function AIAnalystPageInner() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [waitStart, setWaitStart] = useState(0)
+  const { user } = useAuth()
+  const firstName = (user?.name || '').split(' ')[0]
+  const { data: factsData } = useQuery({
+    queryKey: ['analyst-fun-facts'],
+    queryFn: () => fetchAPI<{ facts: string[] }>('/analytics/fun-facts'),
+    staleTime: 10 * 60 * 1000, retry: false,
+  })
+  const facts = factsData?.facts ?? []
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [thinkingTool, setThinkingTool] = useState<string | null>(null)
@@ -209,6 +215,7 @@ function AIAnalystPageInner() {
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setLoading(true)
+    setWaitStart(Date.now())
     setIsStreaming(false)
     setStreamingContent('')
     setThinkingTool(null)
@@ -218,6 +225,7 @@ function AIAnalystPageInner() {
 
     try {
       let accumulated = ''
+      const waitStart0 = Date.now()
       const videos: ChatVideo[] = []
 
       await api.ai.streamChat(messages, userMessage.content, {
@@ -227,6 +235,7 @@ function AIAnalystPageInner() {
           setThinkingTool(tool)
         },
         onText: (chunk) => {
+          if (!accumulated) recordWait((Date.now() - waitStart0) / 1000)
           setLoading(false)
           setIsStreaming(true)
           setThinkingTool(null)
@@ -328,7 +337,7 @@ function AIAnalystPageInner() {
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center mx-auto mb-4">
                 <Bot size={32} className="text-white" />
               </div>
-              <h1 className="text-3xl font-bold text-white mb-2">{getGreeting()}, Owen</h1>
+              <h1 className="text-3xl font-bold text-white mb-2">{getGreeting()}{firstName ? `, ${firstName}` : ''}</h1>
               <p className="text-white/60">Your AI-powered GAA analyst</p>
             </div>
 
@@ -358,25 +367,8 @@ function AIAnalystPageInner() {
               </div>
             </div>
 
-            {/* Quick prompts */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {QUICK_PROMPTS.map((cat) => (
-                <div key={cat.category}>
-                  <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">{cat.category}</p>
-                  <div className="space-y-2">
-                    {cat.prompts.map((prompt) => (
-                      <button
-                        key={prompt}
-                        onClick={() => sendMessage(prompt)}
-                        className="glass-card-hover w-full text-left p-3 rounded-xl text-sm text-white/80 hover:text-white transition-colors"
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {/* What can I ask? categories, then questions */}
+            <QuestionPicker onPick={(q) => sendMessage(q)} />
           </div>
         </div>
       </>
@@ -437,37 +429,9 @@ function AIAnalystPageInner() {
           </div>
         ))}
 
-        {/* Loading: 3-dot bounce */}
-        {loading && !thinkingTool && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-              <Bot size={14} className="text-white" />
-            </div>
-            <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Thinking indicator */}
-        {thinkingTool && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-              <Bot size={14} className="text-white" />
-            </div>
-            <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
-              <div className="flex items-center gap-2">
-                <Loader2 className="animate-spin text-emerald-400" size={14} />
-                <span className="text-sm text-white/70">
-                  Looking up {friendlyToolName(thinkingTool)}...
-                </span>
-              </div>
-            </div>
-          </div>
+        {/* Waiting: progress against the usual wait, what it is looking up, and a fact about the team */}
+        {(loading || (isStreaming && !streamingContent)) && (
+          <AnalystWait startedAt={waitStart || Date.now()} doing={thinkingTool ? friendlyToolName(thinkingTool) : null} facts={facts} />
         )}
 
         {/* Streaming text */}
