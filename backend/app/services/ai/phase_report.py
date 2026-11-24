@@ -126,8 +126,8 @@ def jim_rows(ps: list, cls: dict) -> list:
     def by(g):
         return [p for p in ps if GROUPS[g](p)]
     return [
-        (J.PHASE_NAMES["transition"], f"Turnovers we won, played inside {J.QUICK_S} s (quick attack)", cls["quick"]),
-        (J.PHASE_NAMES["established"], f"Our possessions that ran past {J.QUICK_S} s", cls["established"]),
+        (J.PHASE_NAMES["transition"], "Turnovers we won and went direct to their 45 (quick attack)", cls["quick"]),
+        (J.PHASE_NAMES["established"], "Our other possessions", cls["established"]),
         (J.PHASE_NAMES["kickouts"], "Our kick-outs we kept", by("own_ko_kept")),
         (J.PHASE_NAMES["kickouts"], "Our kick-outs we lost (their ball)", by("own_ko_lost")),
         (J.PHASE_NAMES["kickouts"], "Their kick-outs we won", by("opp_ko_won")),
