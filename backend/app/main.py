@@ -77,6 +77,29 @@ async def lifespan(app: FastAPI):
     except Exception as e:  # never block startup
         logger.warning(f"Compilation resume skipped: {e!r}")
 
+    # the GPS analysis is computed once per match then kept in memory: after a deploy the first player or GPS page paid ~14 s.
+    # Warm it in the background so nobody does.
+    async def _warm_gps_cache():
+        try:
+            from sqlalchemy import select as _select
+            from app.database import AsyncSessionLocal
+            from app.models.club import Club
+            from app.services.gps_analysis.loader import synced_matches
+            from app.services.gps_analysis.service import analyse
+            async with AsyncSessionLocal() as db:
+                club_ids = [r[0] for r in (await db.execute(_select(Club.id))).all()]
+            for cid in club_ids:
+                async with AsyncSessionLocal() as db:
+                    for m in await synced_matches(db, cid):
+                        try:
+                            await analyse(db, m)
+                        except Exception:
+                            continue
+            logger.info("GPS analysis cache warmed")
+        except Exception as e:  # never matters to the app
+            logger.warning(f"GPS cache warm-up skipped: {e!r}")
+    asyncio.create_task(_warm_gps_cache())
+
     logger.info("✅ Application startup complete")
     
     yield  # Application runs here

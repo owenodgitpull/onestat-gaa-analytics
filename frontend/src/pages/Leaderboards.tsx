@@ -11,6 +11,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { ChevronLeft, X } from 'lucide-react'
 import { fetchAPI } from '../services/api'
 import type { LeaderboardContext, LeaderboardEntry } from '../services/playerPortalApi'
+import Breadcrumbs from '../components/Breadcrumbs'
 import LeaderboardCategoryView from '../components/player/LeaderboardCategoryView'
 import { CATEGORIES, emptyMessageFor } from '../components/player/leaderboardCategories'
 
@@ -67,7 +68,7 @@ export default function Leaderboards() {
     <div className="space-y-5 pb-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          {playerId && <Link to={`/players/${playerId}`} className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ChevronLeft size={16} aria-hidden="true" /> Back to {playerName || 'the player'}</Link>}
+          {playerId && <Breadcrumbs items={[{ label: 'Players', to: '/players' }, { label: playerName || 'Player', to: `/players/${playerId}` }, { label: 'Squad leaderboards' }]} />}
           <h1 className="text-2xl font-bold text-white mt-1">Squad leaderboards</h1>
           <p className="text-sm text-white/55">Every player, the same boards the players see in their portal. Tap a player to open him.</p>
         </div>

@@ -1279,20 +1279,22 @@ async def _player_positioned_events(db: AsyncSession, club_id, player_id: str, e
         player_uuid = UUID(player_id)
     except ValueError:
         return []
+    # only the columns used: whole Match rows (AI text) and whole event rows (JSON context) made each of these routes 3 s+
     matches = (await db.execute(
-        select(Match).where(and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id))
+        select(Match).options(load_only(Match.id, Match.opponent, Match.half_duration_mins, Match.attacking_right_first_half, Match.club_id))
+        .where(and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id))
     )).scalars().all()
     if not matches:
         return []
     matches_map = {m.id: m for m in matches}
     events = (await db.execute(
-        select(MatchEvent).where(and_(
+        select(MatchEvent.match_id, MatchEvent.event_type, MatchEvent.half, MatchEvent.minute, MatchEvent.pitch_x, MatchEvent.pitch_y).where(and_(
             MatchEvent.match_id.in_(list(matches_map)),
             MatchEvent.player_id == player_uuid,
             MatchEvent.team == Team.OWN,
             MatchEvent.event_type.in_(event_types),
         ))
-    )).scalars().all()
+    )).all()
     out = []
     for event in events:
         match = matches_map.get(event.match_id)

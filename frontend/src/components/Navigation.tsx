@@ -85,6 +85,8 @@ export default function Navigation() {
         location.pathname.startsWith('/video/')
       )
     }
+    // squad leaderboards opened from a player's page belong to Players, so the bar still says where you are
+    if (path === '/players' && location.pathname.startsWith('/leaderboards') && new URLSearchParams(location.search).has('player')) return true
     if (path !== '/' && location.pathname.startsWith(path)) return true
     return false
   }
