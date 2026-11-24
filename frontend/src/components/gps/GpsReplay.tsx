@@ -9,9 +9,10 @@
  * there is no opposition GPS). Tagged events pop up where they were tagged, for 3 s.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, Tag, Users, SlidersHorizontal, CircleDot } from 'lucide-react'
+import { Loader2, AlertCircle, Tag, Users, SlidersHorizontal, CircleDot, Info } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import GpsCarrierFixer from './GpsCarrierFixer'
+import JumpToEvent from './JumpToEvent'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
 import { useVideoSession } from '../../hooks/useVideoSessions'
 import { api, type GpsWindow } from '../../services/api'
@@ -103,6 +104,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const [windows, setWindows] = useState<Record<number, WinState>>({})
   const raw = true      // always the pitch as filmed, so the dots run the same way as the video and swap ends at half-time
   const [showNames, setShowNames] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
   // Ball carrying (who has the ball, the opposition ball) was tagged by hand during the match: off by default, the GPS
   // dots are the accurate part (Owen 2026-11-23). Remembered per browser.
   const [showCarry, setShowCarryState] = useState(() => { try { return localStorage.getItem('gpsReplayCarry') === 'on' } catch { return false } })
@@ -409,13 +411,8 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           </div>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <select onChange={e => { const ev = jumpList[Number(e.target.value)]; if (ev) seek(Math.max(0, ev.video_ms - Math.max(seekLeadForType(ev.event_type), (alignQ.data?.replay?.median_delay_ms ?? 0) + 2000))); e.target.value = '' }} defaultValue=""
-            className="min-w-0 flex-1 bg-white/10 border border-white/15 rounded-lg px-2 py-2 text-sm text-white" aria-label="Jump to an event">
-            <option value="">Jump to a kickout, score or turnover…</option>
-            {jumpList.map((e, i) => (
-              <option key={e.id} value={i}>{periodClock(e.video_ms, ctx.periods)} · {humanEventType(e.event_type)}{e.team === 'team_a' && e.player_id ? ` · ${name(e.player_id)}` : e.team === 'team_b' ? ` · ${ctx.opponent || 'Opposition'}` : ''}</option>
-            ))}
-          </select>
+          <JumpToEvent placeholder="Jump to a kickout, score or turnover…" onPick={(i) => { const ev = jumpList[i]; if (ev) seek(Math.max(0, ev.video_ms - Math.max(seekLeadForType(ev.event_type), (alignQ.data?.replay?.median_delay_ms ?? 0) + 2000))) }}
+            items={jumpList.map(e => ({ key: e.id, label: `${periodClock(e.video_ms, ctx.periods)} · ${humanEventType(e.event_type)}${e.team === 'team_a' && e.player_id ? ` · ${name(e.player_id)}` : e.team === 'team_b' ? ` · ${ctx.opponent || 'Opposition'}` : ''}` }))} />
         </div>
         {editOpen && showCarry && (
           <GpsCarrierFixer tagNote={tagNote} onJumpToTag={nextCarry ? () => { player.current?.pause(); seek(Math.max(0, nextCarry.video_ms - lead - 3000)) } : undefined}
@@ -425,24 +422,6 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
       </div>
 
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div className="text-sm text-white font-medium tabular-nums">Match clock {periodClock(now, ctx.periods)} <span className="text-white/45 font-normal text-xs">· video timer {Math.floor(now / 60000)}:{String(Math.floor(now / 1000) % 60).padStart(2, '0')}</span></div>
-          <div className="flex gap-1.5">
-            <button onClick={() => setShowNames(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showNames ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showNames}>
-              <Users size={13} /> Names
-            </button>
-            <button onClick={() => setShowCarry(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showCarry ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showCarry}
-              title="Highlight the player carrying the ball, from your carry tags recorded during the match">
-              <CircleDot size={13} /> Carrier
-            </button>
-            {showCarry && (
-              <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
-                title="Fix who has the ball at a moment the carrier looks wrong">
-                <SlidersHorizontal size={13} /> Fix carrier
-              </button>
-            )}
-          </div>
-        </div>
         <div className="rounded-xl overflow-hidden border border-white/10">
           <GpsPitch lengthM={L} widthM={W} label="Player positions" warp={false} fit={false} measured>
             {(sc) => (
@@ -515,6 +494,36 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             )}
           </GpsPitch>
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+          <div className="text-sm text-white font-medium tabular-nums">Match clock {periodClock(now, ctx.periods)} <span className="text-white/45 font-normal text-xs">· video timer {Math.floor(now / 60000)}:{String(Math.floor(now / 1000) % 60).padStart(2, '0')}</span></div>
+          <div className="flex gap-1.5">
+            <button onClick={() => setShowNames(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showNames ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showNames}>
+              <Users size={13} /> Names
+            </button>
+            <button onClick={() => setShowCarry(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showCarry ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showCarry}
+              title="Highlight the player carrying the ball, from your carry tags recorded during the match">
+              <CircleDot size={13} /> Carrier
+            </button>
+            <button onClick={() => setShowInfo(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showInfo ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={showInfo}
+              title="About this pitch: direction, scale, the legend and what is on screen" aria-label="About this pitch">
+              <Info size={13} />
+            </button>
+            {showCarry && (
+              <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
+                title="Fix who has the ball at a moment the carrier looks wrong">
+                <SlidersHorizontal size={13} /> Fix carrier
+              </button>
+            )}
+          </div>
+        </div>
+        {(status.busy || status.error) && (
+        <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
+          {status.busy ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : status.error ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}
+          <span>{status.text}</span>
+        </div>
+        )}
+        {showInfo && (
+          <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-1">
         <PitchFrameCaption fit={false} raw={raw} team={team} ownRight={ctx.attacking_right_first_half == null ? undefined : ownAttacksRight(arfh, half)} />
         <p className="mt-1 px-1 text-[11px] text-white/50">
           {ctx.pitch_measured
@@ -522,7 +531,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             : <>Pitch size not set for this match, so the standard 145 × 90 m is used. Pick the ground in Edit Match Details to draw it to scale.</>}
         </p>
         {showCarry && <p className="mt-1 px-1 text-[11px] text-white/50">Carrier highlight is on: the ball carrier comes from the carries you tagged during the match, so it can run a little ahead of or behind the GPS dots.</p>}
-        <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
+        <div role="status" className={`flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
           {status.busy ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : status.error ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}
           <span>{status.text}</span>
         </div>
@@ -532,6 +541,8 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           {showCarry && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: COLOR_THEIRS }} /> {ctx.opponent || 'Opposition'} carrier (tagged, no GPS)</span>}
           <span className="flex items-center gap-1.5"><Tag size={11} /> tagged event, 3 s</span>
         </div>
+          </div>
+        )}
       </div>
     </div>
   )

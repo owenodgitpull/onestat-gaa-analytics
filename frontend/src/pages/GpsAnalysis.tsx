@@ -12,7 +12,6 @@ import { useClubName } from '../contexts/ClubContext'
 import { gpsAnalysisApi } from '../services/gpsAnalysisApi'
 import GpsReplay from '../components/gps/GpsReplay'
 import GpsSyncCheck from '../components/gps/GpsSyncCheck'
-import { SyncBadge } from '../components/gps/GpsTracksModal'
 import {
   GpsSeasonCtx, OverviewView, ShapeView, TransitionsView, KickoutsView, IntensityView, HeatmapView, TagHealthView, SupportView, MarkingView, MomentsView, Loading, Failed,
 } from '../components/gps/GpsAnalysisViews'
@@ -79,7 +78,6 @@ export default function GpsAnalysis() {
         <div className="min-w-0">
           <Breadcrumbs items={[{ label: 'Results', to: '/results' }, { label: `${team} v ${opponent}`, to: `/results/${matchId}` }, { label: 'GPS analysis' }]} />
           <h1 className="text-xl md:text-2xl font-bold text-white mt-1">GPS · {team} v {opponent}</h1>
-          {ctx && <div className="flex flex-wrap items-center gap-2 text-xs text-white/55 mt-1">Sync <SyncBadge status={ctx.sync.status} /> <span>{ctx.tracked.filter(pid => ctx.on_pitch[pid]).length} players with a unit played · no goalkeeper or opposition units</span></div>}
         </div>
         <Link to="/gps-season" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-sm text-white"><LineChart size={15} /> All GPS matches</Link>
       </div>
