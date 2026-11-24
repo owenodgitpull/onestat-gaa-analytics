@@ -539,9 +539,13 @@ export default function MatchResult() {
       const pid = String(e.player_id)
       const t = e.event_type as string
       if (team === 'own' && WIDES.has(t)) wide[pid] = (wide[pid] || 0) + 1
-      if (team === 'own' && (t === 'turnover_won' || t === 'turnover_lost')) {
+      // a turnover won is also an interception, a tackle won or a block (as in Turnover Kings and the player stats);
+      // a turnover lost also includes an unforced error
+      const TO_WON = t === 'turnover_won' || t === 'interception' || t === 'tackle_won' || t === 'block'
+      const TO_LOST = t === 'turnover_lost' || t === 'unforced_error'
+      if (team === 'own' && (TO_WON || TO_LOST)) {
         to[pid] = to[pid] || { won: 0, lost: 0 }
-        if (t === 'turnover_won') to[pid].won++; else to[pid].lost++
+        if (TO_WON) to[pid].won++; else to[pid].lost++
       }
       const isSide = t === 'sideline_ball', isThrow = t === 'throw_in', isKo = KO_WON.has(t)
       if (isSide || isThrow || isKo) {
