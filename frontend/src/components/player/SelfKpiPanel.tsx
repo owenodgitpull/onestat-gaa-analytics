@@ -70,7 +70,7 @@ const tone = (kind: string) => (kind === 'good' ? 'text-emerald-300' : kind === 
 function VerdictLine({ vd, who }: { vd: ReturnType<typeof verdict>; who: 'his' | 'your' }) {
   if (!vd) return null
   return (
-    <div className={`text-[11px] flex items-center justify-end gap-0.5 whitespace-nowrap ${tone(vd.kind)}`}>
+    <div className={`text-xs flex items-center justify-end gap-0.5 whitespace-nowrap ${tone(vd.kind)}`}>
       {vd.kind === 'same' ? <Minus size={11} aria-hidden="true" /> : vd.up ? <ArrowUp size={11} aria-hidden="true" /> : <ArrowDown size={11} aria-hidden="true" />}
       {who === 'your' ? vd.text.replace(/\bhis\b/g, 'your') : vd.text}
     </div>
@@ -119,7 +119,7 @@ export default function SelfKpiPanel({ data: raw, gps, gpsState, who = 'his' }: 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-xl font-bold text-white">Against {them} own average, and the squad's</h3>
-          <p className="text-xs text-white/55 mt-1">
+          <p className="text-sm text-white/60 mt-1">
             {season
               ? <>{His} season: the big figure is {them} average over {full.length} full match{full.length === 1 ? '' : 'es'}; the arrow compares {them} last 3 with it.</>
               : <>The big figure is {them} number v {m!.opponent}. Beside it: {them} average over {them} other {pool.length} match{pool.length === 1 ? '' : 'es'}, and the squad's average in this match (blue).</>}
@@ -144,7 +144,7 @@ export default function SelfKpiPanel({ data: raw, gps, gpsState, who = 'his' }: 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {Object.entries(groups).map(([g, ks]) => (
           <div key={g} className="rounded-xl border border-white/10 bg-white/[0.03] min-w-0">
-            <div className="px-3 pt-3 pb-1 flex items-baseline justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">
+            <div className="px-3 pt-3 pb-1 flex items-baseline justify-between gap-2 text-xs font-semibold uppercase tracking-wide text-white/50">
               <span>{g}</span><span className="normal-case font-normal tracking-normal text-right sm:pr-[124px]">{season ? `${them} season avg` : `v ${m!.opponent}`}</span>
             </div>
             <div className="divide-y divide-white/5">
@@ -168,20 +168,20 @@ export default function SelfKpiPanel({ data: raw, gps, gpsState, who = 'his' }: 
                 return (
                   <div key={k.key} className="flex items-center gap-3 px-3 py-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm text-white truncate" title={k.label}>{k.label}</div>
-                      <div className="text-[11px] text-white/50 truncate">
+                      <div className="text-[15px] text-white" title={k.label}>{k.label}</div>
+                      <div className="text-xs text-white/55">
                         {season
                           ? <>Last 3 {fmt(last3, k.unit, true)}{best ? ` · best ${fmt(best.v, k.unit)} v ${best.x.opponent}` : ''}</>
                           : <>{His} avg {fmt(hisAvg, k.unit, true)}{poolVals.length ? ` (${poolVals.length})` : ''}{best ? ` · best ${fmt(best.v, k.unit)} v ${best.x.opponent}` : ''}</>}
                       </div>
                       {showSquad && (
-                        <div className="text-[11px] text-sky-300/80 truncate">
+                        <div className="text-xs text-sky-300/85">
                           Squad avg {fmt(squadV, k.unit, true)}{season ? ' (season)' : squadN && !isGps ? ` (${squadN} players)` : ''}
                         </div>
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="text-base font-semibold text-white tabular-nums">{fmt(big, k.unit, season)}</div>
+                      <div className="text-lg font-semibold text-white tabular-nums">{fmt(big, k.unit, season)}</div>
                       <VerdictLine vd={vdSelf} who={who} />
                       {vdSquad && vdSquad.kind !== 'same' && <VerdictLine vd={vdSquad} who={who} />}
                     </div>
@@ -193,7 +193,7 @@ export default function SelfKpiPanel({ data: raw, gps, gpsState, who = 'his' }: 
           </div>
         ))}
       </div>
-      <p className="text-[11px] text-white/45">
+      <p className="text-xs text-white/45">
         Trend lines: every match left to right; white dot = the match picked, dashed line = {them} average, hollow dots = short games. Hover a dot for the match.
         {gps?.how_to_read ? ` Tracking (GPS): ${gps.how_to_read}` : ''}
       </p>

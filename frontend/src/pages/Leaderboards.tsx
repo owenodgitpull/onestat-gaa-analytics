@@ -6,9 +6,9 @@
  * Data: GET /analytics/leaderboards/{category} and /analytics/player/{id}/leaderboard-positions (his place on each).
  */
 import { useMemo, useRef } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ChevronLeft, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { fetchAPI } from '../services/api'
 import type { LeaderboardContext, LeaderboardEntry } from '../services/playerPortalApi'
 import Breadcrumbs from '../components/Breadcrumbs'
