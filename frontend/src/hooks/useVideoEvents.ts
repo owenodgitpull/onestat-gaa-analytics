@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useSyncExternalStore } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   videoEventsAPI,
   type VideoEvent,
@@ -105,6 +105,17 @@ function settle(queryClient: ReturnType<typeof useQueryClient>, sessionId: strin
   if (queryClient.isMutating({ mutationKey: WRITE_KEY }) <= 1) {
     queryClient.invalidateQueries({ queryKey: videoEventKeys.bySession(sessionId) });
   }
+}
+
+/** Events of every video session of a match, in one list (a match can have several sessions: halves, extra time). */
+export function useVideoEventsForSessions(sessionIds: string[]) {
+  const results = useQueries({
+    queries: sessionIds.map(id => ({
+      queryKey: videoEventKeys.bySession(id),
+      queryFn: () => videoEventsAPI.list(id),
+    })),
+  });
+  return results.flatMap(r => r.data?.events ?? []);
 }
 
 /** List events for a video session. */

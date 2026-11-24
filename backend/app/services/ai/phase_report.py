@@ -126,18 +126,18 @@ def jim_rows(ps: list, cls: dict) -> list:
     def by(g):
         return [p for p in ps if GROUPS[g](p)]
     return [
-        (J.PHASE_NAMES["transition"], "Turnovers we won and went direct to their 45 (quick attack)", cls["quick"]),
-        (J.PHASE_NAMES["established"], "Our other possessions", cls["established"]),
-        (J.PHASE_NAMES["kickouts"], "Our kick-outs we kept", by("own_ko_kept")),
-        (J.PHASE_NAMES["kickouts"], "Our kick-outs we lost (their ball)", by("own_ko_lost")),
-        (J.PHASE_NAMES["kickouts"], "Their kick-outs we won", by("opp_ko_won")),
-        (J.PHASE_NAMES["kickouts"], "Their kick-outs they kept (their ball)", by("opp_ko_kept")),
-        (J.PHASE_NAMES["turnovers"], "Turnovers we won", by("turnovers_won")),
-        (J.PHASE_NAMES["turnovers"], "Turnovers we lost (their ball)", by("turnovers_lost")),
+        (J.PHASE_NAMES["transition"], "Turnovers won, direct to their 45", cls["quick"]),
+        (J.PHASE_NAMES["established"], "All our other possessions", cls["established"]),
+        (J.PHASE_NAMES["kickouts"], "Ours we kept", by("own_ko_kept")),
+        (J.PHASE_NAMES["kickouts"], "Ours we lost (their ball)", by("own_ko_lost")),
+        (J.PHASE_NAMES["kickouts"], "Theirs we won", by("opp_ko_won")),
+        (J.PHASE_NAMES["kickouts"], "Theirs they kept (their ball)", by("opp_ko_kept")),
+        (J.PHASE_NAMES["turnovers"], "Won", by("turnovers_won")),
+        (J.PHASE_NAMES["turnovers"], "Lost (their ball)", by("turnovers_lost")),
         (J.PHASE_NAMES["buildup"], "Won in our own third", cls["buildup"]),
         (J.PHASE_NAMES["buildup"], "... and crossed their 45", cls["buildup_crossed"]),
-        (J.PHASE_NAMES["tracked"], "All our tracked possessions", by("all_ours")),
-        (J.PHASE_NAMES["tracked"], "All their tracked possessions", by("all_theirs")),
+        (J.PHASE_NAMES["tracked"], "All ours", by("all_ours")),
+        (J.PHASE_NAMES["tracked"], "All theirs", by("all_theirs")),
     ]
 
 

@@ -67,7 +67,7 @@ import GpsMatchCard from '../components/gps/GpsMatchCard'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { useVideoSessions } from '../hooks/useVideoSessions'
-import { useVideoEvents } from '../hooks/useVideoEvents'
+import { useVideoEventsForSessions } from '../hooks/useVideoEvents'
 import { usePlayers } from '../hooks/usePlayers'
 import { calculateManOfMatch } from '../utils/motm'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
@@ -523,7 +523,7 @@ export default function MatchResult() {
     return out.join(String.fromCharCode(10))
   }, [postMatchReport?.analysis])
   // Throw-ins and sideline balls are tagged in video tagging, so they come from the video events (not the match events)
-  const { data: videoEvData } = useVideoEvents(videoSessionsData?.sessions?.[0]?.id ?? null)
+  const videoEvents = useVideoEventsForSessions((videoSessionsData?.sessions ?? []).map((s: any) => String(s.id)))
   const byPlayer = useMemo(() => {
     const restartTotals = { throwUs: 0, throwThem: 0, sideUs: 0, sideThem: 0 }
     const empty = { wides: [], turnovers: [], restarts: [], restartTotals } as { wides: any[]; turnovers: any[]; restarts: any[]; restartTotals: typeof restartTotals }
@@ -549,7 +549,7 @@ export default function MatchResult() {
         if (isSide) rs[pid].sideline++; else if (isThrow) rs[pid].throwIn++; else rs[pid].kickouts++
       }
     }
-    for (const e of (videoEvData?.events ?? []) as any[]) {
+    for (const e of videoEvents as any[]) {
       const t = String(e.event_type || '').toUpperCase()
       const ours = e.team === 'team_a'
       if (t === 'THROW_IN') {
@@ -576,7 +576,7 @@ export default function MatchResult() {
       restarts: Object.entries(rs).map(([pid, v]) => ({ playerId: pid, name: nm(pid), ...v, n: v.sideline + v.throwIn + v.kickouts }))
         .sort((x, y) => y.n - x.n || x.name.localeCompare(y.name)),
     }
-  }, [eventsData, videoEvData, players])
+  }, [eventsData, videoEvents, players])
   const [byPlayerTab, setByPlayerTab] = useState<'wides' | 'turnovers' | 'restarts'>('turnovers')
   const [byPlayerAll, setByPlayerAll] = useState(false)
 
