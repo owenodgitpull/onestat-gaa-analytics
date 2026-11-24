@@ -7158,6 +7158,12 @@ KB_TOOL_BLOCK = (
 # Sources retrieved during the current report/chat turn (a report lists them under "Sources used"). The list is created
 # by begin_kb_source_tracking() and shared with every task the agent loop spawns.
 _kb_sources_used: ContextVar[Optional[list]] = ContextVar("kb_sources_used", default=None)
+# Which agent is running ("chat", "report"...), written into agent_tool_calls so knowledge-base use can be told apart by agent.
+_agent_origin: ContextVar[Optional[str]] = ContextVar("agent_origin", default=None)
+
+
+def set_agent_origin(name: str) -> None:
+    _agent_origin.set(name)
 
 
 def begin_kb_source_tracking() -> list:
@@ -7194,7 +7200,7 @@ async def _log_tool_call(tool_name: str, club_id, tool_input: dict, result_count
                 "VALUES (gen_random_uuid(), :t, CAST(:c AS uuid), CAST(:i AS jsonb), :n, CAST(:s AS jsonb), :d)"
             ), {
                 "t": tool_name, "c": str(club_id) if club_id else None,
-                "i": json.dumps(tool_input, default=str), "n": result_count,
+                "i": json.dumps({**(tool_input if isinstance(tool_input, dict) else {"input": tool_input}), "_origin": _agent_origin.get()}, default=str), "n": result_count,
                 "s": json.dumps(sources, default=str), "d": int((time.monotonic() - started) * 1000),
             })
             await log_db.commit()

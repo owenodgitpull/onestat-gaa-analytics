@@ -18,6 +18,7 @@ from app.services.ai._shared import (
     KB_TOOL_BLOCK,
     client, GAA_ESSENTIALS, TOOLS, execute_tool, get_cached_tools,
     get_fixture_context, get_weather_context, get_club_context, stream_with_defaults,
+    begin_kb_source_tracking, format_sources_used, set_agent_origin,
 )
 from app.services.rag_service import RAGService
 
@@ -277,6 +278,7 @@ Use the available tools to look up specific data when needed.
 
 INSTRUCTIONS:
 - Write the answer ONCE, from the final tool results. Never mention an earlier attempt, a retry or a correction ("my first attempt used the wrong event name", "I got that wrong earlier", "an extra video you didn't ask for"). If a tool call returns nothing or an error, fix the call and run it again without comment; mention a failure only when it changes what the user can have.
+- Knowledge base: for any question that asks WHY something happened or HOW to improve it (not a plain lookup of a number or a name), call search_knowledge_base one to three times BEFORE you answer, and weave the principle into the answer next to what the data shows, cited inline (Source name, p.N). Skip it for plain data lookups. If nothing relevant comes back, say nothing about it rather than forcing a citation.
 - Videos: build one only when the user asks for a video, clips or a reel, and never more than one per question. If create_video_compilation finds nothing or returns an error, do NOT retry with a broader filter or none: tell the user what was and was not found and ask what they want instead.
 - Call tools without commentary: no text before or between tool calls ("I'll start by...", "Now I'll pull..."). The user sees a progress line while you look things up and reads everything you write as the answer, so write only the answer, once you have the data.
 - To find a player, call search_players, then pass his player_id to the tools that take one (get_match_event_log, get_pitch_paths, get_player_season_stats, get_player_kpi_profile - his KPIs against his own season and the squad, and his leaderboard places).
@@ -451,6 +453,7 @@ Use the available tools to look up specific data when needed.
 {summary_section}
 INSTRUCTIONS:
 - Write the answer ONCE, from the final tool results. Never mention an earlier attempt, a retry or a correction ("my first attempt used the wrong event name", "I got that wrong earlier", "an extra video you didn't ask for"). If a tool call returns nothing or an error, fix the call and run it again without comment; mention a failure only when it changes what the user can have.
+- Knowledge base: for any question that asks WHY something happened or HOW to improve it (not a plain lookup of a number or a name), call search_knowledge_base one to three times BEFORE you answer, and weave the principle into the answer next to what the data shows, cited inline (Source name, p.N). Skip it for plain data lookups. If nothing relevant comes back, say nothing about it rather than forcing a citation.
 - Videos: build one only when the user asks for a video, clips or a reel, and never more than one per question. If create_video_compilation finds nothing or returns an error, do NOT retry with a broader filter or none: tell the user what was and was not found and ask what they want instead.
 - Call tools without commentary: no text before or between tool calls ("I'll start by...", "Now I'll pull..."). The user sees a progress line while you look things up and reads everything you write as the answer, so write only the answer, once you have the data.
 - To find a player, call search_players, then pass his player_id to the tools that take one (get_match_event_log, get_pitch_paths, get_player_season_stats, get_player_kpi_profile - his KPIs against his own season and the squad, and his leaderboard places).
@@ -614,6 +617,8 @@ async def chat_with_analyst_stream(
       data: {"type":"error","message":"..."}
     """
     tool_sessions = None
+    set_agent_origin("chat")
+    kb_sources = begin_kb_source_tracking()   # the knowledge-base passages this answer retrieves, listed under it
     try:
         # Apply sliding window if we have a session
         conversation_summary = None
@@ -775,6 +780,10 @@ async def chat_with_analyst_stream(
             yield f"data: {json.dumps({'type': 'text', 'content': TIMEOUT_FALLBACK_MESSAGE})}\n\n"
         elif response is not None and response.stop_reason == "max_tokens":
             yield f"data: {json.dumps({'type': 'text', 'content': chr(10) + chr(10) + '_(The answer hit the length limit — ask me to continue.)_'})}\n\n"
+
+        kb_note = format_sources_used(kb_sources)
+        if kb_note and streamed_any:
+            yield f"data: {json.dumps({'type': 'text', 'content': chr(10) + chr(10) + '*Knowledge base passages consulted: ' + kb_note + '.*'})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

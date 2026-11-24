@@ -22,7 +22,7 @@ from app.services.ai.live_brief import build_live_brief
 from app.services.ai._shared import (
     text_of,
     KB_TOOL_BLOCK,
-    begin_kb_source_tracking, format_sources_used,
+    begin_kb_source_tracking, format_sources_used, set_agent_origin,
     client, GAA_ESSENTIALS, PANEL_EXPERT, TOOLS, execute_tool,
     get_match_summary, get_tools_subset, get_club_context,
 )
@@ -537,6 +537,7 @@ Reference knowledge base context when relevant to a specific trigger.
         from uuid import UUID as _UUID
         from app.models.match import Match as _Match
         _mid = _UUID(match_id) if isinstance(match_id, str) else match_id
+        set_agent_origin("report")
         _mq = await db.execute(select(_Match.club_id).where(_Match.id == _mid))
         _cid = _mq.scalar_one_or_none()
         club_name, club_context = await get_club_context(db, _cid)
