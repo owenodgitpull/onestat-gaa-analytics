@@ -57,6 +57,7 @@ import LoadingSkeleton from '../components/LoadingSkeleton'
 import PlayerPhysicalTrend from '../components/charts/PlayerPhysicalTrend'
 import PlayerFatigueSignature from '../components/charts/PlayerFatigueSignature'
 import PlayerChartNote from '../components/charts/PlayerChartNote'
+import PlayerActionMap from '../components/charts/PlayerActionMap'
 import PlayerSleepTrend from '../components/charts/PlayerSleepTrend'
 import PlayerDisciplineTrend from '../components/charts/PlayerDisciplineTrend'
 import PlayerPositionalBenchmark from '../components/charts/PlayerPositionalBenchmark'
@@ -367,7 +368,7 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
   }
 
   return (
-    <div className="w-full max-w-lg mx-auto">
+    <div className="w-full max-w-3xl mx-auto">
       <div
         ref={containerRef}
         className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden"
@@ -388,10 +389,10 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
                 key={i}
                 cx={x}
                 cy={y}
-                r={isGoal ? 26 : 20}
+                r={isGoal ? 44 : 34}
                 fill={isGoal ? '#f59e0b' : isScore ? '#10b981' : '#ef4444'}
                 stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.7)'}
-                strokeWidth={isSelected ? 5 : 3}
+                strokeWidth={isSelected ? 6 : 4}
                 opacity={isSelected ? 1 : 0.85}
                 className="cursor-pointer"
                 onClick={(e) => { e.stopPropagation(); handleShotInteraction(shot, e) }}
@@ -1459,8 +1460,9 @@ function OverviewTab({
         </h3>
         <ShotMap shots={shotEvents} />
         <ChartInsight insight={shotInsightText} />
-        <PlayerChartNote what="Every shot he took, plotted where it was taken, with his conversion rate (scores out of shots)." />
+        <PlayerChartNote what="Every shot he took, in every match, plotted where it was taken, with his conversion rate (scores out of shots). Goals are the larger amber marks, other scores are green and misses are red." />
       </div>
+      <PlayerActionMap playerId={player.id} />
     </div>
   )
 }

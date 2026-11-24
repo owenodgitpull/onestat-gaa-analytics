@@ -1268,93 +1268,100 @@ class PlayerShotEvent(BaseModel):
     half: int = 1
 
 
+async def _player_positioned_events(db: AsyncSession, club_id, player_id: str, event_types: list):
+    """The player's own-team events of these types across EVERY match that counts in the stats, each turned to face the
+    goal his team attacks (x = 100) so they all plot the same way. Returns (event, match, half, x, y); x, y are None when
+    the tagger placed no position. One place for the direction rule, so every player map agrees."""
+    from uuid import UUID
+    from app.utils.attack_direction import own_attacks_right, to_attack_frame
+
+    try:
+        player_uuid = UUID(player_id)
+    except ValueError:
+        return []
+    matches = (await db.execute(
+        select(Match).where(and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id))
+    )).scalars().all()
+    if not matches:
+        return []
+    matches_map = {m.id: m for m in matches}
+    events = (await db.execute(
+        select(MatchEvent).where(and_(
+            MatchEvent.match_id.in_(list(matches_map)),
+            MatchEvent.player_id == player_uuid,
+            MatchEvent.team == Team.OWN,
+            MatchEvent.event_type.in_(event_types),
+        ))
+    )).scalars().all()
+    out = []
+    for event in events:
+        match = matches_map.get(event.match_id)
+        if not match:
+            continue
+        half = event.half or (2 if event.minute and event.minute > (match.half_duration_mins or 30) else 1)
+        x = float(event.pitch_x) if event.pitch_x is not None else None
+        y = float(event.pitch_y) if event.pitch_y is not None else None
+        if x is not None and y is not None:
+            # rotate x AND y (mirroring x alone swaps left and right) so the team always attacks towards x = 100
+            x, y = to_attack_frame(x, y, own_attacks_right(match.attacking_right_first_half, half, event.minute, match.half_duration_mins))
+        out.append((event, match, half, x, y))
+    return out
+
+
 @router.get("/player/{player_id}/shot-events", response_model=List[PlayerShotEvent])
 async def get_player_shot_events(
     player_id: str,
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get all shot events for a specific player with pitch coordinates.
-    Powers the Shot Map spatial plot on the player page.
-    """
-    from uuid import UUID
-
-    try:
-        player_uuid = UUID(player_id)
-    except ValueError:
-        return []
-
+    """Every shot the player took, in every match that counts, with pitch coordinates. Powers the Shot Map."""
     shot_event_types = [
         EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
         EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE,
-        EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED,
+        EventType.PENALTY_GOAL,
+        EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED, EventType.PENALTY_MISS,
         EventType.SHORT, EventType.SAVED, EventType.HIT_POST,
     ]
+    rows = await _player_positioned_events(db, user.club_id, player_id, shot_event_types)
+    return [PlayerShotEvent(match_id=str(e.match_id), opponent=m.opponent, event_type=e.event_type.value,
+                            pitch_x=x, pitch_y=y, minute=e.minute, half=half) for e, m, half, x, y in rows]
 
-    # Get completed matches
-    matches_result = await db.execute(
-        select(Match).where(
-            and_(
-                Match.counts_in_stats,
-                Match.is_deleted.is_(False),
-                Match.club_id == user.club_id,
-            )
-        )
-    )
-    matches = matches_result.scalars().all()
-    if not matches:
-        return []
 
-    match_ids = [m.id for m in matches]
-    matches_map = {m.id: m for m in matches}
+class PlayerMapEvent(BaseModel):
+    """One mark on the player's action map: where he won a turnover or a kick-out, or scored."""
+    match_id: str
+    opponent: str
+    kind: str                 # turnover_won | kickout_won | score
+    event_type: str
+    points: int = 0           # scores only: 1 point, 2 two-pointer, 3 goal
+    pitch_x: Optional[float] = None
+    pitch_y: Optional[float] = None
+    minute: Optional[int] = None
+    half: int = 1
 
-    events_result = await db.execute(
-        select(MatchEvent).where(
-            and_(
-                MatchEvent.match_id.in_(match_ids),
-                MatchEvent.player_id == player_uuid,
-                MatchEvent.team == Team.OWN,
-                MatchEvent.event_type.in_(shot_event_types)
-            )
-        )
-    )
-    shot_events = events_result.scalars().all()
 
-    result = []
-    for event in shot_events:
-        match = matches_map.get(event.match_id)
-        if match:
-            half = event.half or (2 if event.minute and event.minute > (match.half_duration_mins or 30) else 1)
-            # pitch_x is stored raw, relative to a fixed physical end of the
-            # pitch — but which end this player's team attacks flips every
-            # half. The frontend's ShotMap only plots pitch_x >= 50 (the
-            # attacking half), so without normalizing here, every shot taken
-            # in the half where the team defended the high-x end reads as
-            # "own half" and is silently dropped from the map — the same bug
-            # already found and fixed in MatchResult.tsx's shot chart earlier
-            # this session, just unnormalized at the source here instead.
-            pitch_x = float(event.pitch_x) if event.pitch_x is not None else None
-            pitch_y = float(event.pitch_y) if event.pitch_y is not None else None
-            if pitch_x is not None and pitch_y is not None:
-                # Rotate the pitch (x AND y) so this player's team always shoots towards x=100 —
-                # mirroring x alone swaps left and right on the map.
-                from app.utils.attack_direction import own_attacks_right, to_attack_frame
-                pitch_x, pitch_y = to_attack_frame(
-                    pitch_x, pitch_y,
-                    own_attacks_right(match.attacking_right_first_half, half, event.minute, match.half_duration_mins),
-                )
-            result.append(PlayerShotEvent(
-                match_id=str(event.match_id),
-                opponent=match.opponent,
-                event_type=event.event_type.value,
-                pitch_x=pitch_x,
-                pitch_y=pitch_y,
-                minute=event.minute,
-                half=half,
-            ))
+_SCORE_POINTS = {"point": 1, "point_free": 1, "forty_five": 1, "two_point": 2, "two_point_free": 2, "goal": 3, "penalty_goal": 3}
+_TURNOVER_WIN_TYPES = ["turnover_won", "interception", "tackle_won", "block"]
+_KICKOUT_WON_TYPES = ["kickout_won", "own_kickout_won", "own_kickout_won_break", "opp_kickout_won", "opp_kickout_won_break"]
 
-    return result
+
+@router.get("/player/{player_id}/map-events", response_model=List[PlayerMapEvent])
+async def get_player_map_events(
+    player_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Where the player won turnovers (turnover won, interception, tackle, block) and kick-outs, and where he scored,
+    across every match that counts. Powers the Turnovers / Kick-outs / Scores map on the player page."""
+    types = [EventType(v) for v in set(_SCORE_POINTS) | set(_TURNOVER_WIN_TYPES) | set(_KICKOUT_WON_TYPES)]
+    rows = await _player_positioned_events(db, user.club_id, player_id, types)
+    out = []
+    for e, m, half, x, y in rows:
+        t = e.event_type.value
+        kind = "score" if t in _SCORE_POINTS else "kickout_won" if t in _KICKOUT_WON_TYPES else "turnover_won"
+        out.append(PlayerMapEvent(match_id=str(e.match_id), opponent=m.opponent, kind=kind, event_type=t,
+                                  points=_SCORE_POINTS.get(t, 0), pitch_x=x, pitch_y=y, minute=e.minute, half=half))
+    return out
 
 
 class QuarterBucket(BaseModel):
