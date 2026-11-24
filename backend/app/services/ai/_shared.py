@@ -7151,7 +7151,9 @@ KB_TOOL_BLOCK = (
     "The data (events, counts, positions) tells you WHAT happened; the knowledge base supplies the principle for WHY it "
     "matters. Never let a retrieved passage override or invent a number. Cite what you use inline as (Source name, p.N). "
     "If the club has uploaded its own game plan, it takes priority over the platform's general material. If nothing "
-    "relevant comes back, say so plainly - do not present general knowledge as if it were sourced.\n"
+    "relevant comes back, say NOTHING about the knowledge base: never write that it had nothing, never describe what it does "
+    "or does not contain, never announce that you searched it - just answer from the data. Do not present general knowledge "
+    "as if it were sourced; cite a passage only where you actually use one.\n"
 )
 
 
