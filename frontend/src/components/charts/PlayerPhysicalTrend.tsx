@@ -6,6 +6,7 @@ import {
 import { Zap, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import type { MatchGPSData } from '@/services/api'
 import { cleanPlayerName } from '@/utils/playerName'
+import PlayerChartNote from './PlayerChartNote'
 
 interface Props {
   matchGpsHistory: MatchGPSData[]
@@ -253,6 +254,9 @@ export default function PlayerPhysicalTrend({ matchGpsHistory }: Props) {
           <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Below avg
         </span>
       </div>
+      <PlayerChartNote
+        what="His running in each match, oldest to newest. Green bars are above his own average, blue about average, amber below. Switch between distance, high-speed running and sprints."
+        going={{ values: chartData.map(d => Number(d[metric])), label: metricCfg.label.toLowerCase(), unit: metricCfg.unit === 'count' ? '' : metricCfg.unit, decimals: 0 }} />
     </div>
   )
 }

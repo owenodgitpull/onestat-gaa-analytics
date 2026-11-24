@@ -2,6 +2,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { Flame } from 'lucide-react'
+import PlayerChartNote from './PlayerChartNote'
 
 interface QuarterBucket {
   quarter: string
@@ -93,6 +94,7 @@ export default function PlayerFatigueSignature({ profile }: Props) {
       </div>
 
       <p className="text-[11px] text-white/30 leading-relaxed">{profile.note}</p>
+      <PlayerChartNote what="How his running and his errors change through a match, in four quarters, pooled over his matches with GPS. Bars that fall away in Q3 and Q4 mean he fades; a line that climbs means more errors late on." />
     </div>
   )
 }

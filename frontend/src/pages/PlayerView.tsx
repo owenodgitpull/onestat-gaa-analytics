@@ -56,6 +56,7 @@ import type { FitnessTestComparison } from '../services/api'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import PlayerPhysicalTrend from '../components/charts/PlayerPhysicalTrend'
 import PlayerFatigueSignature from '../components/charts/PlayerFatigueSignature'
+import PlayerChartNote from '../components/charts/PlayerChartNote'
 import PlayerSleepTrend from '../components/charts/PlayerSleepTrend'
 import PlayerDisciplineTrend from '../components/charts/PlayerDisciplineTrend'
 import PlayerPositionalBenchmark from '../components/charts/PlayerPositionalBenchmark'
@@ -1370,6 +1371,7 @@ function OverviewTab({
             </div>
           )}
           <ChartInsight insight={radarInsightText} />
+          <PlayerChartNote what="His season in six areas: scoring, shooting accuracy, defending, minutes played, winning the ball and discipline. The further a point sits from the centre, the stronger that area." />
         </div>
 
         {/* Defensive Contribution Donut */}
@@ -1404,6 +1406,7 @@ function OverviewTab({
             </div>
           )}
           <ChartInsight insight={defenceInsightText} />
+          <PlayerChartNote what="Where his defending comes from: blocks, interceptions, turnovers won and frees won, as a share of his total." />
         </div>
       </div>
 
@@ -1441,6 +1444,8 @@ function OverviewTab({
           </div>
         )}
         <ChartInsight insight={impactInsightText} />
+        <PlayerChartNote what="What he did in each match, oldest to newest: points scored, turnovers won and blocks plus interceptions."
+          going={{ values: matchImpactData.map(m => m.score + m.turnovers + m.defence), label: 'all-round involvement (points, turnovers won, defending)', decimals: 1, better: 'up' }} />
       </div>
 
       <PlayerKpiCards playerId={player.id} title="Running and tracking"
@@ -1454,6 +1459,7 @@ function OverviewTab({
         </h3>
         <ShotMap shots={shotEvents} />
         <ChartInsight insight={shotInsightText} />
+        <PlayerChartNote what="Every shot he took, plotted where it was taken, with his conversion rate (scores out of shots)." />
       </div>
     </div>
   )
@@ -1541,6 +1547,8 @@ function PerformanceTab({
           </div>
         )}
         <ChartInsight insight={intensityInsightText} />
+        <PlayerChartNote what="For each match, how hard it was on his body (stress load) against how far he ran."
+          going={{ values: intensityData.map(d => d.workload), label: 'distance covered', unit: 'km', decimals: 1 }} />
       </div>
 
       <PlayerKpiCards playerId={playerId} title="Running and tracking"

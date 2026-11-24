@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import { ShieldAlert } from 'lucide-react'
 import { cleanPlayerName } from '@/utils/playerName'
+import PlayerChartNote from './PlayerChartNote'
 
 interface DisciplineMatchPoint {
   match_id: string
@@ -137,6 +138,9 @@ export default function PlayerDisciplineTrend({ data }: Props) {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+      <PlayerChartNote
+        what="Per match: turnovers he won (bars) against turnovers he lost plus unforced errors (line). You want the bars up and the line down."
+        going={{ values: chartData.map(d => d.errors), label: 'turnovers lost and errors', decimals: 1, better: 'down' }} />
     </div>
   )
 }

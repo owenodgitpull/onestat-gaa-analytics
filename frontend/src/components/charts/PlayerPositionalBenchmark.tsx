@@ -1,4 +1,5 @@
 import { Scale } from 'lucide-react'
+import PlayerChartNote from './PlayerChartNote'
 
 interface PositionalBenchmarkStats {
   matches_played: number
@@ -103,6 +104,7 @@ export default function PlayerPositionalBenchmark({ data }: Props) {
       <div className="flex-1">
         {rows.map(r => <StatRow key={r.label} {...r} />)}
       </div>
+      <PlayerChartNote what="His season figures set beside the average of the other players in his position. The right-hand column shows how far above or below that average he is." />
     </div>
   )
 }
