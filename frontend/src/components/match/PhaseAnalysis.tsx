@@ -87,6 +87,11 @@ function Row({ p, title, detail, variant, et }: { p: PhaseRow; title: string; de
   )
 }
 
+/** One plain line under a heading, where the name alone does not say what is counted. */
+const EXPLAIN: Record<string, string> = {
+  tracked: 'Every possession we followed through the tagged events, ours and theirs: from the moment a team got the ball until it scored, missed, lost it, gave away a foul or the half ended.',
+}
+
 const n = (v: number | null) => (v == null ? '–' : v)
 
 function Phase({ phase, et }: { phase: PhaseGroup; et: boolean }) {
@@ -113,7 +118,9 @@ function Phase({ phase, et }: { phase: PhaseGroup; et: boolean }) {
   const total = phase.exclusive ? rows.reduce((s, x) => s + x.poss, 0) : null
   return (
     <div className="pa-phase">
-      <div className="pa-phase__head">{phase.title}{total != null && <span className="pa-muted"> · {total} possessions</span>}</div>
+      <div className="pa-phase__head">{phase.title}{total != null && <span className="pa-muted"> · {total} possessions</span>}
+        {EXPLAIN[phase.id] && <div className="pa-phase__explain">{EXPLAIN[phase.id]}</div>}
+      </div>
       {rows.map(x => <Row key={x.id} p={x} title={x.label ?? ''} detail={x.detail} variant="sub" et={et} />)}
     </div>
   )
@@ -149,6 +156,7 @@ export default function PhaseAnalysis({ phases }: { phases: PhaseGroup[] }) {
       </div>
 
       <footer className="pa-foot">
+        Pts / poss = points scored ÷ possessions that finished (0.50 means a point every two possessions).
         Greyed rows have fewer than {LOW_N} finished possessions, so read the dots, not the Pts / poss.
         Half bars: grey = finished possessions, blue = had a shot, green = scored.
       </footer>
@@ -178,6 +186,7 @@ const css = `
 .pa-phase .pa-row:first-child{border-top:0}
 .pa-phase__head{font-size:19px;font-weight:700;padding:14px 16px;background:rgba(74,163,223,.12);border-left:3px solid var(--pa-missed)}
 .pa-phase__head .pa-muted{font-size:14px;font-weight:500}
+.pa-phase__explain{font-size:14px;font-weight:400;color:var(--pa-muted);margin-top:4px;max-width:760px}
 .pa-row--phase{border-left:3px solid var(--pa-missed);background:rgba(74,163,223,.06);padding-top:16px;padding-bottom:16px}
 .pa-row--phase .pa-label__title{font-size:19px;font-weight:700}
 .pa-row--sub{border-left:3px solid transparent}
