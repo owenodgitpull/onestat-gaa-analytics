@@ -18,7 +18,7 @@ from app.services.ai._shared import (
     KB_TOOL_BLOCK,
     client, GAA_ESSENTIALS, TOOLS, execute_tool, get_cached_tools,
     get_fixture_context, get_weather_context, get_club_context, stream_with_defaults,
-    begin_kb_source_tracking, format_sources_used, set_agent_origin,
+    begin_kb_source_tracking, set_agent_origin,
 )
 from app.services.rag_service import RAGService
 
@@ -780,10 +780,6 @@ async def chat_with_analyst_stream(
             yield f"data: {json.dumps({'type': 'text', 'content': TIMEOUT_FALLBACK_MESSAGE})}\n\n"
         elif response is not None and response.stop_reason == "max_tokens":
             yield f"data: {json.dumps({'type': 'text', 'content': chr(10) + chr(10) + '_(The answer hit the length limit — ask me to continue.)_'})}\n\n"
-
-        kb_note = format_sources_used(kb_sources)
-        if kb_note and streamed_any:
-            yield f"data: {json.dumps({'type': 'text', 'content': chr(10) + chr(10) + '*Knowledge base passages consulted: ' + kb_note + '.*'})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
