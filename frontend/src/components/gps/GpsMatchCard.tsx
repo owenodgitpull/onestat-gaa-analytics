@@ -25,7 +25,7 @@ export default function GpsMatchCard({ matchId }: { matchId: string }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-white font-semibold"><Activity size={16} className="text-emerald-400" /> GPS</div>
         <div className="flex gap-1.5">
-          <Link to={`/results/${matchId}/gps?tab=replay`} aria-disabled={!synced} onClick={e => { if (!synced) e.preventDefault() }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"><Play size={13} /> Replay</Link>
+          <Link to={`/results/${matchId}/gps?tab=replay`} aria-disabled={!synced} onClick={e => { if (!synced) e.preventDefault() }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"><Play size={13} /> Video + GPS replay</Link>
           <Link to={`/results/${matchId}/gps?tab=overview`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-medium">All GPS views</Link>
         </div>
       </div>

@@ -103,7 +103,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const [now, setNow] = useState<number>(initialMs ?? ctx.periods[0]?.video_start_ms ?? 0)
   const [windows, setWindows] = useState<Record<number, WinState>>({})
   const raw = true      // always the pitch as filmed, so the dots run the same way as the video and swap ends at half-time
-  const [showNames, setShowNames] = useState(false)
+  const [showNames, setShowNames] = useState(true)   // names on by default (Owen 2026-11-25)
   const [showInfo, setShowInfo] = useState(false)
   // Ball carrying (who has the ball, the opposition ball) was tagged by hand during the match: off by default, the GPS
   // dots are the accurate part (Owen 2026-11-23). Remembered per browser.
