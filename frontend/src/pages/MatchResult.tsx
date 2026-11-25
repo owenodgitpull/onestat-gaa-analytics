@@ -530,10 +530,6 @@ export default function MatchResult() {
     enabled: !!matchId, staleTime: 5 * 60 * 1000, retry: false,
   })
   const phaseVisual = (phaseData?.phases ?? []) as PhaseGroup[]
-  const phaseFootMd = useMemo(() => {
-    const m = (phaseTableMd || '').split(/\r?\n/).filter(l => l.trim().startsWith('*') && !l.trim().startsWith('**'))
-    return m.join(String.fromCharCode(10, 10))
-  }, [phaseTableMd])
   // Throw-ins and sideline balls are tagged in video tagging, so they come from the video events (not the match events)
   const videoEvents = useVideoEventsForSessions((videoSessionsData?.sessions ?? []).map((s: any) => String(s.id)))
   const byPlayer = useMemo(() => {
@@ -1063,7 +1059,6 @@ export default function MatchResult() {
       {phaseVisual.length > 0 ? (
         <div className="glass-card p-4 md:p-5 mb-4">
           <PhaseAnalysis phases={phaseVisual} />
-          {phaseFootMd && <div className="max-w-none mt-2 text-xs">{renderAnalysisText(phaseFootMd)}</div>}
         </div>
       ) : phaseTableMd && (
         <div className="glass-card p-4 md:p-5 mb-4">
