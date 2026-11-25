@@ -10,7 +10,7 @@ export type PhaseRow = { id: string; label: string | null; detail: string | null
 export type PhaseGroup = {
   id: string; title: string; detail?: string | null; exclusive?: boolean; note?: string
   rows?: PhaseRow[]
-  counts?: { label: string; ours: number | null; theirs: number | null }[]
+  counts?: { label: string; ours: number | null; theirs: number | null; unclear?: number }[]
 }
 
 const LOW_N = 5            // fewer finished possessions than this = small sample
@@ -97,7 +97,8 @@ function Phase({ phase, et }: { phase: PhaseGroup; et: boolean }) {
         {phase.counts.map(c => (
           <div key={c.label} className="pa-row pa-row--sub pa-row--counts">
             <div className="pa-cell pa-label"><div className="pa-label__title">{c.label}</div></div>
-            <div className="pa-cell pa-counts">We won <b>{n(c.ours)}</b> <span className="pa-muted">·</span> They won <b>{n(c.theirs)}</b></div>
+            <div className="pa-cell pa-counts">We won <b>{n(c.ours)}</b> <span className="pa-muted">·</span> They won <b>{n(c.theirs)}</b>
+              {!!c.unclear && <span className="pa-muted"> · {c.unclear} unclear (nothing tagged straight after)</span>}</div>
           </div>
         ))}
       </div>

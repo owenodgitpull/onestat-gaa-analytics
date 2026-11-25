@@ -170,16 +170,45 @@ def jim_table(rows_: list, restarts_text: str) -> str:
     return "\n".join(lines) + (f"\n\n{restarts_text}" if restarts_text else "")
 
 
+SIDELINE_WINDOW_S = 20
+# events that say nothing about who has the ball, and events whose tagged team is the side that just LOST it
+_SIDELINE_SKIP = {"SIDELINE_BALL", "SIDELINE_KICK", "THROW_IN", "HALF_TIME", "FULL_TIME", "SUB_ON", "SUB_OFF", "INJURY_STOPPAGE",
+                  "WATER_BREAK", "OUR_UNFORCED_ERROR", "OPP_UNFORCED_ERROR", "YELLOW_CARD", "RED_CARD", "BLACK_CARD", "PRESS_TRIGGER"}
+_SIDELINE_FLIPS = {"TURNOVER_LOST", "FOUL_COMMITTED"}
+
+
 async def _restarts(db, match, rows) -> dict:
     """Throw-ins (video tagging: who won them) and sideline balls (match tags: whose throw it was), as tagged."""
-    out = {"throw_ins": {"won_by_us": 0, "won_by_them": 0}, "sideline_balls": {"ours": 0, "theirs": 0}}
+    out = {"throw_ins": {"won_by_us": 0, "won_by_them": 0}, "sideline_balls": {"ours": 0, "theirs": 0, "unclear": 0}}
+    video_sideline = 0
     try:
         from app.models.video_event import VideoEvent as VE
-        for e in (await db.execute(select(VE).where(VE.match_id == match.id, VE.event_type == "THROW_IN"))).scalars().all():
-            out["throw_ins"]["won_by_us" if e.team == "team_a" else "won_by_them"] += 1
+        vrows = (await db.execute(select(VE).where(VE.match_id == match.id)
+                                  .order_by(VE.half, VE.match_minute, VE.match_second, VE.video_timestamp_ms))).scalars().all()
+        for e in vrows:
+            if e.event_type == "THROW_IN":
+                out["throw_ins"]["won_by_us" if e.team == "team_a" else "won_by_them"] += 1
+        # A sideline ball is tagged with its team and where it was taken, but the tag does not say who won it (the taker
+        # stands on the line, so the tagged side is not necessarily the winner). The winner is whoever has the ball straight
+        # after: the team of the next on-ball event within SIDELINE_WINDOW_S. Nothing follows = unclear, never guessed.
+        for i, e in enumerate(vrows):
+            if e.event_type != "SIDELINE_BALL":
+                continue
+            video_sideline += 1
+            t0 = e.match_minute * 60 + (e.match_second or 0)
+            winner = None
+            for nx in vrows[i + 1:]:
+                if nx.half != e.half or nx.match_minute * 60 + (nx.match_second or 0) - t0 > SIDELINE_WINDOW_S:
+                    break
+                if nx.event_type in _SIDELINE_SKIP:
+                    continue
+                other = "team_b" if nx.team == "team_a" else "team_a"
+                winner = other if nx.event_type in _SIDELINE_FLIPS else nx.team
+                break
+            out["sideline_balls"]["ours" if winner == "team_a" else "theirs" if winner == "team_b" else "unclear"] += 1
     except Exception:
         pass
-    for r_ in rows:
+    for r_ in ([] if video_sideline else rows):   # older matches without video tags: the match-event tag, as before
         et = getattr(r_, "event_type", None)
         et = et.value if hasattr(et, "value") else str(et)
         if et == "sideline_ball":
@@ -194,8 +223,8 @@ def restarts_line(rs: dict) -> str:
     parts = []
     if t["won_by_us"] + t["won_by_them"]:
         parts.append(f"throw-ins: we won {t['won_by_us']}, they won {t['won_by_them']}")
-    if sb["ours"] + sb["theirs"]:
-        parts.append(f"sideline balls: ours {sb['ours']}, theirs {sb['theirs']}")
+    if sb["ours"] + sb["theirs"] + sb.get("unclear", 0):
+        parts.append(f"sideline balls: we won {sb['ours']}, they won {sb['theirs']}" + (f", {sb['unclear']} unclear" if sb.get("unclear") else ""))
     return ("**Restarts** (counted as tagged, no possession chain follows them): " + "; ".join(parts) + ".") if parts else ""
 
 
@@ -242,10 +271,10 @@ async def phase_analysis_data(db, match_id, club_id=None) -> dict:
             out.append({"id": pid, "title": title, "detail": detail, "exclusive": exclusive, "rows": built})
     rs = await _restarts(db, match, rows)
     t, sb = rs["throw_ins"], rs["sideline_balls"]
-    pair = lambda a, b: {"ours": a, "theirs": b} if (a + b) else {"ours": None, "theirs": None}   # none tagged = not supplied, never a made-up 0
+    pair = lambda a, b, u=0: ({"ours": a, "theirs": b, "unclear": u} if (a + b + u) else {"ours": None, "theirs": None, "unclear": 0})   # none tagged = not supplied, never a made-up 0
     out.append({"id": "restarts", "title": N["restarts"], "note": "Counts only", "counts": [
         {"label": "Throw-ins", **pair(t["won_by_us"], t["won_by_them"])},
-        {"label": "Sideline balls", **pair(sb["ours"], sb["theirs"])}]})
+        {"label": "Sideline balls", **pair(sb["ours"], sb["theirs"], sb.get("unclear", 0))}]})
     return {"phases": out}
 
 
