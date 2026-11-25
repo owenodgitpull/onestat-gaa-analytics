@@ -31,6 +31,16 @@ from .codec import Track, FLAG_BAD_FIX, FLAG_INTERPOLATED
 MIN_CARRIES = 25
 STEP_MS = 100
 
+# Throw-in anchor (2026-11-25). The tag fit above runs the GPS clock 1-3 s late (tags are placed after the play, and its
+# per-half "rate" is noise). Checked against pitch lines read off the video on Kerry, Cork and Dublin: the team's speed
+# burst at a throw-in lands THROW_IN_REACT_MS after the throw-in mark, and the true clock rate is 1.0. So each period's
+# offset is set from that burst and the rate fixed at 1.0. A burst that is weak, or that would move the clock by more than
+# MAX_ANCHOR_SHIFT_MS, is left alone (the half's mark is probably loose); the stored tag fit stays for that half.
+THROW_IN_REACT_MS = 200
+MIN_BURST_JUMP = 0.85          # m/s: mean speed of the starters, next 1 s minus previous 1 s
+MAX_ANCHOR_SHIFT_MS = 4000
+BURST_WINDOW_MS = 20_000
+
 
 @dataclass
 class Tagged:
@@ -81,6 +91,51 @@ class _Grid:
         out[ok] = arr[prow[ok] if np.ndim(prow) else prow, i[ok]]
         return out
 
+
+
+def throw_in_burst(grid: "_Grid", rows: List[int], centre_ms: float, half_win_ms: int = BURST_WINDOW_MS, w: int = 10):
+    """(gps_ms, jump) of the steepest rise in the mean GPS speed of `rows` within +-half_win of `centre_ms` (GPS epoch ms):
+    jump = mean of the next w samples minus the previous w (w = 10 is 1 s). None when the window has too little data."""
+    if not rows:
+        return None
+    i0 = int(grid.idx(centre_ms - half_win_ms)); i1 = int(grid.idx(centre_ms + half_win_ms))
+    lo = max(0, i0 - w); hi = min(grid.n, i1 + w)
+    if hi - lo < 4 * w:
+        return None
+    with np.errstate(all="ignore"):
+        m = np.nanmean(grid.speed[rows, lo:hi], axis=0)
+    if np.isnan(m).mean() > 0.5:
+        return None
+    m = np.where(np.isnan(m), np.nanmedian(m), m)
+    cs = np.concatenate([[0.0], np.cumsum(m)])
+    idx = np.arange(w, len(m) - w)
+    jump = (cs[idx + w] - cs[idx]) / w - (cs[idx] - cs[idx - w]) / w
+    ok = (lo + idx >= i0) & (lo + idx <= i1)
+    if not ok.any():
+        return None
+    k = int(np.argmax(np.where(ok, jump, -np.inf)))
+    return float(grid.t0 + (lo + idx[k]) * STEP_MS), float(jump[k])
+
+
+def anchor_to_throw_in(period: dict, grid: "_Grid", rows: List[int], log=print) -> dict:
+    """Set one period's offset from its throw-in burst (see the constants above). Edits `period` in place when the burst is
+    clear and the move is small; always records what it found under period["throw_in"]."""
+    mark = float(period["video_start_ms"]); rate = float(period.get("rate") or 1.0); off = float(period["offset_ms"])
+    cur = mark * rate + off
+    found = throw_in_burst(grid, rows, cur)
+    info = {"applied": False, "shift_ms": None, "jump": None}
+    if found is not None:
+        burst, jump = found
+        new_off = burst - THROW_IN_REACT_MS - mark
+        shift = new_off + mark - cur
+        info.update(jump=round(jump, 2), shift_ms=int(round(shift)))
+        if jump >= MIN_BURST_JUMP and abs(shift) <= MAX_ANCHOR_SHIFT_MS:
+            period["offset_ms"] = int(round(new_off)); period["rate"] = 1.0; period["source"] = "throw_in"
+            info["applied"] = True
+    period["throw_in"] = info
+    log(f"period {period['half']}: throw-in anchor {'applied' if info['applied'] else 'kept the tag fit'} "
+        f"(shift {info['shift_ms']} ms, burst jump {info['jump']} m/s)")
+    return info
 
 
 def unit_in_match(coverage: float, on_pitch_share: float, distance_m: float) -> bool:
@@ -256,6 +311,10 @@ def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged
         log(f"period {half}: offset {off/1000:.1f} s, rate {rate:.6f}, median residual {np.nanmedian(res):.1f} m (p75 {np.nanpercentile(res, 75):.1f}), bias ({b_u:+.1f}, {b_v:+.1f}) m, n={len(sel)}, anchors {len(anchors)}")
     if not periods:
         raise SyncError("no period could be synced")
+    # ---- throw-in anchor: the offsets and rate come from the half-start burst, not from the tags
+    starter_rows = [grid.pos[p] for p in starters if p in grid.pos] or list(range(len(grid.ids)))
+    for per in periods:
+        anchor_to_throw_in(per, grid, starter_rows, log=log)
     cal["tag_bias_u_m"] = round(bias_u, 2); cal["tag_bias_v_m"] = round(bias_v, 2)
     # ---- tag lag per event type
     by_half = {p["half"]: p for p in periods}

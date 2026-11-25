@@ -237,3 +237,43 @@ def test_sync_refuses_without_enough_carries():
     tracks, carries, events, starts, ends = _synthetic_match()
     with pytest.raises(sync.SyncError):
         sync.compute(tracks, carries[:5], events, [], starts, ends, log=lambda *_: None)
+
+
+# ------------------------------------------------------------------ throw-in anchor
+
+def _plant_burst(tracks, gps_ms, quiet_s=20, run_s=15, run_ms=5.0):
+    """Every player stands still for quiet_s, then runs at run_ms for run_s: a throw-in at gps_ms."""
+    for tr in tracks.values():
+        i = int((gps_ms - tr.t0_ms) / 100)
+        tr.speed[i - quiet_s * 10:i] = 0.3
+        tr.speed[i:i + run_s * 10] = run_ms
+
+
+def test_throw_in_anchor_sets_offset_and_rate_from_the_burst():
+    tracks, carries, events, starts, ends = _synthetic_match()
+    mark1 = starts[1] + OFF1; mark2 = starts[2] + OFF2        # where the tag fit puts the two throw-in marks (GPS ms)
+    _plant_burst(tracks, mark1 + 1000); _plant_burst(tracks, mark2 + 2500)   # players react 1.0 s and 2.5 s after
+    out = sync.compute(tracks, carries, events, list(tracks)[:15], starts, ends, log=lambda *_: None)
+    per = {p["half"]: p for p in out["periods"]}
+    assert per[1]["throw_in"]["applied"] and per[2]["throw_in"]["applied"]
+    # offset = burst - 200 ms - mark: the clock moves +800 ms and +2300 ms
+    assert abs(per[1]["offset_ms"] - (OFF1 + 800)) <= 150 and abs(per[2]["offset_ms"] - (OFF2 + 2300)) <= 150
+    assert per[1]["rate"] == 1.0 and per[2]["rate"] == 1.0 and per[1]["source"] == "throw_in"
+
+
+def test_throw_in_anchor_leaves_a_half_alone_when_the_mark_looks_loose():
+    tracks, carries, events, starts, ends = _synthetic_match()
+    mark1 = starts[1] + OFF1
+    _plant_burst(tracks, mark1 + 7000)                      # burst 7 s after the mark: beyond MAX_ANCHOR_SHIFT_MS
+    out = sync.compute(tracks, carries, events, list(tracks)[:15], starts, ends, log=lambda *_: None)
+    p1 = [p for p in out["periods"] if p["half"] == 1][0]
+    assert p1["throw_in"]["applied"] is False and p1["source"] == "auto"
+    assert abs(p1["offset_ms"] - OFF1) <= 500               # the tag fit stands
+
+
+def test_throw_in_anchor_ignores_a_flat_speed_profile():
+    tracks, carries, events, starts, ends = _synthetic_match()
+    for tr in tracks.values():
+        tr.speed[:] = 3.0
+    out = sync.compute(tracks, carries, events, list(tracks)[:15], starts, ends, log=lambda *_: None)
+    assert all(p["throw_in"]["applied"] is False for p in out["periods"])
