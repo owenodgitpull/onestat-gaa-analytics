@@ -1008,8 +1008,8 @@ async def get_fun_facts(
             fmt_sc = lambda g, p: f"{g}-{p:02d}"
             for m in matches:
                 a, b = ours(m), theirs(m)
-                verb = "beat" if a > b else "lost to" if a < b else "drew with"
-                facts.append(f"Against {m.opponent} we {verb} them {fmt_sc(m.team_goals, m.team_points)} to {fmt_sc(m.opponent_goals, m.opponent_points)}.")
+                verb = "won" if a > b else "lost" if a < b else "drew"
+                facts.append(f"Against {m.opponent} we {verb}: {fmt_sc(m.team_goals, m.team_points)} to {fmt_sc(m.opponent_goals, m.opponent_points)}.")
             goals = sum(m.team_goals for m in matches)
             if goals:
                 facts.append(f"{goals} goals scored across {len(matches)} matches.")
