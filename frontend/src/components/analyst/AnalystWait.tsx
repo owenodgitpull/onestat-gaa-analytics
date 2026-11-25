@@ -83,7 +83,12 @@ export default function AnalystWait({ startedAt, doing, steps, facts }: { starte
 
   const elapsed = Math.max(0, (now - startedAt) / 1000)
   const est = estimateRemaining(runs, steps, now, startedAt)
-  const pct = Math.min(94, 94 * elapsed / (elapsed + est.mid))
+  // The estimate is redone each time a tool starts and can go UP, which pulled the bar back. The bar only ever moves forward:
+  // it holds its highest point until the new estimate catches up (reset for each new question).
+  const peak = useRef({ at: startedAt, v: 0 })
+  if (peak.current.at !== startedAt) peak.current = { at: startedAt, v: 0 }
+  peak.current.v = Math.max(peak.current.v, Math.min(94, 94 * elapsed / (elapsed + est.mid)))
+  const pct = peak.current.v
   const past = est.hi <= 2 && elapsed > 8
   const a = Math.round(est.lo), b = Math.round(est.hi)
   const timeText = past ? 'taking a little longer than usual' : a >= b ? `about ${b} s to go` : `about ${a}–${b} s to go`
