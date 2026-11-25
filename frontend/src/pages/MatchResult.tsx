@@ -1056,20 +1056,6 @@ export default function MatchResult() {
         </div>
       </div>
 
-      {phaseVisual.length > 0 ? (
-        <div className="glass-card p-4 md:p-5 mb-4">
-          <PhaseAnalysis phases={phaseVisual} />
-        </div>
-      ) : phaseTableMd && (
-        <div className="glass-card p-4 md:p-5 mb-4">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
-            <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">Phase analysis</div>
-            <div className="text-xs text-white/40">What each way of getting the ball turned into. Rows overlap, so never add them up.</div>
-          </div>
-          <div className="max-w-none">{renderAnalysisText(phaseTableMd)}</div>
-        </div>
-      )}
-
       {showGpsTracks && matchId && match && (
         <GpsTracksModal matchId={matchId} matchDate={match.match_date} onClose={() => setShowGpsTracks(false)}
           onSummaryFile={file => { setShowGpsUpload(true); handleGpsFileSelected(file) }}
@@ -1335,6 +1321,21 @@ export default function MatchResult() {
                   halfDurationMins={match?.half_duration_mins || 30}
                 />
               </ChartZoomModal>
+            </div>
+          )}
+
+          {/* Phase analysis: after the other match charts, not above them */}
+          {phaseVisual.length > 0 ? (
+            <div className="glass-card p-4 md:p-5">
+              <PhaseAnalysis phases={phaseVisual} />
+            </div>
+          ) : phaseTableMd && (
+            <div className="glass-card p-4 md:p-5">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
+                <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">Phase analysis</div>
+                <div className="text-xs text-white/40">What each way of getting the ball turned into. Rows overlap, so never add them up.</div>
+              </div>
+              <div className="max-w-none">{renderAnalysisText(phaseTableMd)}</div>
             </div>
           )}
 

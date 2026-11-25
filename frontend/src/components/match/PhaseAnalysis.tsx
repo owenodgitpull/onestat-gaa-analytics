@@ -170,7 +170,7 @@ const css = `
 .pa-row{display:grid;grid-template-columns:var(--pa-cols);column-gap:16px;align-items:center;padding:14px 16px;border-top:1px solid var(--pa-line)}
 .pa-row--head{border-top:0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--pa-muted);font-weight:600;padding-top:4px;padding-bottom:6px}
 .pa-row--low .pa-dots,.pa-row--low .pa-half{opacity:.6}
-.pa-num{padding-right:28px;text-align:right;font-variant-numeric:tabular-nums;color:var(--pa-muted)}
+.pa-num{padding:0 8px;text-align:center;font-variant-numeric:tabular-nums;color:var(--pa-muted)}
 .pa-num__lab,.pa-ppp__lab{display:none}
 .pa-halves{display:contents}
 .pa-halfcell>[data-half]::before{content:none}
