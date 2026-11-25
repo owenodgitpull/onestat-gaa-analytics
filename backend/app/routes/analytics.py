@@ -967,30 +967,21 @@ async def get_fun_facts(
     try:
         from app.services.leaderboard_service import LeaderboardService
         rankings = await LeaderboardService._compute_all_rankings(db, user.club_id, None, None)
-        def top(key):
-            rows = rankings.get(key) or []
-            return rows[0] if rows else None
-        t = top("top_scorer")
-        if t and t.get("value"):
-            facts.append(f"{t['player_name']} leads the scoring this season with {round(t['value'])} points.")
-        t = top("clinical_rating")
-        if t and t.get("value"):
-            facts.append(f"{t['player_name']} has the best shot conversion in the squad: {round(t['value'])}%.")
-        t = top("workhorse")
-        if t and t.get("value"):
-            facts.append(f"{t['player_name']} covers the most ground: {t['value']:.1f} km a match.")
-        t = top("speed_demon")
-        if t and t.get("value"):
-            facts.append(f"{t['player_name']} has the squad's top speed: {t['value']:.2f} m/s ({t['value'] * 3.6:.1f} km/h).")
-        t = top("sprint_king")
-        if t and t.get("value"):
-            facts.append(f"{t['player_name']} sprints the most: about {round(t['value'])} a match.")
-        t = top("the_wall")
-        if t and t.get("value"):
-            facts.append(f"{t['player_name']} leads the defensive work with {round(t['value'])} blocks, interceptions and turnovers won.")
-        t = top("motm_points")
-        if t and t.get("value"):
-            facts.append(f"{t['player_name']} has the most man of the match points: {round(t['value'])}.")
+        # (key, first place wording, runner-up wording, value formatter). Each leaderboard gives up to three facts, so the
+        # waiting screen has plenty to rotate through; every one is read straight from the rankings.
+        specs = [
+            ("top_scorer", "{n} leads the scoring this season with {v} points.", "{n} is next on the scoring chart with {v} points.", lambda v: f"{round(v)}"),
+            ("clinical_rating", "{n} has the best shot conversion in the squad: {v}%.", "{n} is close behind on shot conversion: {v}%.", lambda v: f"{round(v)}"),
+            ("workhorse", "{n} covers the most ground: {v} km a match.", "{n} is the next biggest runner: {v} km a match.", lambda v: f"{v:.1f}"),
+            ("speed_demon", "{n} has the squad's top speed: {v} km/h.", "{n} is the second fastest in the squad: {v} km/h.", lambda v: f"{v * 3.6:.1f}"),
+            ("sprint_king", "{n} sprints the most: about {v} a match.", "{n} is next for sprints: about {v} a match.", lambda v: f"{round(v)}"),
+            ("the_wall", "{n} leads the defensive work with {v} blocks, interceptions and turnovers won.", "{n} follows with {v} blocks, interceptions and turnovers won.", lambda v: f"{round(v)}"),
+            ("motm_points", "{n} has the most man of the match points: {v}.", "{n} is next for man of the match points: {v}.", lambda v: f"{round(v)}"),
+        ]
+        for key, first, nxt, fmt in specs:
+            rows = [r for r in (rankings.get(key) or []) if r.get("value") and r.get("player_name")]
+            for i, r in enumerate(rows[:3]):
+                facts.append((first if i == 0 else nxt).format(n=r["player_name"], v=fmt(r["value"])))
     except Exception:
         pass
     try:
@@ -1013,6 +1004,37 @@ async def get_fun_facts(
                 MatchEvent.event_type.in_([EventType.TWO_POINT, EventType.TWO_POINT_FREE]))))).scalar() or 0
             if two:
                 facts.append(f"We have scored {two} two-pointers this season.")
+            # one result fact per match, a few season totals, and counts of what the tagged events recorded
+            fmt_sc = lambda g, p: f"{g}-{p:02d}"
+            for m in matches:
+                a, b = ours(m), theirs(m)
+                verb = "beat" if a > b else "lost to" if a < b else "drew with"
+                facts.append(f"Against {m.opponent} we {verb} them {fmt_sc(m.team_goals, m.team_points)} to {fmt_sc(m.opponent_goals, m.opponent_points)}.")
+            goals = sum(m.team_goals for m in matches)
+            if goals:
+                facts.append(f"{goals} goals scored across {len(matches)} matches.")
+            clean = sum(1 for m in matches if m.opponent_goals == 0)
+            if clean:
+                facts.append(f"We kept the opposition goalless in {clean} of {len(matches)} matches.")
+            top_m = max(matches, key=ours)
+            facts.append(f"Our highest score was {ours(top_m)} points against {top_m.opponent}.")
+            low_m = min(matches, key=theirs)
+            facts.append(f"The fewest points we conceded in a match was {theirs(low_m)}, against {low_m.opponent}.")
+            counts = dict((et.value if hasattr(et, "value") else str(et), n) for et, n in (await db.execute(
+                select(MatchEvent.event_type, func.count()).where(and_(MatchEvent.match_id.in_(ids), MatchEvent.team == Team.OWN))
+                .group_by(MatchEvent.event_type))).all())
+            won = sum(counts.get(k, 0) for k in ("turnover_won", "interception", "tackle_won", "block"))
+            if won:
+                facts.append(f"We have won the ball back {won} times from turnovers, interceptions, tackles and blocks.")
+            wides = counts.get("wide", 0) + counts.get("wide_free", 0)
+            if wides:
+                facts.append(f"{wides} of our shots have gone wide this season.")
+            frees = counts.get("point_free", 0)
+            if frees:
+                facts.append(f"{frees} of our points have come from frees.")
+            cards = counts.get("yellow_card", 0) + counts.get("black_card", 0) + counts.get("red_card", 0)
+            if cards:
+                facts.append(f"{cards} cards have been shown to our players this season.")
     except Exception:
         pass
     _FUN_FACTS_CACHE[str(user.club_id)] = (_time.time(), facts)

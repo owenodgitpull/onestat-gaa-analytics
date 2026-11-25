@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, fetchAPI, ChatMessage, AIChartSpec, DataTable, ChatSessionSummary } from '@/services/api'
 import { useAuth } from '@/contexts/AuthContext'
 import QuestionPicker from '@/components/analyst/QuestionPicker'
-import AnalystWait, { recordWait } from '@/components/analyst/AnalystWait'
+import AnalystWait, { recordRun, type WaitStep } from '@/components/analyst/AnalystWait'
 import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import DynamicChart from '@/components/DynamicChart'
 import DataTableCard from '@/components/DataTableCard'
@@ -62,6 +62,7 @@ function AIAnalystPageInner() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [waitStart, setWaitStart] = useState(0)
+  const [waitSteps, setWaitSteps] = useState<WaitStep[]>([])
   const { user } = useAuth()
   const firstName = (user?.name || '').split(' ')[0]
   const { data: factsData } = useQuery({
@@ -216,6 +217,7 @@ function AIAnalystPageInner() {
     setInput('')
     setLoading(true)
     setWaitStart(Date.now())
+    setWaitSteps([])
     setIsStreaming(false)
     setStreamingContent('')
     setThinkingTool(null)
@@ -226,6 +228,7 @@ function AIAnalystPageInner() {
     try {
       let accumulated = ''
       const waitStart0 = Date.now()
+      const steps0: WaitStep[] = []
       const videos: ChatVideo[] = []
 
       await api.ai.streamChat(messages, userMessage.content, {
@@ -233,9 +236,12 @@ function AIAnalystPageInner() {
           setLoading(false)
           setIsStreaming(true)
           setThinkingTool(tool)
+          const st = { name: tool, at: Date.now() }
+          steps0.push(st)
+          setWaitSteps(prev => [...prev, st])
         },
         onText: (chunk) => {
-          if (!accumulated) recordWait((Date.now() - waitStart0) / 1000)
+          if (!accumulated) recordRun((Date.now() - waitStart0) / 1000, steps0, waitStart0)
           setLoading(false)
           setIsStreaming(true)
           setThinkingTool(null)
@@ -431,7 +437,7 @@ function AIAnalystPageInner() {
 
         {/* Waiting: progress against the usual wait, what it is looking up, and a fact about the team */}
         {(loading || (isStreaming && !streamingContent)) && (
-          <AnalystWait startedAt={waitStart || Date.now()} doing={thinkingTool ? friendlyToolName(thinkingTool) : null} facts={facts} />
+          <AnalystWait startedAt={waitStart || Date.now()} doing={thinkingTool ? friendlyToolName(thinkingTool) : null} steps={waitSteps} facts={facts} />
         )}
 
         {/* Streaming text */}
