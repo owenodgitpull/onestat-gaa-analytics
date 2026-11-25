@@ -9,7 +9,7 @@
  */
 
 import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Gauge } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Gauge, Loader2 } from 'lucide-react'
 
 export interface VideoPlayerHandle {
   seekTo: (ms: number) => void
@@ -91,22 +91,32 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // position, null when not hovering. Purely informational, no seek.
     const [hoverPercent, setHoverPercent] = useState<number | null>(null)
     const scrubbingRef = useRef(false)
+    // A jump on a long match video takes 2-4 s to show its first frame (the file is range-read from storage). Until the
+    // browser reports `seeked`, the bar, the time and a small spinner show where we are going, so a click never looks dead.
+    const [seekTarget, setSeekTarget] = useState<number | null>(null)
+    useEffect(() => {
+      if (seekTarget == null) return
+      const t = setTimeout(() => setSeekTarget(null), 20000)   // never stuck if a seek fails
+      return () => clearTimeout(t)
+    }, [seekTarget])
+    const seekMs = (ms: number) => {
+      const v = videoRef.current
+      if (!v) return
+      const clamped = Math.max(0, maxSeekMs != null ? Math.min(ms, maxSeekMs) : ms)
+      v.currentTime = clamped / 1000
+      setSeekTarget(clamped)
+    }
+    const shownTime = seekTarget ?? currentTime
     // Seek to the pointer position on the track: the same x / width scale the hover preview and tick marks use.
     const seekToPointer = (el: HTMLElement, clientX: number) => {
       const rect = el.getBoundingClientRect()
       if (!rect.width || !duration || !videoRef.current) return
       const percent = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-      const ms = percent * duration
-      videoRef.current.currentTime = (maxSeekMs != null ? Math.min(ms, maxSeekMs) : ms) / 1000
+      seekMs(percent * duration)
     }
 
     useImperativeHandle(ref, () => ({
-      seekTo: (ms: number) => {
-        if (videoRef.current) {
-          const clamped = maxSeekMs != null ? Math.min(ms, maxSeekMs) : ms
-          videoRef.current.currentTime = clamped / 1000
-        }
-      },
+      seekTo: (ms: number) => { seekMs(ms) },
       getCurrentTimeMs: () => {
         return videoRef.current ? Math.round(videoRef.current.currentTime * 1000) : 0
       },
@@ -161,7 +171,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         if (maxSeekMs != null && seconds > 0) {
           target = Math.min(target, maxSeekMs / 1000)
         }
-        videoRef.current.currentTime = target
+        seekMs(target * 1000)
       }
     }
 
@@ -250,6 +260,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 crossOrigin="anonymous"
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleDurationChange}
+                onSeeked={() => setSeekTarget(null)}
                 onClick={togglePlay}
                 onError={handleSourceError}
                 className="w-full h-full object-contain cursor-pointer"
@@ -320,8 +331,9 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
           {/* Time display */}
           <span className="text-sm text-white/60 font-mono ml-2">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {formatTime(shownTime)} / {formatTime(duration)}
           </span>
+          {seekTarget != null && <Loader2 size={14} className="animate-spin text-emerald-300 shrink-0" aria-label="Loading the video at this time" />}
 
           {/* Scrubber */}
           <div
@@ -348,7 +360,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               role="slider"
               aria-valuemin={0}
               aria-valuemax={Math.round(duration)}
-              aria-valuenow={Math.round(currentTime)}
+              aria-valuenow={Math.round(shownTime)}
               tabIndex={0}
               className="relative w-full h-4 flex items-center cursor-pointer select-none touch-none"
               onPointerDown={(e) => {
@@ -365,19 +377,18 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 const step = e.shiftKey ? 30 : 5
                 if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                   e.preventDefault()
-                  const target = Math.max(0, videoRef.current.currentTime + (e.key === 'ArrowRight' ? step : -step))
-                  videoRef.current.currentTime = maxSeekMs != null ? Math.min(target, maxSeekMs / 1000) : target
+                  seekMs((videoRef.current.currentTime + (e.key === 'ArrowRight' ? step : -step)) * 1000)
                 }
               }}
             >
               <div className="relative w-full h-1.5 bg-white/10 rounded-full">
                 <div
                   className="absolute left-0 top-0 h-full bg-emerald-500 rounded-full"
-                  style={{ width: `${duration > 0 ? Math.min(100, (Math.min(currentTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration) / duration) * 100) : 0}%` }}
+                  style={{ width: `${duration > 0 ? Math.min(100, (Math.min(shownTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration) / duration) * 100) : 0}%` }}
                 />
                 <div
                   className="absolute top-1/2 w-3 h-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 shadow"
-                  style={{ left: `${duration > 0 ? Math.min(100, (Math.min(currentTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration) / duration) * 100) : 0}%` }}
+                  style={{ left: `${duration > 0 ? Math.min(100, (Math.min(shownTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration) / duration) * 100) : 0}%` }}
                 />
               </div>
             </div>
@@ -422,13 +433,16 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
                   style={{ left: `${m.pct}%` }}
                 >
-                  <span
-                    className="text-[11px] font-bold select-none whitespace-nowrap"
+                  <button
+                    type="button"
+                    onClick={() => seekMs(m.ms)}
+                    className="text-[11px] font-bold select-none whitespace-nowrap pointer-events-auto cursor-pointer hover:underline focus-visible:underline outline-none"
                     style={{ color: COLORS[m.color], transform: `translateY(${-14 - m.level * 11}px)` }}
-                    title={`${m.name} - ${fmt(m.ms)}`}
+                    title={`${m.name} - ${fmt(m.ms)}. Click to jump there.`}
+                    aria-label={`Jump to ${m.name}, ${fmt(m.ms)}`}
                   >
                     {m.label}
-                  </span>
+                  </button>
                   <div className="w-0.5 h-full rounded-full" style={{ background: COLORS[m.color], marginTop: `${-m.level * 0}px` }} />
                 </div>
               ))

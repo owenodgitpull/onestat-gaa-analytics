@@ -9,7 +9,7 @@
  * there is no opposition GPS). Tagged events pop up where they were tagged, for 3 s.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, Tag, Users, SlidersHorizontal, CircleDot, Info } from 'lucide-react'
+import { Loader2, AlertCircle, Tag, Users, SlidersHorizontal, CircleDot, Info, Timer } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GpsCarrierFixer from './GpsCarrierFixer'
 import { PERIOD_LABEL } from './GpsTracksModal'
@@ -277,6 +277,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   // Timing control: "dots behind the video" moves the GPS clock later (offset + d), "ahead" earlier. Only the half on screen
   // changes; the saved sync is marked confirmed. The positions are re-read from the server afterwards.
   const qc = useQueryClient()
+  const [timingOpen, setTimingOpen] = useState(false)   // collapsed until an admin asks to calibrate
   const [timing, setTiming] = useState<{ kind: 'idle' | 'saving' | 'saved' | 'error'; text: string }>({ kind: 'idle', text: '' })
   const nudgeTiming = async (behind: boolean, ms: number) => {
     const per = (ctx.sync?.periods || []).find((p: any) => p.half === half)
@@ -533,6 +534,12 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
               title="Highlight the player carrying the ball, from your carry tags recorded during the match">
               <CircleDot size={13} /> Carrier
             </button>
+            {canEdit && (ctx.sync?.periods || []).length > 0 && (
+              <button onClick={() => setTimingOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${timingOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={timingOpen}
+                title="The dots are not in time with the video: shift them for this half">
+                <Timer size={13} /> Video off sync? Calibrate
+              </button>
+            )}
             <button onClick={() => setShowInfo(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showInfo ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={showInfo}
               title="About this pitch: direction, scale, the legend and what is on screen" aria-label="About this pitch">
               <Info size={13} />
@@ -545,7 +552,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             )}
           </div>
         </div>
-        {canEdit && (ctx.sync?.periods || []).length > 0 && (
+        {canEdit && timingOpen && (ctx.sync?.periods || []).length > 0 && (
           <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-2">
             <div className="text-xs text-white/70">
               <span className="font-semibold text-white">Timing, {PERIOD_LABEL[half] || `period ${half}`}.</span> Pause on a clear moment, such as a kick-out, and check the dots stand where the players are on the video.
