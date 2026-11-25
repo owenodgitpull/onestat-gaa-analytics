@@ -2053,6 +2053,10 @@ const aiAPI = {
     return fetchAPI<PostMatchReport>(`/ai/post-match-report/${matchId}`);
   },
 
+  getPhaseAnalysis: async (matchId: string): Promise<{ phases: any[] }> => {
+    return fetchAPI<{ phases: any[] }>(`/ai/phase-analysis/${matchId}`);
+  },
+
   regeneratePostMatchReport: async (matchId: string, excludeBallCarry = false): Promise<PostMatchReport> => {
     return fetchAPI<PostMatchReport>(`/ai/post-match-report/${matchId}?force_regenerate=true&exclude_ball_carry=${excludeBallCarry}`);
   },

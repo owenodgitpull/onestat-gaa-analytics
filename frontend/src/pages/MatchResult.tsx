@@ -71,6 +71,7 @@ import { useVideoEventsForSessions } from '../hooks/useVideoEvents'
 import { usePlayers } from '../hooks/usePlayers'
 import { calculateManOfMatch } from '../utils/motm'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
+import PhaseAnalysis, { type PhaseGroup } from '../components/match/PhaseAnalysis'
 import { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopover'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import FeatureGate from '../components/FeatureGate'
@@ -522,6 +523,17 @@ export default function MatchResult() {
     }
     return out.join(String.fromCharCode(10))
   }, [postMatchReport?.analysis])
+  // The visual Phase analysis is computed live from the events (same possessions as the report table); the coverage footnote
+  // still comes from the report text. If it cannot load, the report's own table is shown instead.
+  const { data: phaseData } = useQuery({
+    queryKey: ['phase-analysis', matchId], queryFn: () => api.ai.getPhaseAnalysis(matchId!),
+    enabled: !!matchId, staleTime: 5 * 60 * 1000, retry: false,
+  })
+  const phaseVisual = (phaseData?.phases ?? []) as PhaseGroup[]
+  const phaseFootMd = useMemo(() => {
+    const m = (phaseTableMd || '').split(/\r?\n/).filter(l => l.trim().startsWith('*') && !l.trim().startsWith('**'))
+    return m.join(String.fromCharCode(10, 10))
+  }, [phaseTableMd])
   // Throw-ins and sideline balls are tagged in video tagging, so they come from the video events (not the match events)
   const videoEvents = useVideoEventsForSessions((videoSessionsData?.sessions ?? []).map((s: any) => String(s.id)))
   const byPlayer = useMemo(() => {
@@ -1048,7 +1060,12 @@ export default function MatchResult() {
         </div>
       </div>
 
-      {phaseTableMd && (
+      {phaseVisual.length > 0 ? (
+        <div className="glass-card p-4 md:p-5 mb-4">
+          <PhaseAnalysis phases={phaseVisual} />
+          {phaseFootMd && <div className="max-w-none mt-2 text-xs">{renderAnalysisText(phaseFootMd)}</div>}
+        </div>
+      ) : phaseTableMd && (
         <div className="glass-card p-4 md:p-5 mb-4">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
             <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">Phase analysis</div>

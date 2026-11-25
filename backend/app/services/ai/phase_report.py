@@ -199,6 +199,56 @@ def restarts_line(rs: dict) -> str:
     return ("**Restarts** (counted as tagged, no possession chain follows them): " + "; ".join(parts) + ".") if parts else ""
 
 
+def _pa_row(rid: str, label, detail, sel: list) -> dict:
+    """One row of the visual Phase analysis: plain counts only. h = [had a shot, finished, scored] per period."""
+    def hh(h):
+        s = [p for p in sel if p.half == h] if h < 3 else [p for p in sel if (p.half or 0) >= 3]
+        if not s:
+            return None
+        d = _stats_row(s)
+        return [d["became_a_shot"], d["finished"], d["scored"]]
+    m = _stats_row(sel)
+    return {"id": rid, "label": label, "detail": detail, "poss": m["possessions"], "fin": m["finished"],
+            "shot": m["became_a_shot"], "scored": m["scored"], "pts": m["points"], "h1": hh(1), "h2": hh(2), "h3": hh(3)}
+
+
+async def phase_analysis_data(db, match_id, club_id=None) -> dict:
+    """Structured phase analysis for the Match Result card: Jim's phases in his order, each with its rows. Same possessions
+    and counts as the report table (it is built from the very same rows), nothing re-derived. `exclusive` is true only where
+    the rows cannot overlap (every possession has one origin and one owner), so a possession total may sit in the heading."""
+    loaded = await _load(db, match_id, club_id)
+    if loaded is None:
+        return {"phases": []}
+    match, rows, evs = loaded
+    if not evs:
+        return {"phases": []}
+    ps = possessions(evs)
+    cls = J.classify(rows, evs, ps, getattr(match, "attacking_right_first_half", None), getattr(match, "half_duration_mins", None) or 30)
+    by = lambda g: [p for p in ps if GROUPS[g](p)]
+    N = J.PHASE_NAMES
+    spec = [
+        ("transitions", N["transition"], "Turnovers won, direct to their 45", False, [("transitions", None, None, cls["quick"])]),
+        ("established", N["established"], "All our other possessions", False, [("established", None, None, cls["established"])]),
+        ("kickouts", N["kickouts"], None, True, [("ko1", "Ours we kept", None, by("own_ko_kept")), ("ko2", "Ours we lost", "Their ball", by("own_ko_lost")),
+                                                  ("ko3", "Theirs we won", None, by("opp_ko_won")), ("ko4", "Theirs they kept", "Their ball", by("opp_ko_kept"))]),
+        ("turnovers", N["turnovers"], None, True, [("to1", "Won", None, by("turnovers_won")), ("to2", "Lost", "Their ball", by("turnovers_lost"))]),
+        ("buildup", N["buildup"], None, False, [("bu1", "Won in our own third", None, cls["buildup"]), ("bu2", "…and crossed their 45", None, cls["buildup_crossed"])]),
+        ("tracked", N["tracked"], None, True, [("tp1", "All ours", None, by("all_ours")), ("tp2", "All theirs", None, by("all_theirs"))]),
+    ]
+    out = []
+    for pid, title, detail, exclusive, rws in spec:
+        built = [_pa_row(*r) for r in rws if r[3]]
+        if built:
+            out.append({"id": pid, "title": title, "detail": detail, "exclusive": exclusive, "rows": built})
+    rs = await _restarts(db, match, rows)
+    t, sb = rs["throw_ins"], rs["sideline_balls"]
+    pair = lambda a, b: {"ours": a, "theirs": b} if (a + b) else {"ours": None, "theirs": None}   # none tagged = not supplied, never a made-up 0
+    out.append({"id": "restarts", "title": N["restarts"], "note": "Counts only", "counts": [
+        {"label": "Throw-ins", **pair(t["won_by_us"], t["won_by_them"])},
+        {"label": "Sideline balls", **pair(sb["ours"], sb["theirs"])}]})
+    return {"phases": out}
+
+
 async def _load(db, match_id, club_id):
     """(match, ordered source rows, normalised events) or None when the match is not this club's."""
     q = select(Match).where(Match.id == match_id)

@@ -607,6 +607,18 @@ async def chat_stream_endpoint(
     )
 
 
+@router.get("/phase-analysis/{match_id}")
+async def phase_analysis_endpoint(
+    match_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Structured phase analysis (Jim's phases, their rows, counts per half) for the Match Result card. No AI, live from the events."""
+    await assert_match_in_club(db, match_id, user.club_id)
+    from app.services.ai.phase_report import phase_analysis_data
+    return await phase_analysis_data(db, match_id, user.club_id)
+
+
 @router.get("/post-match-report/{match_id}", response_model=PostMatchReportResponse)
 async def post_match_report_endpoint(
     match_id: str,
