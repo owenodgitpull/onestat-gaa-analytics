@@ -27,8 +27,9 @@ export default function GpsSyncCheck({ matchId, ctx, canEdit, onOpenReplay }: {
     setBusy(label)
     setStatus({ tone: 'info', text: `Saving: ${label}…` })
     try {
-      const periods = (sync?.periods || []).map(p => ({ half: p.half, offset_ms: p.half === half ? offsetMs : p.offset_ms }))
-      await api.matchGpsTimeseries.overrideSync(matchId, periods, true)
+      // only the half that was changed: the others keep their own offset, rate and "automatic" source
+      const cur = (sync?.periods || []).find(p => p.half === half)
+      await api.matchGpsTimeseries.overrideSync(matchId, [{ half, offset_ms: offsetMs, rate: cur?.rate ?? undefined }], true)
       setStatus({ tone: 'ok', text: `${label}. The sync is now marked confirmed; every GPS view uses the new offset.` })
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['gps-timeseries', matchId] }),
@@ -98,7 +99,7 @@ export default function GpsSyncCheck({ matchId, ctx, canEdit, onOpenReplay }: {
               </div>
               {canEdit && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs text-white/55 mr-1">Nudge GPS:</span>
+                  <span className="text-xs text-white/55 mr-1">Dots behind the video: press +. Dots ahead: press −.</span>
                   {[-2000, -500, 500, 2000].map(d => {
                     const label = `${PERIOD_LABEL[p.half]} ${d > 0 ? '+' : '−'}${Math.abs(d) / 1000} s`
                     return (

@@ -10,8 +10,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Tag, Users, SlidersHorizontal, CircleDot, Info } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GpsCarrierFixer from './GpsCarrierFixer'
+import { PERIOD_LABEL } from './GpsTracksModal'
 import JumpToEvent from './JumpToEvent'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
 import { useVideoSession } from '../../hooks/useVideoSessions'
@@ -83,8 +84,10 @@ function lastIndexAtOrBefore<T extends { video_ms: number }>(arr: T[], t: number
   return ans
 }
 
-export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, onTimeChange, active = true }: {
+export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, onTimeChange, active = true, canEdit = false }: {
   matchId: string; ctx: GpsReplayContext; initialMs?: number | null; team: string; onTimeChange?: (ms: number) => void
+  /** a club admin sees the timing control (dots behind / ahead of the video) under the pitch */
+  canEdit?: boolean
   /** bump `n` to jump the video to `ms` (from another tab) without reloading it */
   seekRequest?: { ms: number; n: number } | null
   /** false while another tab is showing: the video pauses (the replay stays mounted so the video is not reloaded) */
@@ -270,6 +273,32 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     return out
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editOpen, ownCarries, pitchMs])
+
+  // Timing control: "dots behind the video" moves the GPS clock later (offset + d), "ahead" earlier. Only the half on screen
+  // changes; the saved sync is marked confirmed. The positions are re-read from the server afterwards.
+  const qc = useQueryClient()
+  const [timing, setTiming] = useState<{ kind: 'idle' | 'saving' | 'saved' | 'error'; text: string }>({ kind: 'idle', text: '' })
+  const nudgeTiming = async (behind: boolean, ms: number) => {
+    const per = (ctx.sync?.periods || []).find((p: any) => p.half === half)
+    if (!per) { setTiming({ kind: 'error', text: 'This half has no sync to adjust.' }); return }
+    const label = PERIOD_LABEL[half] || `Period ${half}`
+    const secs = ms / 1000
+    setTiming({ kind: 'saving', text: `Moving the dots ${behind ? 'forward' : 'back'} ${secs} s for the ${label}…` })
+    try {
+      await api.matchGpsTimeseries.overrideSync(matchId, [{ half, offset_ms: per.offset_ms + (behind ? ms : -ms), rate: per.rate }], true)
+      setWindows({})
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['gps-context', matchId] }),
+        qc.invalidateQueries({ queryKey: ['gps-timeseries', matchId] }),
+        qc.invalidateQueries({ queryKey: ['gps-analysis', matchId] }),
+        qc.invalidateQueries({ queryKey: ['gps-carry-times', matchId] }),
+      ])
+      setTiming({ kind: 'saved', text: `Saved: the ${label} dots now run ${secs} s ${behind ? 'earlier' : 'later'} against the video. Press play to check.` })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setTiming({ kind: 'error', text: /403|forbidden|permission/i.test(msg) ? 'Only a club admin can change the timing.' : `Not saved: ${msg}` })
+    }
+  }
 
   const savePins = async (change: Record<string, number | null>, doing: string, done: string) => {
     setPinState({ kind: 'saving', text: doing })
@@ -516,6 +545,33 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             )}
           </div>
         </div>
+        {canEdit && (ctx.sync?.periods || []).length > 0 && (
+          <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-2">
+            <div className="text-xs text-white/70">
+              <span className="font-semibold text-white">Timing, {PERIOD_LABEL[half] || `period ${half}`}.</span> Pause on a clear moment, such as a kick-out, and check the dots stand where the players are on the video.
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-white/60 w-44">Dots are behind the video</span>
+              {[500, 2000].map(ms => (
+                <button key={`b${ms}`} disabled={timing.kind === 'saving'} onClick={() => nudgeTiming(true, ms)}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-xs text-white tabular-nums disabled:opacity-40">Move forward {ms / 1000} s</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-white/60 w-44">Dots are ahead of the video</span>
+              {[500, 2000].map(ms => (
+                <button key={`a${ms}`} disabled={timing.kind === 'saving'} onClick={() => nudgeTiming(false, ms)}
+                  className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-xs text-white tabular-nums disabled:opacity-40">Move back {ms / 1000} s</button>
+              ))}
+            </div>
+            {timing.kind !== 'idle' && (
+              <div role="status" className={`flex items-start gap-2 text-xs ${timing.kind === 'error' ? 'text-red-300' : timing.kind === 'saved' ? 'text-emerald-300' : 'text-white/60'}`}>
+                {timing.kind === 'saving' ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : timing.kind === 'error' ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}
+                <span>{timing.text}</span>
+              </div>
+            )}
+          </div>
+        )}
         {(status.busy || status.error) && (
         <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
           {status.busy ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : status.error ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}

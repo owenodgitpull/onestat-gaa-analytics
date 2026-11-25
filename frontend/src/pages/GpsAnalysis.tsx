@@ -104,7 +104,7 @@ export default function GpsAnalysis() {
       ) : ctx && (
         <>
           <div className={tab === 'replay' ? '' : 'hidden'}>
-            <GpsReplay matchId={matchId} ctx={ctx} initialMs={initialT} seekRequest={seekRequest} team={team} onTimeChange={onTime} active={tab === 'replay'} />
+            <GpsReplay matchId={matchId} ctx={ctx} initialMs={initialT} seekRequest={seekRequest} team={team} onTimeChange={onTime} active={tab === 'replay'} canEdit={canEdit} />
           </div>
           {/* full width; each pitch caps its own size to the screen height (GpsPitch fit) so it never needs scrolling */}
           {tab !== 'replay' && <GpsSeasonCtx.Provider value={seasonCtx}><div className="space-y-4">
