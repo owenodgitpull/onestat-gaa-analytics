@@ -14,7 +14,7 @@ import { gpsAnalysisApi, type KoPattern } from '@/services/gpsAnalysisApi'
 type Group = 'attention' | 'well' | 'know'
 interface Item { id: string; group: Group; source: string; figure?: string; sub?: string; text: string; weight: number }
 
-const COLLAPSED = 3
+const PAGE = 10        // rows shown at a time in each section; "Show more" adds another page
 
 /** The point in one short sentence: first sentence, trimmed at a word near 130 characters. The full text stays on hover. */
 function brief(t: string): string {
@@ -75,20 +75,16 @@ const GROUPS: { id: Group; title: string; hint: string; icon: typeof TrendingUp;
   { id: 'know', title: 'Worth knowing', hint: 'Steady KPIs, charts, setups', icon: Minus, tone: 'text-white/70' },
 ]
 
-function Tile({ it }: { it: Item }) {
+/** One insight, one row: the figure (with last 3 v season under it), what it is about, and the one-sentence read. */
+function Row({ it }: { it: Item }) {
   return (
-    <li className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 flex gap-3">
-      {it.figure && (
-        <div className="shrink-0 w-[4.5rem]">
-          <div className="text-xl font-bold text-white tabular-nums leading-none">{it.figure}</div>
-          {it.sub && <div className="text-[10px] text-white/50 leading-snug mt-1">{it.sub}</div>}
-        </div>
-      )}
-      <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-wide text-white/50 font-semibold mb-0.5 leading-snug">{it.source.replace(/^Chart · /, '')}</div>
-        <p className="text-sm text-white/90 leading-snug" title={it.text}>{brief(it.text)}</p>
-        {!it.figure && it.sub && <div className="text-[11px] text-white/50 mt-1">{it.sub}</div>}
+    <li className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 grid grid-cols-1 sm:grid-cols-[6.5rem_11rem_minmax(0,1fr)] gap-x-5 gap-y-1.5 items-center">
+      <div>
+        {it.figure && <div className="text-xl font-bold text-white tabular-nums leading-none">{it.figure}</div>}
+        {it.sub && <div className="text-[10px] text-white/50 leading-snug mt-1">{it.sub}</div>}
       </div>
+      <div className="text-[11px] uppercase tracking-wide text-white/55 font-semibold leading-snug">{it.source.replace(/^Chart · /, '')}</div>
+      <p className="text-sm text-white/90 leading-snug" title={it.text}>{brief(it.text)}</p>
     </li>
   )
 }
@@ -99,7 +95,8 @@ export default function InsightsBoard({ cards, funnelInsight, aiCharts, hasGps }
   const [open, setOpen] = useState<boolean>(() => {
     try { return localStorage.getItem('insights-board-open') === '1' } catch { return false }
   })
-  const [all, setAll] = useState(false)
+  const [shownBy, setShownBy] = useState<Record<Group, number>>({ attention: PAGE, well: PAGE, know: PAGE })
+  const [closed, setClosed] = useState<Record<Group, boolean>>({ attention: false, well: false, know: false })   // each section can fold away too
   const ko = useQuery({ queryKey: ['gps-ko-patterns'], queryFn: () => gpsAnalysisApi.kickoutPatterns(), staleTime: 10 * 60 * 1000, retry: false, enabled: hasGps && open })
 
   const items: Item[] = [
@@ -130,18 +127,41 @@ export default function InsightsBoard({ cards, funnelInsight, aiCharts, hasGps }
           {items.length === 0 ? (
             <p className="mt-4 text-sm text-white/60">No insights yet: they appear once the season's KPI reads have been written (after match data is recorded).</p>
           ) : (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="mt-5 space-y-6">
               {GROUPS.map(g => {
                 const list = items.filter(i => i.group === g.id).sort((a, b) => b.weight - a.weight)
-                const shown = all ? list : list.slice(0, COLLAPSED)
+                const n = shownBy[g.id]
+                const shown = list.slice(0, n)
                 const Icon = g.icon
+                const fold = closed[g.id]
                 return (
                   <section key={g.id} className="min-w-0">
-                    <h3 className={`text-sm font-semibold flex items-center gap-1.5 ${g.tone}`}><Icon size={14} aria-hidden="true" />{g.title} <span className="text-white/40 font-normal">({list.length})</span></h3>
-                    <p className="text-[11px] text-white/45 mb-2">{g.hint}</p>
-                    {list.length === 0 ? <p className="text-xs text-white/40">Nothing here right now.</p> : (
-                      <ul className="space-y-2">{shown.map(it => <Tile key={it.id} it={it} />)}</ul>
-                    )}
+                    <button onClick={() => setClosed(c => ({ ...c, [g.id]: !c[g.id] }))} aria-expanded={!fold} className="w-full flex items-center justify-between gap-3 text-left mb-2">
+                      <span>
+                        <span className={`text-sm font-semibold flex items-center gap-1.5 ${g.tone}`}><Icon size={14} aria-hidden="true" />{g.title} <span className="text-white/40 font-normal">({list.length})</span></span>
+                        <span className="block text-[11px] text-white/45">{g.hint}</span>
+                      </span>
+                      {fold ? <ChevronDown size={16} className="text-white/50 shrink-0" /> : <ChevronUp size={16} className="text-white/50 shrink-0" />}
+                    </button>
+                    {!fold && (list.length === 0 ? <p className="text-xs text-white/40">Nothing here right now.</p> : (
+                      <>
+                        <ul className="space-y-2.5 max-h-[34rem] overflow-y-auto pr-1.5">{shown.map(it => <Row key={it.id} it={it} />)}</ul>
+                        {list.length > PAGE && (
+                          <div className="mt-3 flex items-center gap-2">
+                            {n < list.length && (
+                              <button onClick={() => setShownBy(b => ({ ...b, [g.id]: b[g.id] + PAGE }))} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 text-xs font-medium border border-white/10 transition-colors">
+                                <ChevronDown size={14} />Show {Math.min(PAGE, list.length - n)} more <span className="text-white/45">({list.length - n} left)</span>
+                              </button>
+                            )}
+                            {n > PAGE && (
+                              <button onClick={() => setShownBy(b => ({ ...b, [g.id]: PAGE }))} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white/60 hover:text-white/90 text-xs font-medium transition-colors">
+                                <ChevronUp size={14} />Show fewer
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ))}
                     {g.id === 'know' && hasGps && ko.isLoading && (
                       <p className="mt-2 text-xs text-white/50 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />Finding kickout setups across the GPS matches…</p>
                     )}
@@ -149,11 +169,6 @@ export default function InsightsBoard({ cards, funnelInsight, aiCharts, hasGps }
                 )
               })}
             </div>
-          )}
-          {items.length > 0 && GROUPS.some(g => items.filter(i => i.group === g.id).length > COLLAPSED) && (
-            <button onClick={() => setAll(a => !a)} className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/80 text-xs font-medium border border-white/10 transition-colors">
-              {all ? <ChevronUp size={14} /> : <ChevronDown size={14} />}{all ? 'Show the top 3 in each' : `Show all ${items.length} insights`}
-            </button>
           )}
         </>
       )}

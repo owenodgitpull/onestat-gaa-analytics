@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -34,7 +34,7 @@ import {
 import WeeklyBriefCard from '@/components/dashboard/WeeklyBriefCard'
 import KPILibraryModal from '@/components/dashboard/KPILibraryModal'
 import InsightsBoard from '@/components/dashboard/InsightsBoard'
-import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS, NEW_KPIS } from '@/config/kpiRegistry'
+import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS, NEW_KPIS, RETIRED_KPI_IDS } from '@/config/kpiRegistry'
 import SquadHealthView from '@/components/SquadHealthView'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import InsightAlertsPanel from '@/components/InsightAlertsPanel'
@@ -139,7 +139,7 @@ export default function AnalyticsDashboard() {
     resetLayout,
   } = useDashboardLayout(clubId)
   // the KPI cards shown: this person's saved choice, else the club's default setup, else the standard set
-  const visibleKpis = layout.visibleKpis ?? DEFAULT_VISIBLE_KPIS
+  const visibleKpis = useMemo(() => [...new Set((layout.visibleKpis ?? DEFAULT_VISIBLE_KPIS).map(id => RETIRED_KPI_IDS[id] ?? id))], [layout.visibleKpis])
   const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [regenCount, setRegenCount] = useState(0)

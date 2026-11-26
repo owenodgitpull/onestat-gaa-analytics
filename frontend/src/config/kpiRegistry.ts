@@ -183,17 +183,13 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     },
   },
   {
-    id: 'clean-sheet',
-    frontKey: 'clean_sheet_rate',
-    frontLabel: 'Clean Sheet Rate',
-    flipKey: 'goals_conceded_pg',
-    flipLabel: 'Goals Conceded / Game',
+    id: 'goals-conceded',
+    frontKey: 'goals_conceded_pg',
+    frontLabel: 'Goals Conceded / Game',
+    flipKey: null,
+    flipLabel: null,
     theme: 'Defensive Solidity',
     explanations: {
-      clean_sheet_rate: {
-        what: 'Percentage of matches where your team conceded zero goals. Goals are game-changers in GAA — keeping them out is a massive competitive advantage.',
-        formula: '(Matches with zero goals conceded ÷ Total matches) × 100.',
-      },
       goals_conceded_pg: {
         what: 'Average goals conceded per match. Even when goals are conceded, is it 1 or 3? A critical defensive metric.',
         formula: 'Total goals conceded ÷ Matches played.',
@@ -310,6 +306,10 @@ export const DEFAULT_VISIBLE_KPIS = [
   'avg-scored',
   'back-behind-ball',
 ]
+
+/** KPI cards that were renamed or dropped: a saved selection that still holds the old id is read as the new one (Clean Sheet Rate was
+ *  dropped in favour of Goals Conceded / Game, which says the same thing in GAA terms). */
+export const RETIRED_KPI_IDS: Record<string, string> = { 'clean-sheet': 'goals-conceded' }
 
 /** Cards added after people had already saved their own selection: shown once to everyone (they can hide them again). */
 export const NEW_KPIS = ['back-behind-ball']

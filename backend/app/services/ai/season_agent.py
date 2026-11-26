@@ -1214,6 +1214,10 @@ Use the tools to gather data before providing your analysis.
                     f"Direction: {trend.get('direction', '?')}, "
                     f"Change: {trend.get('change_pct', '?')}%"
                 )
+                if trend.get("recent_by_match") is not None:
+                    entry += f" | Recent by match: {trend['recent_by_match']}"
+                if trend.get("one_match_only"):
+                    entry += " | ONE MATCH ONLY: nearly all of the recent total came from a single match and another recent match had none"
             cards_summary.append(entry)
 
         meta = kpi_data.get("metadata", {})
@@ -1265,6 +1269,7 @@ Generate a SHORT, punchy insight for each KPI card.
 - Use GAA terminology naturally (kickouts, turnovers, frees, the posts, etc.)
 - Vary your tone — don't start every insight the same way
 - Use tools to look up additional data if a KPI trend needs context
+- ONE MATCH ONLY (cards, minutes with 14 men): when a card line says so, it was a single game, not a pattern. Never call it a trend or say "recently", "lately", "costing us" or that we are "losing men". Say plainly that it was the one match (for example "All from the one game; the other recent matches were clean") or stay neutral. Only describe a pattern when two or more of the recent matches had it.
 
 ## Season Context
 {meta_str}

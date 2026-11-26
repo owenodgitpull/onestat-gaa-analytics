@@ -2759,6 +2759,15 @@ class SeasonDashboardService:
                 "change_pct": change_pct,
             }
 
+        def one_match_flag(per_match: list) -> dict:
+            """Rare-event cards (cards, minutes with 14 men): the recent total split by match, and whether ONE match made nearly all
+            of it while another had none. The AI reads it so a single bad game is not written up as a trend."""
+            total = sum(per_match)
+            out = {"recent_by_match": [round(x, 1) for x in per_match]}
+            if total > 0 and len(per_match) >= 2 and max(per_match) >= 0.7 * total and any(x == 0 for x in per_match):
+                out["one_match_only"] = True
+            return out
+
         # Recent avg scored / conceded
         recent_scored = sum((m.team_goals * 3) + m.team_points for m in recent_matches) / trend_window
         recent_conceded = sum((m.opponent_goals * 3) + m.opponent_points for m in recent_matches) / trend_window
@@ -3118,14 +3127,6 @@ class SeasonDashboardService:
                 "trend": make_trend(frees_in_range_pg, await _frees_in_range(recent_ids) / trend_window),
             },
             {
-                "key": "clean_sheet_rate",
-                "label": "Clean Sheet Rate",
-                "value": clean_sheet_rate,
-                "format": "percent",
-                "color": color(clean_sheet_rate, lambda v: v >= 50, lambda v: v < 30),
-                "trend": make_trend(clean_sheet_rate, recent_clean_sheet_rate),
-            },
-            {
                 "key": "goals_conceded_pg",
                 "label": "Goals Conceded / Game",
                 "value": goals_conceded_pg,
@@ -3195,7 +3196,7 @@ class SeasonDashboardService:
                 "value": card_rate,
                 "format": "decimal",
                 "color": color(card_rate, lambda v: v <= 1.0, lambda v: v > 2.0),
-                "trend": make_trend(card_rate, _cards(set(recent_ids))[0] / trend_window),
+                "trend": {**make_trend(card_rate, _cards(set(recent_ids))[0] / trend_window), **one_match_flag([_cards({i})[0] for i in recent_ids])},
             },
             {
                 "key": "mins_14_men",
@@ -3203,7 +3204,7 @@ class SeasonDashboardService:
                 "value": mins_14_men_pg,
                 "format": "decimal",
                 "color": color(mins_14_men_pg, lambda v: v <= 5, lambda v: v > 15),
-                "trend": make_trend(mins_14_men_pg, _cards(set(recent_ids))[1] / trend_window),
+                "trend": {**make_trend(mins_14_men_pg, _cards(set(recent_ids))[1] / trend_window), **one_match_flag([_cards({i})[1] for i in recent_ids])},
             },
             {
                 "key": "unforced_errors_pg",
@@ -3267,7 +3268,6 @@ class SeasonDashboardService:
             "turnovers_conceded": f"{t_lost} over {_ms}{_ue_share}",
             "pts_conceded_from_play": f"{_ocp_total} points from play over {_ms}",
             "frees_in_scoring_range": f"{_fir_total} frees inside our 45 over {_ms}",
-            "clean_sheet_rate": f"{clean_sheets} of {_ms} without conceding a goal",
             "goals_conceded_pg": f"{sum(m.opponent_goals for m in matches)} goals over {_ms}",
             "opp_inside_45": f"{_ot.get('attacks', 0)} entries over {len(_fpm)} matches",
             "own_inside_45": f"{_st.get('attacks', 0)} entries over {len(_fpm)} matches",
