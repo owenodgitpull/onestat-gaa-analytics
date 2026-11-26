@@ -170,7 +170,7 @@ class _Activity:
     """The starting fifteen's mean speed and share running (> 2 m/s), per 100 ms sample, with running sums for fast window means."""
 
     def __init__(self, grid: "_Grid", rows: List[int]):
-        self.grid = grid
+        self.grid = grid; self.rows = rows
         sp = grid.speed[rows]
         with np.errstate(all="ignore"):
             m = np.nanmean(sp, axis=0)
@@ -228,19 +228,61 @@ class _Activity:
                 break
         return out
 
+    def sharp_rises(self, lo_ms: float, hi_ms: float, top: int = 30):
+        """[(gps_ms, jump)]: the sharpest 1 s rises in the starters' mean speed after a quiet 8 s, at least 45 s apart. A second source of
+        candidates: a gentle throw-in can miss the trigger tests above yet still be the sharpest rise in its window."""
+        grid = self.grid
+        i0 = max(0, int(grid.idx(lo_ms)) - 100); i1 = min(grid.n, int(grid.idx(hi_ms)) + 100)
+        if i1 - i0 < 400:
+            return []
+        m = self.m[i0:i1]; ok = self.ok[i0:i1]
+        cm = np.concatenate([[0.0], np.cumsum(m)])
+        w = 10
+        idx = np.arange(80, len(m) - w)
+        jump = (cm[idx + w] - cm[idx]) / w - (cm[idx] - cm[idx - w]) / w
+        quiet = (cm[idx] - cm[idx - 80]) / 80
+        good = ok[idx] & (quiet < 1.6) & (jump >= 1.0)
+        score = np.where(good, jump, -np.inf)
+        out = []
+        for k in np.argsort(score)[::-1]:
+            if not np.isfinite(score[k]):
+                break
+            g = float(grid.t0 + (i0 + idx[k]) * STEP_MS)
+            if g < lo_ms or g > hi_ms:
+                continue
+            if all(abs(g - o[0]) > 45_000 for o in out):
+                out.append((g, float(score[k])))
+            if len(out) >= top:
+                break
+        return out
+
     def pick_starts(self, lo_ms: float, hi_ms: float, duration_ms: float, n: int = 1):
-        """[(gps_ms, score)] best first, up to n: the likeliest half starts in the window. Candidates whose play does not carry on
-        are dropped; a looser trigger is tried when the strict one finds nothing (a gentle throw-in)."""
+        """[(gps_ms, score, jump)] best first, up to n: the likeliest half starts in the window. Candidates come from the strict and
+        the loose standing-to-running triggers and from the sharpest rises; ones whose play does not carry on are dropped. Each is
+        moved to the steepest rise from 10 s before to 45 s after it (players jog into place first) and scored on the half-length
+        activity, the lineup standing still before it, the trigger, and how sharp that rise is."""
+        pool = {}
         for relaxed in (False, True):
-            scored = []
             for g, trig in self.triggers(lo_ms, hi_ms, relaxed=relaxed):
-                cont = self.continuity(g)
-                if np.isnan(cont) or cont < 0.9:
-                    continue
-                scored.append((g, self.half_score(g, duration_ms) + 0.2 * trig))
-            if scored:
-                return sorted(scored, key=lambda x: -x[1])[:n]
-        return []
+                pool[round(g / 1000)] = (g, trig)
+        for g, _ in self.sharp_rises(lo_ms, hi_ms):
+            pool.setdefault(round(g / 1000), (g, 0.0))
+        scored = []
+        for g, trig in pool.values():
+            cont = self.continuity(g)
+            if np.isnan(cont) or cont < 0.9:
+                continue
+            b = throw_in_burst(self.grid, self.rows, g + 17_500, 27_500)
+            gg, jump = (b if b else (g, 0.0))
+            scored.append((gg, self.half_score(gg, duration_ms) + 0.2 * trig + 0.5 * jump, jump))
+        scored.sort(key=lambda x: -x[1])
+        out = []
+        for c in scored:                                  # one candidate per 30 s
+            if all(abs(c[0] - o[0]) > 30_000 for o in out):
+                out.append(c)
+            if len(out) >= n:
+                break
+        return out
 
 
 def orient_from_lineup(pos0: Dict[str, tuple], roles: Dict[str, str], attacks_right_first: bool):
@@ -321,13 +363,12 @@ def _compute_without_tags(tracks, grid, starters, period_starts, period_ends, pi
         if h not in found:
             log(f"period {h}: no throw-in found, skipped"); continue
         mark = float(period_starts[h]); g = found[h][0]
-        b = throw_in_burst(grid, rows, g + 17_500, 27_500)      # the steepest rise from 10 s before to 45 s after the trigger (players jog into place first)
-        burst = b[0] if b else g
+        burst = g                                  # pick_starts has already moved it onto the steepest rise
         off = burst - THROW_IN_REACT_MS - mark
         periods.append({"half": h, "video_start_ms": int(mark), "video_end_ms": period_ends.get(h), "offset_ms": int(round(off)), "rate": 1.0,
                         "source": "throw_in", "n_carries": 0, "median_residual_m": None, "p75_residual_m": None, "bias_u_m": None, "bias_v_m": None,
                         "implied_offset_spread_s": None, "scan_profile_m": [], "anchors": [],
-                        "throw_in": {"applied": True, "shift_ms": None, "jump": round(float(b[1]), 2) if b else None, "found_by": "search"}})
+                        "throw_in": {"applied": True, "shift_ms": None, "jump": round(float(found[h][2]), 2), "found_by": "search"}})
         log(f"period {h}: no tags, throw-in found by search at GPS {burst/1000:.0f} s, offset {off/1000:.1f} s")
     if not periods:
         raise SyncError("no period could be synced")
