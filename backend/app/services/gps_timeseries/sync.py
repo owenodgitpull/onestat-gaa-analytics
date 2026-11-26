@@ -166,40 +166,83 @@ def irish_local_to_utc_ms(dt) -> int:
     return int(utc.replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 
-def find_throw_in_candidates(grid: "_Grid", rows: List[int], lo_ms: float, hi_ms: float, top: int = 6):
-    """[(gps_ms, score)] best first: moments where the starters' mean speed jumps after a quiet spell AND over half of them
-    are running (> 2 m/s) a few seconds later. Candidates are at least 90 s apart."""
-    if not rows:
-        return []
-    i0 = max(0, int(grid.idx(lo_ms)) - 100); i1 = min(grid.n, int(grid.idx(hi_ms)) + 60)
-    if i1 - i0 < 400:
-        return []
-    sp = grid.speed[rows, i0:i1]
-    with np.errstate(all="ignore"):
-        m = np.nanmean(sp, axis=0)
-        run = np.nanmean((sp > 2.0).astype(float), axis=0)
-        present = np.mean(~np.isnan(sp), axis=0)
-    ok = present >= 0.6
-    m = np.where(np.isnan(m), 0.0, m); run = np.where(np.isnan(run), 0.0, run)
-    cm = np.concatenate([[0.0], np.cumsum(m)]); cr = np.concatenate([[0.0], np.cumsum(run)])
-    fwd, back = 60, 100
-    idx = np.arange(back, len(m) - fwd)
-    nxt = (cm[idx + fwd] - cm[idx]) / fwd; prv = (cm[idx] - cm[idx - back]) / back
-    rn = (cr[idx + fwd] - cr[idx]) / fwd; rp = (cr[idx] - cr[idx - back]) / back
-    good = ok[idx] & (prv < 1.3) & (nxt >= 2.3) & (rn >= 0.5) & (rp <= 0.3) & (nxt - prv >= 1.2)
-    score = np.where(good, (nxt - prv) + 2.0 * (rn - rp), -np.inf)
-    out = []
-    for k in np.argsort(score)[::-1]:
-        if not np.isfinite(score[k]):
-            break
-        g = float(grid.t0 + (i0 + idx[k]) * STEP_MS)
-        if g < lo_ms or g > hi_ms:
-            continue
-        if all(abs(g - o[0]) > 90_000 for o in out):
-            out.append((g, float(score[k])))
-        if len(out) >= top:
-            break
-    return out
+class _Activity:
+    """The starting fifteen's mean speed and share running (> 2 m/s), per 100 ms sample, with running sums for fast window means."""
+
+    def __init__(self, grid: "_Grid", rows: List[int]):
+        self.grid = grid
+        sp = grid.speed[rows]
+        with np.errstate(all="ignore"):
+            m = np.nanmean(sp, axis=0)
+            run = np.nanmean((sp > 2.0).astype(float), axis=0)
+            present = np.mean(~np.isnan(sp), axis=0)
+        self.ok = present >= 0.6
+        self.m = np.where(np.isnan(m), 0.0, m); self.run = np.where(np.isnan(run), 0.0, run)
+        self.cm = np.concatenate([[0.0], np.cumsum(self.m)]); self.cr = np.concatenate([[0.0], np.cumsum(self.run)])
+
+    def mean_between(self, a_ms: float, b_ms: float) -> float:
+        i = max(0, int(self.grid.idx(a_ms))); j = min(self.grid.n, int(self.grid.idx(b_ms)))
+        return float((self.cm[j] - self.cm[i]) / (j - i)) if j > i + 10 else float("nan")
+
+    def continuity(self, g_ms: float) -> float:
+        """Slowest 15 s stretch in the minute after g: a real throw-in runs straight into play; a jog before the lineup stands again does not."""
+        vals = [self.mean_between(g_ms + a, g_ms + a + 15_000) for a in range(4_000, 70_000, 5_000)]
+        vals = [v for v in vals if not np.isnan(v)]
+        return min(vals) if vals else float("nan")
+
+    def half_score(self, g_ms: float, duration_ms: float) -> float:
+        """How much g looks like the start of a half: high average speed for a half-length, and the lineup standing still just before."""
+        act = self.mean_between(g_ms + 60_000, g_ms + duration_ms - 60_000)
+        lead = self.mean_between(g_ms - 180_000, g_ms - 20_000)
+        if np.isnan(act):
+            return -9.0
+        return act - 0.5 * (0.0 if np.isnan(lead) else lead)
+
+    def triggers(self, lo_ms: float, hi_ms: float, top: int = 40, relaxed: bool = False):
+        """[(gps_ms, score)] best first: moments the starters go from standing to running together, at least 60 s apart."""
+        grid = self.grid
+        i0 = max(0, int(grid.idx(lo_ms)) - 100); i1 = min(grid.n, int(grid.idx(hi_ms)) + 60)
+        if i1 - i0 < 400:
+            return []
+        m = self.m[i0:i1]; run = self.run[i0:i1]; ok = self.ok[i0:i1]
+        cm = np.concatenate([[0.0], np.cumsum(m)]); cr = np.concatenate([[0.0], np.cumsum(run)])
+        fwd, back = 60, 100
+        idx = np.arange(back, len(m) - fwd)
+        nxt = (cm[idx + fwd] - cm[idx]) / fwd; prv = (cm[idx] - cm[idx - back]) / back
+        rn = (cr[idx + fwd] - cr[idx]) / fwd; rp = (cr[idx] - cr[idx - back]) / back
+        if relaxed:
+            good = ok[idx] & (prv < 2.0) & (nxt >= 1.8) & (rn >= 0.25) & (rp <= 0.45) & (nxt - prv >= 0.8)
+        else:
+            good = ok[idx] & (prv < 1.5) & (nxt >= 2.0) & (rn >= 0.35) & (rp <= 0.35) & (nxt - prv >= 1.0)
+        score = np.where(good, (nxt - prv) + 2.0 * (rn - rp), -np.inf)
+        out = []
+        for k in np.argsort(score)[::-1]:
+            if not np.isfinite(score[k]):
+                break
+            g = float(grid.t0 + (i0 + idx[k]) * STEP_MS)
+            if g < lo_ms or g > hi_ms:
+                continue
+            if all(abs(g - o[0]) > 60_000 for o in out):
+                out.append((g, float(score[k])))
+            if len(out) >= top:
+                break
+        return out
+
+    def pick_start(self, lo_ms: float, hi_ms: float, duration_ms: float):
+        """(gps_ms, score) of the likeliest half start in the window, or None. Candidates whose play does not carry on are dropped;
+        a looser trigger is tried when the strict one finds nothing (a gentle throw-in)."""
+        for relaxed in (False, True):
+            best = None
+            for g, trig in self.triggers(lo_ms, hi_ms, relaxed=relaxed):
+                cont = self.continuity(g)
+                if np.isnan(cont) or cont < 0.9:
+                    continue
+                sc = self.half_score(g, duration_ms) + 0.2 * trig
+                if best is None or sc > best[1]:
+                    best = (g, sc)
+            if best is not None:
+                return best
+        return None
 
 
 def orient_from_lineup(pos0: Dict[str, tuple], roles: Dict[str, str], attacks_right_first: bool):
@@ -251,34 +294,31 @@ def _compute_without_tags(tracks, grid, starters, period_starts, period_ends, pi
     lo, hi = float(grid.t0), float(grid.t0 + grid.n * STEP_MS)
     if kickoff_utc_ms:
         lo, hi = max(lo, kickoff_utc_ms - KICKOFF_WINDOW_MS), min(hi, kickoff_utc_ms + KICKOFF_WINDOW_MS)
-    first = find_throw_in_candidates(grid, rows, lo, hi)
-    if not first:
-        raise SyncError("could not find the first-half throw-in in the GPS" + (" near the fixture's kick-off time" if kickoff_utc_ms else "")
-                        + ": no moment where the starting fifteen went from standing to running together")
+    act = _Activity(grid, rows)
 
-    def chain(g_first: float):
-        """the later halves found after the first: {half: (gps_ms, score)} and the summed score"""
-        got = {halves[0]: (g_first, 0.0)}; total = 0.0; prev_h = halves[0]
-        for h in halves[1:]:
-            gmin, gmax = HALF_GAP_MS.get(h, (60_000, 25 * 60_000))
-            g_prev = got[prev_h][0]; dv = period_starts[h] - period_starts[prev_h]
-            c = find_throw_in_candidates(grid, rows, g_prev + dv + gmin, g_prev + dv + gmax, top=1)
-            if not c:
-                break
-            got[h] = c[0]; total += c[0][1]; prev_h = h
-        return got, total
-    best = None
-    for g, sc in first:
-        got, tot = chain(g)
-        if best is None or sc + tot > best[0]:
-            best = (sc + tot, got)
-    found = best[1]
+    def length(h):      # how long the half runs, from the video's own marks (the video has the breaks cut out)
+        e = period_ends.get(h)
+        d = (e - period_starts[h]) if e else 35 * 60_000
+        return float(min(50 * 60_000, max(20 * 60_000, d)))
+    f1 = act.pick_start(lo, hi, length(halves[0]))
+    if f1 is None:
+        raise SyncError("could not find the first-half throw-in in the GPS" + (" near the fixture's kick-off time" if kickoff_utc_ms else "")
+                        + ": no moment where the starting fifteen went from standing to running together and kept playing")
+    found = {halves[0]: f1}
+    prev_h = halves[0]
+    for h in halves[1:]:
+        gmin, gmax = HALF_GAP_MS.get(h, (60_000, 25 * 60_000))
+        g_prev = found[prev_h][0]; dv = period_starts[h] - period_starts[prev_h]
+        c = act.pick_start(g_prev + dv + gmin, g_prev + dv + gmax, length(h))
+        if c is None:
+            break
+        found[h] = c; prev_h = h
     periods = []
     for h in halves:
         if h not in found:
             log(f"period {h}: no throw-in found, skipped"); continue
         mark = float(period_starts[h]); g = found[h][0]
-        b = throw_in_burst(grid, rows, g, 8000)
+        b = throw_in_burst(grid, rows, g, 15_000)
         burst = b[0] if b else g
         off = burst - THROW_IN_REACT_MS - mark
         periods.append({"half": h, "video_start_ms": int(mark), "video_end_ms": period_ends.get(h), "offset_ms": int(round(off)), "rate": 1.0,
