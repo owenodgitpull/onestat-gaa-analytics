@@ -211,7 +211,7 @@ class _Activity:
         nxt = (cm[idx + fwd] - cm[idx]) / fwd; prv = (cm[idx] - cm[idx - back]) / back
         rn = (cr[idx + fwd] - cr[idx]) / fwd; rp = (cr[idx] - cr[idx - back]) / back
         if relaxed:
-            good = ok[idx] & (prv < 2.0) & (nxt >= 1.8) & (rn >= 0.25) & (rp <= 0.45) & (nxt - prv >= 0.8)
+            good = ok[idx] & (prv < 2.0) & (nxt >= 1.5) & (rn >= 0.2) & (rp <= 0.45) & (nxt - prv >= 0.8)
         else:
             good = ok[idx] & (prv < 1.5) & (nxt >= 2.0) & (rn >= 0.35) & (rp <= 0.35) & (nxt - prv >= 1.0)
         score = np.where(good, (nxt - prv) + 2.0 * (rn - rp), -np.inf)
@@ -228,21 +228,19 @@ class _Activity:
                 break
         return out
 
-    def pick_start(self, lo_ms: float, hi_ms: float, duration_ms: float):
-        """(gps_ms, score) of the likeliest half start in the window, or None. Candidates whose play does not carry on are dropped;
-        a looser trigger is tried when the strict one finds nothing (a gentle throw-in)."""
+    def pick_starts(self, lo_ms: float, hi_ms: float, duration_ms: float, n: int = 1):
+        """[(gps_ms, score)] best first, up to n: the likeliest half starts in the window. Candidates whose play does not carry on
+        are dropped; a looser trigger is tried when the strict one finds nothing (a gentle throw-in)."""
         for relaxed in (False, True):
-            best = None
+            scored = []
             for g, trig in self.triggers(lo_ms, hi_ms, relaxed=relaxed):
                 cont = self.continuity(g)
                 if np.isnan(cont) or cont < 0.9:
                     continue
-                sc = self.half_score(g, duration_ms) + 0.2 * trig
-                if best is None or sc > best[1]:
-                    best = (g, sc)
-            if best is not None:
-                return best
-        return None
+                scored.append((g, self.half_score(g, duration_ms) + 0.2 * trig))
+            if scored:
+                return sorted(scored, key=lambda x: -x[1])[:n]
+        return []
 
 
 def orient_from_lineup(pos0: Dict[str, tuple], roles: Dict[str, str], attacks_right_first: bool):
@@ -300,25 +298,30 @@ def _compute_without_tags(tracks, grid, starters, period_starts, period_ends, pi
         e = period_ends.get(h)
         d = (e - period_starts[h]) if e else 35 * 60_000
         return float(min(50 * 60_000, max(20 * 60_000, d)))
-    f1 = act.pick_start(lo, hi, length(halves[0]))
-    if f1 is None:
+    firsts = act.pick_starts(lo, hi, length(halves[0]), n=6)
+    if not firsts:
         raise SyncError("could not find the first-half throw-in in the GPS" + (" near the fixture's kick-off time" if kickoff_utc_ms else "")
                         + ": no moment where the starting fifteen went from standing to running together and kept playing")
-    found = {halves[0]: f1}
-    prev_h = halves[0]
-    for h in halves[1:]:
-        gmin, gmax = HALF_GAP_MS.get(h, (60_000, 25 * 60_000))
-        g_prev = found[prev_h][0]; dv = period_starts[h] - period_starts[prev_h]
-        c = act.pick_start(g_prev + dv + gmin, g_prev + dv + gmax, length(h))
-        if c is None:
-            break
-        found[h] = c; prev_h = h
+
+    def chain(first):
+        got = {halves[0]: first}; total = first[1]; prev_h = halves[0]
+        for h in halves[1:]:
+            gmin, gmax = HALF_GAP_MS.get(h, (60_000, 25 * 60_000))
+            g_prev = got[prev_h][0]; dv = period_starts[h] - period_starts[prev_h]
+            c = act.pick_starts(g_prev + dv + gmin, g_prev + dv + gmax, length(h))
+            if not c:
+                break
+            got[h] = c[0]; total += c[0][1]; prev_h = h
+        return got, total
+    # a first-half candidate only counts if the later halves can be found after it (a second-half throw-in has none after it)
+    best = max((chain(f) for f in firsts), key=lambda r: (len(r[0]), r[1]))
+    found = best[0]
     periods = []
     for h in halves:
         if h not in found:
             log(f"period {h}: no throw-in found, skipped"); continue
         mark = float(period_starts[h]); g = found[h][0]
-        b = throw_in_burst(grid, rows, g, 15_000)
+        b = throw_in_burst(grid, rows, g + 17_500, 27_500)      # the steepest rise from 10 s before to 45 s after the trigger (players jog into place first)
         burst = b[0] if b else g
         off = burst - THROW_IN_REACT_MS - mark
         periods.append({"half": h, "video_start_ms": int(mark), "video_end_ms": period_ends.get(h), "offset_ms": int(round(off)), "rate": 1.0,
