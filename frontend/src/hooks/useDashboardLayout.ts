@@ -57,6 +57,11 @@ export interface DashboardLayout {
   hiddenCharts: string[]
   sectionOrder: string[]
   pinnedAiCharts: AIChartSpec[]
+  /** the KPI cards shown, in order. Saved with the rest of the setup (it used to live only in the browser, so another machine
+   *  showed the default five). Undefined = never chosen: the default set shows. */
+  visibleKpis?: string[]
+  /** KPI cards added since the person chose theirs that have already been offered once (see NEW_KPIS) */
+  kpisSeen?: string[]
 }
 
 // Charts visible by default for new teams — the most useful starting set
@@ -190,6 +195,7 @@ async function saveLayoutToServer(layout: DashboardLayout): Promise<void> {
  */
 export function useDashboardLayout(clubId: string | null | undefined) {
   const [layout, setLayout] = useState<DashboardLayout>(() => createDefault())
+  const [loaded, setLoaded] = useState(false)      // true once the saved setup has been read (or failed to): until then the defaults are placeholders
   const loadedForClubRef = useRef<string | null>(null)
 
   // Load layout from server when clubId changes
@@ -203,6 +209,7 @@ export function useDashboardLayout(clubId: string | null | undefined) {
         if (response) {
           const { layout: migratedLayout, needsSave } = migrateLayout(response.layout_data)
           setLayout(migratedLayout)
+          setLoaded(true)
           // If migrations were applied, save back to server
           if (needsSave) {
             saveLayoutToServer(migratedLayout)
@@ -211,14 +218,16 @@ export function useDashboardLayout(clubId: string | null | undefined) {
           // No saved layout, use defaults
           const defaultLayout = createDefault()
           setLayout(defaultLayout)
+          setLoaded(true)
           // Save defaults to server for this club
           saveLayoutToServer(defaultLayout)
         }
       })
       .catch(error => {
         console.error('Failed to load dashboard layout:', error)
-        // Fall back to defaults on error
+        // Fall back to defaults on error (and do not treat them as the person's choice: nothing is saved until they change something)
         setLayout(createDefault())
+        setLoaded(true)
       })
   }, [clubId])
 
@@ -294,6 +303,11 @@ export function useDashboardLayout(clubId: string | null | undefined) {
     }))
   }, [updateLayout])
 
+  // Choose which KPI cards show (and which newly added ones have been offered). Saved with the setup.
+  const setKpis = useCallback((ids: string[], seen?: string[]) => {
+    updateLayout(prev => ({ ...prev, visibleKpis: ids, ...(seen ? { kpisSeen: seen } : {}) }))
+  }, [updateLayout])
+
   // Reset to defaults
   const resetLayout = useCallback(() => {
     const fresh = createDefault()
@@ -303,6 +317,8 @@ export function useDashboardLayout(clubId: string | null | undefined) {
 
   return {
     layout,
+    loaded,
+    setKpis,
     pinChart,
     unpinChart,
     isPinned,

@@ -71,26 +71,14 @@ function fmtTrend(card: { format: string }, v: number): string {
 }
 const SECTION_NAMES: Record<string, string> = { 'kpi-overview': 'Season Overview', 'my-charts': 'My Charts', 'kickout-patterns': 'Kickout patterns' }
 const KPI_STORAGE_KEY_BASE = 'gaa-visible-kpis'
-function loadVisibleKpis(clubId: string): string[] {
+// The KPI selection is saved with the dashboard setup on the server (useDashboardLayout), per person. This reads what an
+// older version kept in this browser, once, so a choice made before the change is carried across instead of lost.
+function legacyBrowserKpis(clubId: string): string[] | undefined {
   try {
     const stored = localStorage.getItem(`${KPI_STORAGE_KEY_BASE}:${clubId}`)
-    if (stored) {
-      // a card added since this selection was saved is shown once; after that the user's choice stands
-      let ids: string[] = JSON.parse(stored)
-      const seenKey = `${KPI_STORAGE_KEY_BASE}:seen:${clubId}`
-      const seen: string[] = JSON.parse(localStorage.getItem(seenKey) || '[]')
-      const add = NEW_KPIS.filter(id => !seen.includes(id) && !ids.includes(id))
-      if (add.length) { ids = [...ids, ...add]; localStorage.setItem(`${KPI_STORAGE_KEY_BASE}:${clubId}`, JSON.stringify(ids)) }
-      localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...NEW_KPIS])]))
-      return ids
-    }
+    if (stored) return JSON.parse(stored) as string[]
   } catch { /* ignore */ }
-  return DEFAULT_VISIBLE_KPIS
-}
-function saveVisibleKpis(clubId: string, ids: string[]) {
-  try {
-    localStorage.setItem(`${KPI_STORAGE_KEY_BASE}:${clubId}`, JSON.stringify(ids))
-  } catch { /* ignore */ }
+  return undefined
 }
 
 const AI_REGEN_KEY_BASE = 'gaa-ai-regen'
@@ -136,23 +124,50 @@ export default function AnalyticsDashboard() {
   const { canEdit } = useAuth() // Squad Conditioning is fitness/readiness data — admin-only, viewers don't see the tab
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
-  const [visibleKpis, setVisibleKpis] = useState<string[]>(DEFAULT_VISIBLE_KPIS)
+  const {
+    layout,
+    loaded: layoutLoaded,
+    setKpis,
+    pinChart,
+    unpinChart,
+    isPinned,
+    canPin,
+    hideChart,
+    showChart,
+    reorderCharts,
+    reorderSections,
+    resetLayout,
+  } = useDashboardLayout(clubId)
+  // the KPI cards shown: this person's saved choice, else the club's default setup, else the standard set
+  const visibleKpis = layout.visibleKpis ?? DEFAULT_VISIBLE_KPIS
   const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [regenCount, setRegenCount] = useState(0)
   const regenLimitReached = regenCount >= AI_REGEN_DAILY_LIMIT
   const { startTour: startDashboardTour, isTourCompleted: tourDone } = useTour('dashboard', dashboardSteps)
   const tourTriggered = useRef(false)
-  // Loads the current club's own KPI selection + AI-regen count once club
-  // context is ready — stays at in-memory defaults until then, same
-  // race-safe pattern useDashboardLayout uses for chart layout.
+  // Loads the AI-regen count once club context is ready (the KPI selection now comes with the saved layout).
   const loadedKpiClubRef = useRef<string | null>(null)
   useEffect(() => {
     if (!clubId || loadedKpiClubRef.current === clubId) return
     loadedKpiClubRef.current = clubId
-    setVisibleKpis(loadVisibleKpis(clubId))
     setRegenCount(getRegenCount(clubId).count)
   }, [clubId])
+  // Once the saved setup has loaded: a selection that only exists in this browser (made before it was saved centrally) is
+  // uploaded once; cards added since a person chose theirs are offered once, then their choice stands.
+  useEffect(() => {
+    if (!layoutLoaded || !clubId) return
+    let ids = layout.visibleKpis
+    const seen = layout.kpisSeen ?? []
+    if (ids === undefined) {
+      const local = legacyBrowserKpis(clubId)
+      if (!local) return                                   // never chosen anywhere: the default set shows, nothing to save
+      ids = local
+    }
+    const add = NEW_KPIS.filter(id => !seen.includes(id) && !ids!.includes(id))
+    const unseen = NEW_KPIS.filter(id => !seen.includes(id))
+    if (layout.visibleKpis === undefined || add.length || unseen.length) setKpis([...ids, ...add], [...new Set([...seen, ...NEW_KPIS])])
+  }, [layoutLoaded, clubId, layout.visibleKpis, layout.kpisSeen, setKpis])
   const [flashingCards, setFlashingCards] = useState<Set<number>>(new Set())
   const triggerFlash = useCallback((idx: number) => {
     setFlashingCards(prev => new Set(prev).add(idx))
@@ -168,12 +183,9 @@ export default function AnalyticsDashboard() {
   const autoRotateTimer = useRef<ReturnType<typeof setTimeout>>()
 
   const toggleKpi = useCallback((kpiId: string) => {
-    setVisibleKpis(prev => {
-      const next = prev.includes(kpiId) ? prev.filter(k => k !== kpiId) : [...prev, kpiId]
-      if (clubId) saveVisibleKpis(clubId, next)
-      return next
-    })
-  }, [clubId])
+    const cur = layout.visibleKpis ?? DEFAULT_VISIBLE_KPIS
+    setKpis(cur.includes(kpiId) ? cur.filter(k => k !== kpiId) : [...cur, kpiId], [...new Set([...(layout.kpisSeen ?? []), ...NEW_KPIS])])
+  }, [layout.visibleKpis, layout.kpisSeen, setKpis])
 
   // Build pairings from registry filtered by visible KPIs
   const kpiPairings = visibleKpis
@@ -182,19 +194,6 @@ export default function AnalyticsDashboard() {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [nextMatch, setNextMatch] = useState<Match | null>(null)
   const [liveMatch, setLiveMatch] = useState<Match | null>(null)
-
-  const {
-    layout,
-    pinChart,
-    unpinChart,
-    isPinned,
-    canPin,
-    hideChart,
-    showChart,
-    reorderCharts,
-    reorderSections,
-    resetLayout,
-  } = useDashboardLayout(clubId)
 
   // Section-level DnD sensors (same config: pointer distance 8, touch delay 200ms)
   const sectionSensors = useSensors(
@@ -1075,8 +1074,7 @@ export default function AnalyticsDashboard() {
               <button
                 onClick={() => {
                   resetLayout()
-                  setVisibleKpis(DEFAULT_VISIBLE_KPIS)
-                  if (clubId) saveVisibleKpis(clubId, DEFAULT_VISIBLE_KPIS)
+                  setKpis(DEFAULT_VISIBLE_KPIS, [...NEW_KPIS])
                   setShowResetConfirm(false)
                   window.scrollTo({ top: 0, behavior: 'smooth' })
                 }}
