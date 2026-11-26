@@ -307,6 +307,7 @@ export default function Navigation() {
             <div className="relative">
               <button
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
+                data-tour="profile-menu"
                 className="flex items-center space-x-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
               >
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center overflow-hidden">

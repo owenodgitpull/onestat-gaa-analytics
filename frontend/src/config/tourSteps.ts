@@ -47,7 +47,7 @@ export const dashboardSteps: DriveStep[] = [
     popover: {
       title: 'KPI Library',
       description:
-        'Customise which KPIs are visible. Toggle metrics on or off to build the dashboard that matters to you.',
+        'Customise which KPIs are visible. Toggle metrics on or off to build the dashboard that matters to you. Your choices are saved to your login, so they follow you to any device.',
     },
   },
   {
@@ -55,7 +55,7 @@ export const dashboardSteps: DriveStep[] = [
     popover: {
       title: 'Chart Library',
       description:
-        'Show or hide charts from your dashboard. Hidden charts can be restored here at any time.',
+        'Show or hide charts from your dashboard. Hidden charts can be restored here at any time. Saved to your login.',
     },
   },
   {
@@ -63,7 +63,7 @@ export const dashboardSteps: DriveStep[] = [
     popover: {
       title: 'Drag to Reorder',
       description:
-        'Grab the drag handle on any chart to reorder it. Your layout is saved automatically.',
+        'Grab the drag handle on any chart to reorder it. Your layout is saved to your login automatically.',
     },
   },
   {
@@ -83,11 +83,11 @@ export const dashboardSteps: DriveStep[] = [
     },
   },
   {
-    element: '[data-tour="nav-settings"]',
+    element: '[data-tour="profile-menu"]',
     popover: {
-      title: 'Settings',
+      title: 'Settings and your profile',
       description:
-        'Configure your club profile, upload knowledge base documents, manage users, and control notifications. You can replay this tour from Settings any time.',
+        'Open this menu for Settings: your team profile, knowledge documents for the analyst, users, and notifications. You can replay these guided tours from Settings, under Notifications, any time.',
     },
   },
 ]
@@ -143,7 +143,6 @@ export const matchRecordingSteps: DriveStep[] = [
     },
   },
   {
-    element: '[data-tour="turnovers-tab"]',
     popover: {
       title: 'Turnover Flow',
       description:
@@ -183,7 +182,6 @@ export const matchRecordingSteps: DriveStep[] = [
     },
   },
   {
-    element: '[data-tour="player-selection"]',
     popover: {
       title: 'Player Attribution',
       description:
@@ -216,7 +214,7 @@ export const videoTaggingSteps: DriveStep[] = [
     popover: {
       title: 'Video Player',
       description:
-        'Scrub through your match footage. When you tap an event button, the video auto-pauses so you can place it at the exact moment.',
+        'Scrub through your match footage. When you tap an event button, the video pauses so you can place the event at the exact moment. The 1H, HT, 2H and FT labels on the bar jump straight to those marks.',
     },
   },
   {
@@ -224,7 +222,7 @@ export const videoTaggingSteps: DriveStep[] = [
     popover: {
       title: 'Quick Actions',
       description:
-        'Three-tap flow: tap an event type here, then tap the pitch zone, then select the player. The event is created with the current video timestamp.',
+        'Tap the event (a score, a turnover, a kickout and so on), then choose the player when asked. The event is saved at the current video time, with the ball\'s position on the pitch.',
     },
   },
   {
@@ -248,21 +246,21 @@ export const videoTaggingSteps: DriveStep[] = [
     popover: {
       title: 'Event Log',
       description:
-        'Expandable list of all events with details. You can verify, edit zones, or delete events from here.',
+        'Every tagged event in a list. Open one to check it, correct it (the player, the time or where it was on the pitch) or delete it.',
     },
   },
   {
     popover: {
-      title: 'AI Auto-Analyse',
+      title: 'Needs attention',
       description:
-        'Use the "Auto-Analyse" button in the header to let AI detect events from your video automatically. You can review and correct the results afterwards.',
+        'The "Needs attention" button in the header lists blanks and oddities in your tagging, such as a score with no scorer or a kickout with no player, so you can fix them before the match is used for reports. "Match settings" next to it holds the throw-in, half-time and pitch details.',
     },
   },
   {
     popover: {
-      title: 'Sync to Match',
+      title: 'Saved as you go',
       description:
-        'When you\'re done tagging, hit "Save to Match" to sync video events back to the main match record for inclusion in AI analysis and reports.',
+        'Events are saved to the match as you tag them, so the Match Result page, the GPS replay and the reports pick them up straight away. There is no separate save step.',
     },
   },
 ]
@@ -273,25 +271,41 @@ export const settingsSteps: DriveStep[] = [
   {
     element: '[data-tour="settings-tab-profile"]',
     popover: {
-      title: 'Club Profile',
+      title: 'Team Profile',
       description:
-        'Set your club name, upload a crest, and configure basic settings.',
+        'Your team\'s name, crest and basic settings.',
+    },
+  },
+  {
+    element: '[data-tour="settings-tab-teams"]',
+    popover: {
+      title: 'Teams',
+      description:
+        'Manage the teams under your account and switch between them.',
     },
   },
   {
     element: '[data-tour="settings-tab-knowledge"]',
     popover: {
-      title: 'Knowledge Base',
+      title: 'Knowledge',
       description:
-        'Upload club documents (tactics playbooks, scouting reports). The AI analyst uses these to give contextual answers.',
+        'Upload documents (tactics playbooks, scouting reports). The AI analyst reads them so its answers fit how you play.',
     },
   },
   {
     element: '[data-tour="settings-tab-users"]',
     popover: {
-      title: 'User Management',
+      title: 'Users',
       description:
-        'Invite coaches and analysts, change roles, and manage access to your club\'s data.',
+        'Invite coaches and analysts, change roles, and manage who can see your team\'s data.',
+    },
+  },
+  {
+    element: '[data-tour="settings-tab-preview"]',
+    popover: {
+      title: 'Player Preview',
+      description:
+        'See the app exactly as one of your players sees it, before you give them a login.',
     },
   },
   {
@@ -299,7 +313,15 @@ export const settingsSteps: DriveStep[] = [
     popover: {
       title: 'Notifications',
       description:
-        'Enable push notifications to get alerted when match reports, GPS data, or fitness results are ready.',
+        'Turn on push alerts for when reports, GPS data or fitness results are ready. You can also replay these guided tours from here.',
+    },
+  },
+  {
+    element: '[data-tour="settings-tab-audit"]',
+    popover: {
+      title: 'Audit',
+      description:
+        'A log of who changed what in your team\'s account.',
     },
   },
 ]
