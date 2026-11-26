@@ -138,6 +138,196 @@ def anchor_to_throw_in(period: dict, grid: "_Grid", rows: List[int], log=print) 
     return info
 
 
+# ------------------------------------------------------------------ no-tags fallback (2026-11-25)
+# A club that does not tag carries still gets a sync. The carries did two jobs besides timing: they said roughly where the
+# match sits in the hours-long GPS file, and which way round the pitch is. Without them:
+#   * where: the throw-in is the moment the whole starting fifteen goes from standing to running together; the fixture's
+#     kick-off time (when the match has one) narrows the search, and the later halves are looked for after the first;
+#   * which way round: the lineup says who plays back and who plays forward, so the end the backs stay at is our own end,
+#     and the first-half attack direction fixes the screen side. A camera view is never mirrored, so exactly one of
+#     flip_u / flip_v is set (true on all five 2026 matches), which settles left against right without any tags.
+HALF_GAP_MS = {2: (4 * 60_000, 30 * 60_000), 3: (60_000, 25 * 60_000), 4: (60_000, 15 * 60_000)}   # GPS gap before a half starts, after the previous one
+KICKOFF_WINDOW_MS = 40 * 60_000
+MIN_ORIENT_GAP_M = 10.0
+
+
+def irish_local_to_utc_ms(dt) -> int:
+    """A naive Irish wall-clock datetime (the match's kick-off) as UTC epoch ms. BST runs from the last Sunday of March to the
+    last Sunday of October; no tz database needed."""
+    import calendar
+    from datetime import datetime, timedelta, timezone
+
+    def last_sunday(year, month):
+        d = datetime(year, month, calendar.monthrange(year, month)[1])
+        return d - timedelta(days=(d.weekday() + 1) % 7)
+    naive = dt.replace(tzinfo=None)
+    bst = last_sunday(naive.year, 3).replace(hour=1) <= naive < last_sunday(naive.year, 10).replace(hour=1)
+    utc = naive - timedelta(hours=1 if bst else 0)
+    return int(utc.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
+def find_throw_in_candidates(grid: "_Grid", rows: List[int], lo_ms: float, hi_ms: float, top: int = 6):
+    """[(gps_ms, score)] best first: moments where the starters' mean speed jumps after a quiet spell AND over half of them
+    are running (> 2 m/s) a few seconds later. Candidates are at least 90 s apart."""
+    if not rows:
+        return []
+    i0 = max(0, int(grid.idx(lo_ms)) - 100); i1 = min(grid.n, int(grid.idx(hi_ms)) + 60)
+    if i1 - i0 < 400:
+        return []
+    sp = grid.speed[rows, i0:i1]
+    with np.errstate(all="ignore"):
+        m = np.nanmean(sp, axis=0)
+        run = np.nanmean((sp > 2.0).astype(float), axis=0)
+        present = np.mean(~np.isnan(sp), axis=0)
+    ok = present >= 0.6
+    m = np.where(np.isnan(m), 0.0, m); run = np.where(np.isnan(run), 0.0, run)
+    cm = np.concatenate([[0.0], np.cumsum(m)]); cr = np.concatenate([[0.0], np.cumsum(run)])
+    fwd, back = 60, 100
+    idx = np.arange(back, len(m) - fwd)
+    nxt = (cm[idx + fwd] - cm[idx]) / fwd; prv = (cm[idx] - cm[idx - back]) / back
+    rn = (cr[idx + fwd] - cr[idx]) / fwd; rp = (cr[idx] - cr[idx - back]) / back
+    good = ok[idx] & (prv < 1.3) & (nxt >= 2.3) & (rn >= 0.5) & (rp <= 0.3) & (nxt - prv >= 1.2)
+    score = np.where(good, (nxt - prv) + 2.0 * (rn - rp), -np.inf)
+    out = []
+    for k in np.argsort(score)[::-1]:
+        if not np.isfinite(score[k]):
+            break
+        g = float(grid.t0 + (i0 + idx[k]) * STEP_MS)
+        if g < lo_ms or g > hi_ms:
+            continue
+        if all(abs(g - o[0]) > 90_000 for o in out):
+            out.append((g, float(score[k])))
+        if len(out) >= top:
+            break
+    return out
+
+
+def orient_from_lineup(pos0: Dict[str, tuple], roles: Dict[str, str], attacks_right_first: bool):
+    """(flip_u, flip_v, back_minus_forward_m) from where the lineup's backs and forwards play, in the unflipped pitch frame.
+    pos0: player -> (mean u, mean v) over the opening minutes. Raises SyncError when it cannot tell."""
+    def mean_u(pred):
+        a = [pos0[p][0] for p, r in roles.items() if p in pos0 and pred((r or "").lower())]
+        return (float(np.mean(a)), len(a)) if a else (None, 0)
+    bu, nb = mean_u(lambda r: r.startswith(("fb-", "hb-")))
+    fu, nf = mean_u(lambda r: r.startswith(("hf-", "ff-")))
+    if nb < 3 or nf < 3:
+        raise SyncError("the lineup needs at least three backs and three forwards with GPS to tell which end is which")
+    du = bu - fu
+    if abs(du) < MIN_ORIENT_GAP_M:
+        raise SyncError(f"could not tell which end is which from the lineup (backs and forwards only {abs(du):.0f} m apart)")
+    want = -1.0 if attacks_right_first else 1.0          # screen: attacking right means our backs are at the LEFT (low u)
+    flip_u = (1.0 if du > 0 else -1.0) != want
+    flip_v = not flip_u                                   # a real camera view is not mirrored: exactly one flip
+    return bool(flip_u), bool(flip_v), float(du)
+
+
+def _quality(tracks: Dict[str, Track], grid: "_Grid", periods: List[dict], pitch_length_m: float, pitch_width_m: float) -> dict:
+    quality = {}
+    for pid, t in tracks.items():
+        p = grid.pos[pid]; cov = 0; tot = 0; dist = 0.0; inside = 0
+        for per in periods:
+            end = per.get("video_end_ms") or (per["video_start_ms"] + 40 * 60_000)
+            g0 = grid.idx(per["video_start_ms"] * per["rate"] + per["offset_ms"]); g1 = grid.idx(end * per["rate"] + per["offset_ms"])
+            g0 = max(0, int(g0)); g1 = min(grid.n, int(g1))
+            if g1 <= g0:
+                continue
+            tot += g1 - g0
+            okk = grid.ok[p, g0:g1]; cov += int(okk.sum())
+            sp = grid.speed[p, g0:g1]; dist += float(np.nansum(sp) * STEP_MS / 1000.0)
+            uu = grid.u[p, g0:g1]; vv = grid.v[p, g0:g1]
+            inside += int(np.sum((np.abs(uu) <= pitch_length_m / 2 + 3) & (np.abs(vv) <= pitch_width_m / 2 + 3)))
+        quality[pid] = {"coverage": round(cov / tot, 3) if tot else 0.0, "on_pitch_share": round(inside / tot, 3) if tot else 0.0,
+                        "in_match": unit_in_match(cov / tot if tot else 0.0, inside / tot if tot else 0.0, dist), "match_distance_m": round(dist), "n_samples": t.n,
+                        "bad_fix_share": round(float(np.mean((t.flags & FLAG_BAD_FIX) != 0)), 3), "interpolated_share": round(float(np.mean((t.flags & FLAG_INTERPOLATED) != 0)), 3)}
+    return quality
+
+
+def _compute_without_tags(tracks, grid, starters, period_starts, period_ends, pitch_length_m, pitch_width_m, log, cal_fixed,
+                          roles, attacks_right_first, kickoff_utc_ms) -> dict:
+    rows = [grid.pos[p] for p in starters if p in grid.pos]
+    if len(rows) < 8:
+        raise SyncError("need GPS for at least eight of the starting fifteen to sync without tagged carries")
+    halves = sorted(h for h, v in period_starts.items() if v is not None)
+    lo, hi = float(grid.t0), float(grid.t0 + grid.n * STEP_MS)
+    if kickoff_utc_ms:
+        lo, hi = max(lo, kickoff_utc_ms - KICKOFF_WINDOW_MS), min(hi, kickoff_utc_ms + KICKOFF_WINDOW_MS)
+    first = find_throw_in_candidates(grid, rows, lo, hi)
+    if not first:
+        raise SyncError("could not find the first-half throw-in in the GPS" + (" near the fixture's kick-off time" if kickoff_utc_ms else "")
+                        + ": no moment where the starting fifteen went from standing to running together")
+
+    def chain(g_first: float):
+        """the later halves found after the first: {half: (gps_ms, score)} and the summed score"""
+        got = {halves[0]: (g_first, 0.0)}; total = 0.0; prev_h = halves[0]
+        for h in halves[1:]:
+            gmin, gmax = HALF_GAP_MS.get(h, (60_000, 25 * 60_000))
+            g_prev = got[prev_h][0]; dv = period_starts[h] - period_starts[prev_h]
+            c = find_throw_in_candidates(grid, rows, g_prev + dv + gmin, g_prev + dv + gmax, top=1)
+            if not c:
+                break
+            got[h] = c[0]; total += c[0][1]; prev_h = h
+        return got, total
+    best = None
+    for g, sc in first:
+        got, tot = chain(g)
+        if best is None or sc + tot > best[0]:
+            best = (sc + tot, got)
+    found = best[1]
+    periods = []
+    for h in halves:
+        if h not in found:
+            log(f"period {h}: no throw-in found, skipped"); continue
+        mark = float(period_starts[h]); g = found[h][0]
+        b = throw_in_burst(grid, rows, g, 8000)
+        burst = b[0] if b else g
+        off = burst - THROW_IN_REACT_MS - mark
+        periods.append({"half": h, "video_start_ms": int(mark), "video_end_ms": period_ends.get(h), "offset_ms": int(round(off)), "rate": 1.0,
+                        "source": "throw_in", "n_carries": 0, "median_residual_m": None, "p75_residual_m": None, "bias_u_m": None, "bias_v_m": None,
+                        "implied_offset_spread_s": None, "scan_profile_m": [], "anchors": [],
+                        "throw_in": {"applied": True, "shift_ms": None, "jump": round(float(b[1]), 2) if b else None, "found_by": "search"}})
+        log(f"period {h}: no tags, throw-in found by search at GPS {burst/1000:.0f} s, offset {off/1000:.1f} s")
+    if not periods:
+        raise SyncError("no period could be synced")
+    # ---- pitch frame
+    good_lat = grid.lat[~np.isnan(grid.lat)]; good_lon = grid.lon[~np.isnan(grid.lon)]
+    origin_lat = float(np.median(good_lat)); origin_lon = float(np.median(good_lon))
+    g1 = periods[0]["offset_ms"] + periods[0]["video_start_ms"]
+    if cal_fixed is not None:
+        origin_lat, origin_lon = cal_fixed["origin_lat"], cal_fixed["origin_lon"]
+        axis = {k: cal_fixed[k] for k in ("axis_x", "axis_y", "centre_x_m", "centre_y_m", "extent_u", "extent_v")}
+        if cal_fixed.get("fit"):
+            axis["fit"] = cal_fixed["fit"]
+    else:
+        i0 = max(0, int(grid.idx(g1 + 60_000))); i1 = min(grid.n, int(grid.idx(g1 + 1_560_000)))
+        xs, ys = geo.to_local_m(grid.lat[rows, i0:i1].ravel(), grid.lon[rows, i0:i1].ravel(), origin_lat, origin_lon)
+        try:
+            axis = geo.fit_axis(xs, ys)
+        except ValueError as e:
+            raise SyncError(str(e))
+    cal = {"origin_lat": origin_lat, "origin_lon": origin_lon, "pitch_length_m": pitch_length_m, "pitch_width_m": pitch_width_m, **axis, "flip_u": False, "flip_v": False}
+    if cal_fixed is not None and "flip_u" in cal_fixed and "flip_v" in cal_fixed:
+        cal["flip_u"], cal["flip_v"] = bool(cal_fixed["flip_u"]), bool(cal_fixed["flip_v"])
+    else:
+        if attacks_right_first is None:
+            raise SyncError("set which way the team attacks in the first half: without tagged carries that is how the pitch is turned the right way round")
+        grid.project(cal)
+        i0 = max(0, int(grid.idx(g1 + 60_000))); i1 = min(grid.n, int(grid.idx(g1 + 1_560_000)))
+        pos0 = {}
+        for pid, r in grid.pos.items():
+            if pid in roles and i1 > i0:
+                with np.errstate(all="ignore"):
+                    mu = np.nanmean(grid.u[r, i0:i1]); mv = np.nanmean(grid.v[r, i0:i1])
+                if not (np.isnan(mu) or np.isnan(mv)):
+                    pos0[pid] = (float(mu), float(mv))
+        fu, fv, du = orient_from_lineup(pos0, roles, attacks_right_first)
+        cal["flip_u"], cal["flip_v"] = fu, fv
+        cal["orientation"] = {"from": "lineup", "backs_minus_forwards_m": round(du, 1)}
+        log(f"orientation from the lineup: flip_u={fu} flip_v={fv} (backs {du:+.0f} m from forwards along the pitch)")
+    cal["tag_bias_u_m"] = 0.0; cal["tag_bias_v_m"] = 0.0
+    grid.project(cal)
+    return {"calibration": cal, "periods": periods, "tag_lag": {}, "quality": _quality(tracks, grid, periods, pitch_length_m, pitch_width_m)}
+
+
 def unit_in_match(coverage: float, on_pitch_share: float, distance_m: float) -> bool:
     """Was this unit worn in the match? Over half the match recorded, OR a unit that stopped part-way: what it did record
     was mostly on this pitch with real running (a starter whose battery died at 38% still played). A unit worn elsewhere
@@ -187,7 +377,8 @@ def _median_dist(grid: _Grid, prow, vms, tu, tv, offsets_ms, min_frac=0.7):
 
 def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged], starters: List[str],
             period_starts: Dict[int, int], period_ends: Dict[int, Optional[int]],
-            pitch_length_m: float = 145.0, pitch_width_m: float = 90.0, log=print, cal_fixed: Optional[dict] = None) -> dict:
+            pitch_length_m: float = 145.0, pitch_width_m: float = 90.0, log=print, cal_fixed: Optional[dict] = None,
+            roles: Optional[Dict[str, str]] = None, attacks_right_first: Optional[bool] = None, kickoff_utc_ms: Optional[int] = None) -> dict:
     """Returns {"calibration", "periods", "tag_lag", "quality"}; raises SyncError when it cannot sync.
     cal_fixed: a calibration whose origin, axis and centre are already known (the whole-match pitch fit, service.run_sync's
     second pass): pass 2 is skipped; the orientation and the offsets are still found from the tags."""
@@ -199,6 +390,10 @@ def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged
     # ---- pass 1: coarse offset from carrier speed (orientation-free)
     sel1, prow1, vms1, _, _ = _prep(carries, grid, 1, None)
     if len(sel1) < MIN_CARRIES:
+        if roles:
+            log(f"only {len(sel1)} tagged first-half carries: syncing from the throw-in bursts and the lineup instead")
+            return _compute_without_tags(tracks, grid, starters, period_starts, period_ends, pitch_length_m, pitch_width_m, log, cal_fixed,
+                                         roles, attacks_right_first, kickoff_utc_ms)
         raise SyncError(f"need at least {MIN_CARRIES} tagged first-half carries by players with GPS, have {len(sel1)}")
     # offset = gps - video. Video times are small (ms into the file), GPS times are epoch ms, so the offset lies
     # between (session start - longest plausible video) and session end.
@@ -338,21 +533,5 @@ def compute(tracks: Dict[str, Track], carries: List[Tagged], events: List[Tagged
     tag_lag = {k: {"n": len(v), "median_s": round(float(np.median(v)), 1), "p25_s": round(float(np.percentile(v, 25)), 1), "p75_s": round(float(np.percentile(v, 75)), 1)}
                for k, v in lags.items() if len(v) >= 3}
     # ---- per track quality inside the match periods
-    quality = {}
-    for pid, t in tracks.items():
-        p = grid.pos[pid]; cov = 0; tot = 0; dist = 0.0; inside = 0
-        for per in periods:
-            end = per.get("video_end_ms") or (per["video_start_ms"] + 40 * 60_000)
-            g0 = grid.idx(per["video_start_ms"] * per["rate"] + per["offset_ms"]); g1 = grid.idx(end * per["rate"] + per["offset_ms"])
-            g0 = max(0, int(g0)); g1 = min(grid.n, int(g1))
-            if g1 <= g0:
-                continue
-            tot += g1 - g0
-            okk = grid.ok[p, g0:g1]; cov += int(okk.sum())
-            sp = grid.speed[p, g0:g1]; dist += float(np.nansum(sp) * STEP_MS / 1000.0)
-            uu = grid.u[p, g0:g1]; vv = grid.v[p, g0:g1]
-            inside += int(np.sum((np.abs(uu) <= pitch_length_m / 2 + 3) & (np.abs(vv) <= pitch_width_m / 2 + 3)))
-        quality[pid] = {"coverage": round(cov / tot, 3) if tot else 0.0, "on_pitch_share": round(inside / tot, 3) if tot else 0.0,
-                        "in_match": unit_in_match(cov / tot if tot else 0.0, inside / tot if tot else 0.0, dist), "match_distance_m": round(dist), "n_samples": t.n,
-                        "bad_fix_share": round(float(np.mean((t.flags & FLAG_BAD_FIX) != 0)), 3), "interpolated_share": round(float(np.mean((t.flags & FLAG_INTERPOLATED) != 0)), 3)}
+    quality = _quality(tracks, grid, periods, pitch_length_m, pitch_width_m)
     return {"calibration": cal, "periods": periods, "tag_lag": tag_lag, "quality": quality}

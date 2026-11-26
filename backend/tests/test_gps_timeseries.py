@@ -277,3 +277,70 @@ def test_throw_in_anchor_ignores_a_flat_speed_profile():
         tr.speed[:] = 3.0
     out = sync.compute(tracks, carries, events, list(tracks)[:15], starts, ends, log=lambda *_: None)
     assert all(p["throw_in"]["applied"] is False for p in out["periods"])
+
+
+# ------------------------------------------------------------------ no-tags fallback
+
+def test_irish_kickoff_time_to_utc():
+    from datetime import datetime
+    assert sync.irish_local_to_utc_ms(datetime(2026, 5, 23, 15, 0)) == int(datetime(2026, 5, 23, 14, 0, tzinfo=__import__("datetime").timezone.utc).timestamp() * 1000)   # BST
+    assert sync.irish_local_to_utc_ms(datetime(2026, 1, 10, 15, 0)) == int(datetime(2026, 1, 10, 15, 0, tzinfo=__import__("datetime").timezone.utc).timestamp() * 1000)   # winter
+    assert sync.irish_local_to_utc_ms(datetime(2026, 3, 29, 15, 0)) == int(datetime(2026, 3, 29, 14, 0, tzinfo=__import__("datetime").timezone.utc).timestamp() * 1000)   # BST starts 29 Mar 2026 at 01:00
+
+
+def _roles(n_back=5, n_fwd=6):
+    r = {f"b{i}": ("fb-right" if i % 2 else "hb-left") for i in range(n_back)}
+    r.update({f"f{i}": ("hf-right" if i % 2 else "ff-left") for i in range(n_fwd)})
+    return r
+
+
+def test_orientation_from_lineup_follows_the_attack_direction_and_never_mirrors():
+    roles = _roles()
+    backs_low = {p: ((-30.0 if p.startswith("b") else 30.0) + i, 0.0) for i, p in enumerate(roles)}     # backs at low u
+    fu, fv, du = sync.orient_from_lineup(backs_low, roles, attacks_right_first=True)                      # attacking right: backs at the left
+    assert (fu, fv) == (False, True) and du < 0
+    fu, fv, _ = sync.orient_from_lineup(backs_low, roles, attacks_right_first=False)                      # attacking left: backs must be at the right
+    assert (fu, fv) == (True, False)
+    backs_high = {p: ((30.0 if p.startswith("b") else -30.0), 0.0) for p in roles}
+    assert sync.orient_from_lineup(backs_high, roles, True)[:2] == (True, False)
+    with pytest.raises(sync.SyncError):                                                                    # backs and forwards on top of each other
+        sync.orient_from_lineup({p: (0.0, 0.0) for p in roles}, roles, True)
+    with pytest.raises(sync.SyncError):                                                                    # too few backs with GPS
+        sync.orient_from_lineup({p: (1.0, 0.0) for p in list(roles)[:2] + list(roles)[5:]}, roles, True)
+
+
+def _fallback_inputs():
+    tracks, carries, events, starts, ends = _synthetic_match()
+    mark1 = starts[1] + OFF1; mark2 = starts[2] + OFF2
+    _plant_burst(tracks, mark1 + 1000); _plant_burst(tracks, mark2 + 2500)
+    starters = list(tracks)[:15]
+    full = sync.compute(tracks, carries, events, starters, starts, ends, log=lambda *_: None)     # with tags: the reference answer and the pitch frame
+    return tracks, events, starters, starts, ends, full, mark1
+
+
+def test_sync_without_carries_finds_the_throw_ins_by_search():
+    tracks, events, starters, starts, ends, full, mark1 = _fallback_inputs()
+    roles = {p: "fb-left" for p in starters}
+    out = sync.compute(tracks, [], events, starters, starts, ends, log=lambda *_: None, cal_fixed=full["calibration"], roles=roles)
+    ref = {p["half"]: p for p in full["periods"]}; per = {p["half"]: p for p in out["periods"]}
+    assert set(per) == {1, 2}
+    for h in (1, 2):
+        assert abs(per[h]["offset_ms"] - ref[h]["offset_ms"]) <= 250
+        assert per[h]["rate"] == 1.0 and per[h]["source"] == "throw_in" and per[h]["n_carries"] == 0
+    assert out["tag_lag"] == {} and out["quality"]["p0"]["in_match"]
+    assert (out["calibration"]["flip_u"], out["calibration"]["flip_v"]) == (full["calibration"]["flip_u"], full["calibration"]["flip_v"])
+
+
+def test_sync_without_carries_uses_the_kickoff_time_to_narrow_the_search():
+    tracks, events, starters, starts, ends, full, mark1 = _fallback_inputs()
+    roles = {p: "fb-left" for p in starters}
+    near = sync.compute(tracks, [], events, starters, starts, ends, log=lambda *_: None, cal_fixed=full["calibration"], roles=roles, kickoff_utc_ms=int(mark1 + 600_000))
+    assert {p["half"] for p in near["periods"]} == {1, 2}
+    with pytest.raises(sync.SyncError):                                   # a kick-off time five hours off: nothing to find in that window
+        sync.compute(tracks, [], events, starters, starts, ends, log=lambda *_: None, cal_fixed=full["calibration"], roles=roles, kickoff_utc_ms=int(mark1 - 5 * 3600_000))
+
+
+def test_sync_without_carries_and_without_a_lineup_still_refuses():
+    tracks, events, starters, starts, ends, full, mark1 = _fallback_inputs()
+    with pytest.raises(sync.SyncError):
+        sync.compute(tracks, [], events, starters, starts, ends, log=lambda *_: None)

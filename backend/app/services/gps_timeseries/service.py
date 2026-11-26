@@ -108,6 +108,17 @@ async def _tagged_inputs(db: AsyncSession, match: Match):
     return session, carries, events, starters, starts, ends
 
 
+async def _no_tag_inputs(db: AsyncSession, match: Match) -> dict:
+    """What the sync needs when a club has not tagged carries: where each starter lined up at the throw-in (back or forward,
+    left or right), which way we attack in the first half, and the fixture's kick-off (UTC ms) when the match date carries a
+    time of day (a bare date, midnight, means no time was entered)."""
+    rows = (await db.execute(select(MatchLineup).where(MatchLineup.match_id == match.id, MatchLineup.is_substitute == False))).scalars().all()  # noqa: E712
+    roles = {str(r.player_id): (r.start_position_id or r.position_id or "") for r in rows}
+    md = match.match_date
+    kickoff = syncmod.irish_local_to_utc_ms(md) if md is not None and (md.hour or md.minute) else None
+    return {"roles": roles, "attacks_right_first": match.attacking_right_first_half, "kickoff_utc_ms": kickoff}
+
+
 async def their_kickouts(db: AsyncSession, match_id, arfh) -> list:
     """Their kickouts with the raw-screen end they kicked from: their goal is the one we attack."""
     from app.utils.attack_direction import own_attacks_right
@@ -198,7 +209,8 @@ async def compute_sync(db: AsyncSession, match, tracks: Dict[str, Track], log=lo
         st = await db.get(Stadium, match.stadium_id)
         corners = st.corners if st is not None else None
     _, carries, events, starters, starts, ends = await _tagged_inputs(db, match)
-    out = syncmod.compute(tracks, carries, events, starters, starts, ends, pitch_length_m=L, pitch_width_m=W, log=log)
+    nt = await _no_tag_inputs(db, match)      # only used when there are too few tagged carries
+    out = syncmod.compute(tracks, carries, events, starters, starts, ends, pitch_length_m=L, pitch_width_m=W, log=log, **nt)
     try:
         cal = out["calibration"]
         x, y = await on_pitch_points(db, match, tracks, cal, out["periods"], starters)
@@ -210,7 +222,7 @@ async def compute_sync(db: AsyncSession, match, tracks: Dict[str, Track], log=lo
         log(f"pitch fit: angle {fit['fit']['angle_deg']} deg from {fit['fit']['angle_from']} (first pass {fit['fit']['first_pass']['angle_deg']}), "
             f"centre moved {fit['fit']['first_pass']['centre_moved_m']} m, players reached {fit['fit']['reach_length_m']} x {fit['fit']['reach_width_m']} m of {L} x {W}")
         out = syncmod.compute(tracks, carries, events, starters, starts, ends, pitch_length_m=L, pitch_width_m=W, log=log,
-                              cal_fixed={**cal, **fit})
+                              cal_fixed={**cal, **fit}, **nt)
     except (ValueError, syncmod.SyncError) as e:
         log(f"pitch fit skipped ({e}); keeping the first placement")
     return out
