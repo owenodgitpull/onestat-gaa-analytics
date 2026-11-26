@@ -325,3 +325,72 @@ export const settingsSteps: DriveStep[] = [
     },
   },
 ]
+
+
+// ── Squad Conditioning demo (8 steps) ──────────────────────────────────────
+// Shown on the demo view of the Squad Conditioning tab: your real squad's names with made-up figures.
+
+export const squadDemoSteps: DriveStep[] = [
+  {
+    popover: {
+      title: 'How the Squad Conditioning Monitor works',
+      description:
+        'This is a demo. The players are your real squad, but every figure on this page is made up, so you can see how it reads without touching your real data.',
+    },
+  },
+  {
+    element: '[data-tour="squad-demo-grid"]',
+    popover: {
+      title: 'One card per player',
+      description:
+        'Each card is a player, coloured by their workload status: green is the sweet spot, amber is undertrained, orange is elevated and red is high risk.',
+    },
+  },
+  {
+    element: '[data-tour="squad-demo-ok"]',
+    popover: {
+      title: 'Green: in the sweet spot',
+      description:
+        'The load over the last 7 days (acute) sits comfortably against what this player has built up over the last 28 days (chronic). Nothing to do.',
+    },
+  },
+  {
+    element: '[data-tour="squad-demo-bar"]',
+    popover: {
+      title: 'ACWR',
+      description:
+        'The acute:chronic workload ratio is last week\'s load divided by the last four weeks\' average. Between 0.8 and 1.3 is the sweet spot; the bar shows where each player sits.',
+    },
+  },
+  {
+    element: '[data-tour="squad-demo-elevated"]',
+    popover: {
+      title: 'Orange: elevated',
+      description:
+        'Load is climbing faster than the player has adapted to. Worth watching, and worth thinking about the next session.',
+    },
+  },
+  {
+    element: '[data-tour="squad-demo-risk"]',
+    popover: {
+      title: 'Red: high risk',
+      description:
+        'A big spike against this player\'s normal load. This is where the monitor raises an alert so you can ease off before it becomes an injury.',
+    },
+  },
+  {
+    element: '[data-tour="squad-demo-low"]',
+    popover: {
+      title: 'Amber: undertrained',
+      description:
+        'Well under their usual load. They may be returning from a break or an injury, or just not getting enough work.',
+    },
+  },
+  {
+    popover: {
+      title: 'Keep it fed',
+      description:
+        'To keep this live for your squad, upload training sessions (including the drills), GPS training data and fitness tests regularly. The more regularly you do, the more reliable the picture. Press "Exit demo" to go back to your real data.',
+    },
+  },
+]

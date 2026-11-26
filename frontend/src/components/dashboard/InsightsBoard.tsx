@@ -77,12 +77,15 @@ const GROUPS: { id: Group; title: string; hint: string; icon: typeof TrendingUp;
 
 /** One insight, one row: the figure (with last 3 v season under it), what it is about, and the one-sentence read. */
 function Row({ it }: { it: Item }) {
+  const hasFigure = !!it.figure
   return (
-    <li className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 grid grid-cols-1 sm:grid-cols-[6.5rem_11rem_minmax(0,1fr)] gap-x-5 gap-y-1.5 items-center">
-      <div>
-        {it.figure && <div className="text-xl font-bold text-white tabular-nums leading-none">{it.figure}</div>}
-        {it.sub && <div className="text-[10px] text-white/50 leading-snug mt-1">{it.sub}</div>}
-      </div>
+    <li className={`rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 grid grid-cols-1 gap-x-5 gap-y-1.5 items-center ${hasFigure ? 'sm:grid-cols-[6.5rem_11rem_minmax(0,1fr)]' : 'sm:grid-cols-[17.5rem_minmax(0,1fr)]'}`}>
+      {hasFigure && (
+        <div>
+          <div className="text-xl font-bold text-white tabular-nums leading-none">{it.figure}</div>
+          {it.sub && <div className="text-[10px] text-white/50 leading-snug mt-1">{it.sub}</div>}
+        </div>
+      )}
       <div className="text-[11px] uppercase tracking-wide text-white/55 font-semibold leading-snug">{it.source.replace(/^Chart · /, '')}</div>
       <p className="text-sm text-white/90 leading-snug" title={it.text}>{brief(it.text)}</p>
     </li>

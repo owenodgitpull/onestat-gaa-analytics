@@ -14,15 +14,48 @@ import {
   Bot,
   ChevronRight,
   ChevronDown,
-  Calendar
+  Calendar,
+  PlayCircle
 } from 'lucide-react'
 import { api, SquadHealthSummary, PlayerWorkload, SquadFitnessSummary, HealthAlert } from '@/services/api'
+import { useTour } from '@/hooks/useTour'
+import { squadDemoSteps } from '@/config/tourSteps'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import { Link } from 'react-router-dom'
 
 interface Props {
   onRefresh?: () => void
+}
+
+/** A player's card: a link to the player in real use, a plain box in the demo (so a click does not leave the tour). */
+function CardShell({ demo, to, className, anchor, children }: { demo: boolean; to: string; className: string; anchor?: string; children: React.ReactNode }) {
+  return demo
+    ? <div data-tour={anchor} className={className}>{children}</div>
+    : <Link to={to} className={className}>{children}</Link>
+}
+
+/** Made-up workloads for the demo: a spread of every status, on the real squad's names. Same ACWR bands as the real cards. */
+const DEMO_SPREAD: { status: PlayerWorkload['status']; acwr: number; chronic: number; today: number }[] = [
+  { status: 'optimal', acwr: 1.12, chronic: 540, today: 410 },
+  { status: 'elevated', acwr: 1.42, chronic: 480, today: 620 },
+  { status: 'optimal', acwr: 0.97, chronic: 560, today: 380 },
+  { status: 'high_risk', acwr: 1.74, chronic: 430, today: 710 },
+  { status: 'undertrained', acwr: 0.62, chronic: 500, today: 180 },
+  { status: 'optimal', acwr: 1.21, chronic: 520, today: 450 },
+  { status: 'optimal', acwr: 1.03, chronic: 470, today: 350 },
+  { status: 'elevated', acwr: 1.36, chronic: 510, today: 590 },
+  { status: 'undertrained', acwr: 0.71, chronic: 450, today: 210 },
+  { status: 'optimal', acwr: 1.15, chronic: 530, today: 430 },
+  { status: 'high_risk', acwr: 1.62, chronic: 400, today: 640 },
+  { status: 'optimal', acwr: 0.92, chronic: 490, today: 360 },
+]
+
+function demoWorkloads(squad: { id: string; name: string }[]): PlayerWorkload[] {
+  return squad.slice(0, DEMO_SPREAD.length).map((p, i) => {
+    const d = DEMO_SPREAD[i]
+    return { player_id: p.id, player_name: p.name, status: d.status, acwr: d.acwr, chronic_load: d.chronic, acute_load: Math.round(d.acwr * d.chronic), today_load: d.today }
+  })
 }
 
 export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
@@ -33,6 +66,22 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   const [showAllAlerts, setShowAllAlerts] = useState(false)
   const [showAttendanceDetails, setShowAttendanceDetails] = useState(false)
   const [fitnessSummary, setFitnessSummary] = useState<SquadFitnessSummary | null>(null)
+  const [demo, setDemo] = useState<PlayerWorkload[] | null>(null)       // the demo view: made-up figures on the real squad's names
+  const [demoLoading, setDemoLoading] = useState(false)
+  const { startTour: startDemoTour } = useTour('squadDemo', squadDemoSteps)
+  const openDemo = async () => {
+    setDemoLoading(true)
+    try {
+      const have = (healthData?.player_workloads || []).map(p => ({ id: p.player_id, name: p.player_name }))
+      const squad = have.length >= 8 ? have : (await api.players.getAll()).map(p => ({ id: String(p.id), name: p.name }))
+      setDemo(demoWorkloads(squad))
+      setTimeout(() => startDemoTour(true), 300)
+    } catch (e) {
+      console.error('Could not open the demo', e)
+    } finally {
+      setDemoLoading(false)
+    }
+  }
 
   const fetchHealthData = async () => {
     setLoading(true)
@@ -195,8 +244,31 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
     return acc
   }, {} as Record<string, PlayerWorkload[]>)
 
+  const workloadsShown = demo ?? healthData.player_workloads
+  // first card of each status carries a tour anchor in the demo
+  const demoAnchors: Record<string, string> = {}
+  if (demo) {
+    const seen = new Set<string>()
+    for (const p of demo) {
+      if (seen.has(p.status)) continue
+      seen.add(p.status)
+      demoAnchors[p.player_id] = ({ optimal: 'squad-demo-ok', elevated: 'squad-demo-elevated', high_risk: 'squad-demo-risk', undertrained: 'squad-demo-low' } as Record<string, string>)[p.status] || ''
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {demo && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-amber-100">
+            <span className="font-semibold">Demo view.</span> Your squad's names with made-up figures, to show how the monitor reads. Nothing here is real data.
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => startDemoTour(true)} className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-xs text-white font-medium">Replay the tour</button>
+            <button onClick={() => setDemo(null)} className="px-3 py-1.5 rounded-lg bg-amber-500/80 hover:bg-amber-500 text-xs text-slate-900 font-semibold">Exit demo</button>
+          </div>
+        </div>
+      )}
       {/* Header with stats */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -206,12 +278,16 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
           <div>
             <h2 className="text-2xl font-bold text-white">Squad Conditioning Monitor</h2>
             <p className="text-white/60 text-sm">
-              Event-driven workload analysis powered by AI
+              Event-driven workload analysis powered by AI — upload training session data such as drills, along with GPS training data and fitness tests, regularly to keep an eye on player conditioning.{' '}
+              <button onClick={openDemo} disabled={demoLoading} className="inline-flex items-center gap-1 text-emerald-300 hover:text-emerald-200 underline underline-offset-2 disabled:opacity-50">
+                <PlayCircle size={13} aria-hidden="true" />{demoLoading ? 'Opening…' : 'See how it works'}
+              </button>
             </p>
           </div>
         </div>
       </div>
 
+      {!demo && (<>
       {/* Squad Fitness Card */}
       <Link
         to="/fitness"
@@ -410,6 +486,8 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
         </div>
       )}
 
+      </>)}
+
       {/* Player Workload Grid */}
       <div className="glass-card p-6">
         <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-white">
@@ -417,14 +495,12 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
           Player Workload Status
         </h3>
 
-        {healthData.player_workloads.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {healthData.player_workloads.map((player) => (
-              <Link
-                key={player.player_id}
-                to={`/players/${player.player_id}`}
-                className={`p-4 rounded-xl border hover:border-emerald-500/30 transition-colors cursor-pointer block ${getStatusBg(player.status)}`}
-              >
+        {workloadsShown.length > 0 ? (
+          <div data-tour={demo ? 'squad-demo-grid' : undefined} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {workloadsShown.map((player) => {
+              const cardClass = `p-4 rounded-xl border hover:border-emerald-500/30 transition-colors block ${demo ? '' : 'cursor-pointer'} ${getStatusBg(player.status)}`
+              return (
+              <CardShell key={player.player_id} demo={!!demo} to={`/players/${player.player_id}`} className={cardClass} anchor={demoAnchors[player.player_id] || undefined}>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
@@ -479,7 +555,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
 
                 {/* ACWR Visual Bar */}
                 {player.acwr !== null && (
-                  <div className="mt-3">
+                  <div className="mt-3" data-tour={demo && demoAnchors[player.player_id] === 'squad-demo-ok' ? 'squad-demo-bar' : undefined}>
                     <div className="h-2 rounded-full bg-white/10 overflow-hidden">
                       <div
                         className={`h-full transition-all ${
@@ -499,8 +575,9 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
                     </div>
                   </div>
                 )}
-              </Link>
-            ))}
+              </CardShell>
+              )
+            })}
           </div>
         ) : (
           <div className="text-center py-12 text-white/40">
